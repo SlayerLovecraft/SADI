@@ -203,7 +203,7 @@ Este mensaje fue generado desde el sistema SADI
 
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-4">
-                  <img src='../images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
+                  <img src='/images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">Recuperar Contraseña</h1>
                 <p className="text-sm text-gray-500 mt-2">
@@ -277,7 +277,7 @@ Este mensaje fue generado desde el sistema SADI
 
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-4">
-                  <img src='../images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
+                  <img src='/images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">Reportar Problema</h1>
               </div>
@@ -359,7 +359,7 @@ Este mensaje fue generado desde el sistema SADI
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <div className="text-center mb-8">
               <div className="flex justify-center mb-4">
-                <img src='../images/SADI_logo.jpg' alt="SADI Logo" className="h-20 w-auto"/>
+                <img src='/images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
               </div>
               <h1 className="text-3xl font-bold text-teal-700">Portal Pacientes</h1>
               <p className="text-sm text-gray-500 mt-2">Sistema de Apoyo para Demanda Inducida</p>

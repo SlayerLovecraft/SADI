@@ -155,7 +155,7 @@ const ResetPasswordPage = () => {
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <div className="text-center mb-8">
               <div className="flex justify-center mb-4">
-                <img src='../images/SADI_logo.png' alt="SADI Logo" className="h-16 w-auto" onError={(e) => e.target.style.display='none'}/>
+                <img src='/images/SADI_logo.png' alt="SADI Logo" className="h-16 w-auto" onError={(e) => e.target.style.display='none'}/>
               </div>
               <h1 className="text-2xl font-bold text-gray-900">Crear nueva contraseña</h1>
               <p className="text-sm text-gray-500 mt-2">
