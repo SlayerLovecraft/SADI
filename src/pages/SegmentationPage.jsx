@@ -6,6 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Target, Plus, Users, Edit2, Trash2, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { patientService } from '@/services/patientService';
+import { segmentService } from '@/services/segmentService';
 import {
   Dialog,
   DialogContent,
@@ -32,7 +35,9 @@ const SegmentationPage = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState(null);
   const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [newSegment, setNewSegment] = useState({
     nombre: '',
@@ -53,57 +58,114 @@ const SegmentationPage = () => {
   });
 
   useEffect(() => {
-    loadSegments();
-    loadPatients();
-  }, []);
+    loadData();
+  }, [user]);
 
-  const loadSegments = () => {
-    const stored = localStorage.getItem('sadi_segments');
-    if (stored) {
-      setSegments(JSON.parse(stored));
+  const loadData = async () => {
+    setLoading(true);
+    await Promise.all([loadSegments(), loadPatients()]);
+    setLoading(false);
+  };
+
+  const loadSegments = async () => {
+    try {
+      const hospitalIdForQuery = user?.role === 'super_admin' ? null : user?.hospitalId;
+      const result = await segmentService.getAll(hospitalIdForQuery);
+      if (result.success) {
+        // Mapear campos de DB a formato del componente
+        const mappedSegments = result.data.map(seg => ({
+          id: seg.id,
+          nombre: seg.nombre,
+          edadMin: seg.edad_min,
+          edadMax: seg.edad_max,
+          sexo: seg.sexo,
+          ciudad: seg.ciudad,
+          programa: seg.programa,
+          fechaCreacion: new Date(seg.created_at).toISOString().split('T')[0],
+          fechaModificacion: seg.updated_at ? new Date(seg.updated_at).toISOString().split('T')[0] : null
+        }));
+        setSegments(mappedSegments);
+      } else {
+        toast({
+          title: "Error al cargar segmentos",
+          description: result.error,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error loading segments:', error);
     }
   };
 
-  const loadPatients = () => {
-    const stored = localStorage.getItem('sadi_patients');
-    if (stored) {
-      setPatients(JSON.parse(stored));
+  const loadPatients = async () => {
+    try {
+      const result = await patientService.getAll();
+      if (result.success && result.data) {
+        setPatients(result.data);
+      }
+    } catch (error) {
+      console.error('Error loading patients:', error);
     }
   };
 
   const calculateSegmentSize = (segment) => {
-    return patients.filter(p => {
+    const filtered = patients.filter(p => {
       let matches = true;
       
       if (segment.edadMin && p.edad < parseInt(segment.edadMin)) matches = false;
       if (segment.edadMax && p.edad > parseInt(segment.edadMax)) matches = false;
       if (segment.sexo !== 'Todos' && p.sexo !== segment.sexo) matches = false;
-      if (segment.ciudad && p.ciudad.toLowerCase() !== segment.ciudad.toLowerCase()) matches = false;
-      if (segment.programa && p.programa.toLowerCase() !== segment.programa.toLowerCase()) matches = false;
+      
+      if (segment.ciudad) {
+        const ciudadSegmento = segment.ciudad.toLowerCase().trim();
+        const ciudadPaciente = (p.ciudad || '').toLowerCase().trim();
+        if (ciudadPaciente !== ciudadSegmento) matches = false;
+      }
+      
+      if (segment.programa) {
+        const programaSegmento = segment.programa.toLowerCase().trim();
+        const programaPaciente = (p.programa || '').toLowerCase().trim();
+        if (programaPaciente !== programaSegmento) matches = false;
+      }
       
       return matches;
-    }).length;
+    });
+
+    return filtered.length;
   };
 
-  const handleCreateSegment = (e) => {
+  const handleCreateSegment = async (e) => {
     e.preventDefault();
     
-    const segment = {
-      ...newSegment,
-      id: Date.now().toString(),
-      fechaCreacion: new Date().toISOString().split('T')[0]
-    };
-    
-    const updatedSegments = [...segments, segment];
-    localStorage.setItem('sadi_segments', JSON.stringify(updatedSegments));
-    setSegments(updatedSegments);
-    setShowCreateDialog(false);
-    setNewSegment({ nombre: '', edadMin: '', edadMax: '', sexo: 'Todos', ciudad: '', programa: '' });
-    
-    toast({
-      title: "Segmento creado",
-      description: "El segmento ha sido creado exitosamente",
-    });
+    try {
+      const result = await segmentService.create({
+        ...newSegment,
+        hospitalId: user.hospitalId
+      });
+
+      if (result.success) {
+        toast({
+          title: "Segmento creado",
+          description: "El segmento ha sido creado exitosamente",
+        });
+        
+        await loadSegments();
+        setShowCreateDialog(false);
+        setNewSegment({ nombre: '', edadMin: '', edadMax: '', sexo: 'Todos', ciudad: '', programa: '' });
+      } else {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo crear el segmento",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleEditClick = (segment) => {
@@ -119,24 +181,35 @@ const SegmentationPage = () => {
     setShowEditDialog(true);
   };
 
-  const handleUpdateSegment = (e) => {
+  const handleUpdateSegment = async (e) => {
     e.preventDefault();
     
-    const updatedSegments = segments.map(seg => 
-      seg.id === selectedSegment.id 
-        ? { ...seg, ...editSegment, fechaModificacion: new Date().toISOString().split('T')[0] }
-        : seg
-    );
-    
-    localStorage.setItem('sadi_segments', JSON.stringify(updatedSegments));
-    setSegments(updatedSegments);
-    setShowEditDialog(false);
-    setSelectedSegment(null);
-    
-    toast({
-      title: "Segmento actualizado",
-      description: "Los cambios han sido guardados exitosamente",
-    });
+    try {
+      const result = await segmentService.update(selectedSegment.id, editSegment);
+
+      if (result.success) {
+        toast({
+          title: "Segmento actualizado",
+          description: "Los cambios han sido guardados exitosamente",
+        });
+        
+        await loadSegments();
+        setShowEditDialog(false);
+        setSelectedSegment(null);
+      } else {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo actualizar el segmento",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleDeleteClick = (segment) => {
@@ -144,19 +217,49 @@ const SegmentationPage = () => {
     setShowDeleteDialog(true);
   };
 
-  const handleDeleteConfirm = () => {
-    const updatedSegments = segments.filter(seg => seg.id !== selectedSegment.id);
-    localStorage.setItem('sadi_segments', JSON.stringify(updatedSegments));
-    setSegments(updatedSegments);
-    setShowDeleteDialog(false);
-    setSelectedSegment(null);
-    
-    toast({
-      title: "Segmento eliminado",
-      description: "El segmento ha sido eliminado correctamente",
-      variant: "destructive",
-    });
+  const handleDeleteConfirm = async () => {
+    try {
+      const result = await segmentService.delete(selectedSegment.id);
+
+      if (result.success) {
+        toast({
+          title: "Segmento eliminado",
+          description: "El segmento ha sido eliminado correctamente",
+          variant: "destructive",
+        });
+        
+        await loadSegments();
+      } else {
+        toast({
+          title: "Error",
+          description: result.error,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo eliminar el segmento",
+        variant: "destructive"
+      });
+    } finally {
+      setShowDeleteDialog(false);
+      setSelectedSegment(null);
+    }
   };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-96">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p className="text-gray-600">Cargando datos...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -169,7 +272,10 @@ const SegmentationPage = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Segmentación</h1>
-            <p className="text-gray-500 mt-1">Crea y gestiona filtros personalizados para tus campañas</p>
+            <p className="text-gray-500 mt-1">
+              Crea y gestiona filtros personalizados para tus campañas 
+              ({patients.length} pacientes disponibles)
+            </p>
           </div>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
@@ -244,7 +350,7 @@ const SegmentationPage = () => {
                     value={newSegment.ciudad}
                     onChange={(e) => setNewSegment({ ...newSegment, ciudad: e.target.value })}
                     className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                    placeholder="Ej: Bogotá"
+                    placeholder="Ej: Palmira"
                   />
                 </div>
                 <div>
