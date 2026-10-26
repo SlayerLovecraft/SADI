@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Production builds
+dist/
+build/
+*/dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs and databases
+*.log
+*.db
+*.backup
+.system_generated/
+scratch/
+
+# IDE and OS
+.DS_Store
+Thumbs.db
+.vscode/

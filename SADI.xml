@@ -1,0 +1,81 @@
+<mxfile>
+  <diagram id="sadi2" name="SADI App Web ERD">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- USER -->
+        <mxCell id="user" value="USER&#10;user_id PK&#10;email&#10;password_hash&#10;role&#10;hospital_id FK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="200" height="160" as="geometry"/>
+        </mxCell>
+
+        <!-- HOSPITAL -->
+        <mxCell id="hospital" value="HOSPITAL&#10;hospital_id PK&#10;name&#10;city&#10;address" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4" vertex="1" parent="1">
+          <mxGeometry x="320" y="40" width="200" height="140" as="geometry"/>
+        </mxCell>
+
+        <!-- PATIENT -->
+        <mxCell id="patient" value="PATIENT&#10;patient_id PK&#10;hospital_id FK&#10;name&#10;document&#10;phone&#10;email" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="200" height="180" as="geometry"/>
+        </mxCell>
+
+        <!-- SEGMENTATION -->
+        <mxCell id="segmentation" value="SEGMENTATION_RULE&#10;rule_id PK&#10;hospital_id FK&#10;field&#10;operator&#10;value" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc" vertex="1" parent="1">
+          <mxGeometry x="320" y="240" width="220" height="160" as="geometry"/>
+        </mxCell>
+
+        <!-- TEMPLATE -->
+        <mxCell id="template" value="TEMPLATE&#10;template_id PK&#10;hospital_id FK&#10;name&#10;content" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7" vertex="1" parent="1">
+          <mxGeometry x="600" y="40" width="220" height="160" as="geometry"/>
+        </mxCell>
+
+        <!-- CAMPAIGN -->
+        <mxCell id="campaign" value="CAMPAIGN&#10;campaign_id PK&#10;hospital_id FK&#10;template_id FK&#10;name&#10;status&#10;scheduled_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffd9c4" vertex="1" parent="1">
+          <mxGeometry x="600" y="240" width="240" height="200" as="geometry"/>
+        </mxCell>
+
+        <!-- CAMPAIGN TARGET -->
+        <mxCell id="camp_target" value="CAMPAIGN_TARGET&#10;id PK&#10;campaign_id FK&#10;patient_id FK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cfe2f3" vertex="1" parent="1">
+          <mxGeometry x="900" y="240" width="220" height="140" as="geometry"/>
+        </mxCell>
+
+        <!-- CAMPAIGN MESSAGE -->
+        <mxCell id="camp_msg" value="CAMPAIGN_MESSAGE&#10;msg_id PK&#10;campaign_id FK&#10;patient_id FK&#10;channel&#10;content&#10;status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4cccc" vertex="1" parent="1">
+          <mxGeometry x="900" y="420" width="260" height="180" as="geometry"/>
+        </mxCell>
+
+        <!-- INTERACTIONS -->
+        <mxCell id="interactions" value="INTERACTION_HISTORY&#10;interaction_id PK&#10;patient_id FK&#10;type&#10;content&#10;date" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2efda" vertex="1" parent="1">
+          <mxGeometry x="40" y="460" width="240" height="180" as="geometry"/>
+        </mxCell>
+
+        <!-- PATIENT PROGRAM -->
+        <mxCell id="patient_prog" value="PATIENT_PROGRAM&#10;id PK&#10;patient_id FK&#10;program_name&#10;status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d9d2e9" vertex="1" parent="1">
+          <mxGeometry x="320" y="460" width="220" height="160" as="geometry"/>
+        </mxCell>
+
+        <!-- HEALTH DATA -->
+        <mxCell id="health" value="PATIENT_HEALTH_DATA&#10;data_id PK&#10;patient_id FK&#10;type&#10;value&#10;taken_at" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce5cd" vertex="1" parent="1">
+          <mxGeometry x="600" y="460" width="240" height="180" as="geometry"/>
+        </mxCell>
+
+        <!-- RELATIONS -->
+
+        <mxCell id="r1" edge="1" parent="1" source="user" target="hospital" style="endArrow=classic"/>
+        <mxCell id="r2" edge="1" parent="1" source="hospital" target="patient" style="endArrow=classic"/>
+        <mxCell id="r3" edge="1" parent="1" source="hospital" target="segmentation" style="endArrow=classic"/>
+        <mxCell id="r4" edge="1" parent="1" source="hospital" target="template" style="endArrow=classic"/>
+        <mxCell id="r5" edge="1" parent="1" source="template" target="campaign" style="endArrow=classic"/>
+        <mxCell id="r6" edge="1" parent="1" source="campaign" target="camp_target" style="endArrow=classic"/>
+        <mxCell id="r7" edge="1" parent="1" source="campaign" target="camp_msg" style="endArrow=classic"/>
+        <mxCell id="r8" edge="1" parent="1" source="patient" target="camp_target" style="endArrow=classic"/>
+        <mxCell id="r9" edge="1" parent="1" source="patient" target="camp_msg" style="endArrow=classic"/>
+        <mxCell id="r10" edge="1" parent="1" source="patient" target="interactions" style="endArrow=classic"/>
+        <mxCell id="r11" edge="1" parent="1" source="patient" target="patient_prog" style="endArrow=classic"/>
+        <mxCell id="r12" edge="1" parent="1" source="patient" target="health" style="endArrow=classic"/>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

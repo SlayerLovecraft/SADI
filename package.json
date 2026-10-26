@@ -1,0 +1,12 @@
+{
+  "name": "sadi-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SADI Workspace Root",
+  "scripts": {
+    "dev": "npm --prefix _react_legacy/SADI_React-Node.js run dev",
+    "build": "npm --prefix _react_legacy/SADI_React-Node.js run build",
+    "preview": "npm --prefix _react_legacy/SADI_React-Node.js run preview",
+    "mobile": "npm --prefix sadi-mobile run start"
+  }
+}
