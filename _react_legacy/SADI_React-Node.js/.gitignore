@@ -4,10 +4,22 @@ node_modules/
 # Production builds
 dist/
 
-# Environment files
-.env.local
-.env.*.local
+# Environment files and credentials
+.env
+.env*
+*.env
+*.env*
+*.pem
+*.key
+credentials*
+*credencial*
+*credential*
+*password*
+*.xlsx
+*.xls
+*.csv
 
 # Logs and system
 *.log
 .DS_Store
+scratch/

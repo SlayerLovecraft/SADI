@@ -320,6 +320,53 @@ export const authService = {
           return { success: false, error: `Contraseña incorrecta para ${normalizedEmail}` };
         }
 
+        // Si es médico general 9, 10 o 11
+        if (num === 9) {
+          return {
+            success: true,
+            user: {
+              id: 'd0100000-0000-0000-0000-000000000001',
+              doctor_id: 'd0100000-0000-0000-0000-000000000001',
+              email: 'alejandro.morales@sadi.med.co',
+              role: 'doctor',
+              nombre: 'Dr. Alejandro Morales Restrepo',
+              doctor_specialty: 'Medicina General (Admisión & Consulta Externa)',
+              hospitalId: 'a0000000-0000-0000-0000-000000000001',
+              hospital_name: 'Hospital Administrador SADI'
+            }
+          };
+        }
+        if (num === 10) {
+          return {
+            success: true,
+            user: {
+              id: 'd0200000-0000-0000-0000-000000000002',
+              doctor_id: 'd0200000-0000-0000-0000-000000000002',
+              email: 'valentina.gomez@sadi.med.co',
+              role: 'doctor',
+              nombre: 'Dra. Valentina Gómez Salazar',
+              doctor_specialty: 'Medicina General (Admisión & Triage Clínico)',
+              hospitalId: 'a0000000-0000-0000-0000-000000000001',
+              hospital_name: 'Hospital Administrador SADI'
+            }
+          };
+        }
+        if (num === 11) {
+          return {
+            success: true,
+            user: {
+              id: 'd0300000-0000-0000-0000-000000000003',
+              doctor_id: 'd0300000-0000-0000-0000-000000000003',
+              email: 'daniel.vargas@sadi.med.co',
+              role: 'doctor',
+              nombre: 'Dr. Daniel Felipe Vargas Ruiz',
+              doctor_specialty: 'Medicina General (Admisión & Demanda Inducida)',
+              hospitalId: 'a0000000-0000-0000-0000-000000000001',
+              hospital_name: 'Hospital Administrador SADI'
+            }
+          };
+        }
+
         const specialties = [
           'Pediatría y Puericultura',
           'Medicina Familiar y Hebiatría',

@@ -7,10 +7,26 @@ dist/
 build/
 */dist/
 
-# Environment files
+# Environment files and credentials
 .env
-.env.local
-.env.*.local
+.env*
+*.env
+*.env*
+*.pem
+*.key
+*.cert
+*.crt
+credentials*
+*credencial*
+*credential*
+*password*
+*.xlsx
+*.xls
+*.csv
+
+# Excel and credential generation scripts
+generate_credentials_excel.*
+Credenciales_Acceso_SADI_3280.xlsx
 
 # Logs and databases
 *.log

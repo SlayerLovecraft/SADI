@@ -5,6 +5,7 @@
 // ==============================================================================
 import { supabase } from '@/lib/supabase';
 import { evaluateVitalSigns3280, generateAIAgentScript, getCursoVida3280 } from './rias3280Engine';
+import { getAssignedDoctorEmailForPatient } from '@/pages/doctor/doctorUtils';
 
 const LOCAL_STORAGE_KEY_MEASUREMENTS = 'sadi_3280_measurements_v2';
 const LOCAL_STORAGE_KEY_ALERTS = 'sadi_3280_alerts_v2';
@@ -99,6 +100,45 @@ export const SEED_DOCTORS_3280 = [
     area_3280: 'Tamizaje Oncológico Res. 3280 (Mama, Cérvix, Próstata, Colon)',
     telefono: '+57 318 443 3208',
     registro_medico: 'RM-BOG-98214',
+    is_active: true
+  },
+  // ==============================================================================
+  // 3 MÉDICOS GENERALES DE PRUEBA (ATENCIÓN GENERAL Y ADMISIÓN PRIMARIA)
+  // ==============================================================================
+  {
+    id: 'd0100000-0000-0000-0000-000000000001',
+    doctor_id: 'd0100000-0000-0000-0000-000000000001',
+    name: 'Dr. Alejandro Morales Restrepo',
+    email: 'alejandro.morales@sadi.med.co',
+    specialty: 'Medicina General (Admisión & Atención Primaria)',
+    area_3280: 'Atención Médica General y Triaje Integral',
+    telefono: '+57 310 882 1001',
+    registro_medico: 'RM-MED-10492',
+    is_general: true,
+    is_active: true
+  },
+  {
+    id: 'd0200000-0000-0000-0000-000000000002',
+    doctor_id: 'd0200000-0000-0000-0000-000000000002',
+    name: 'Dra. Valentina Gómez Salazar',
+    email: 'valentina.gomez@sadi.med.co',
+    specialty: 'Medicina General (Admisión & Consulta Externa)',
+    area_3280: 'Atención Médica General y Triaje Integral',
+    telefono: '+57 312 773 2002',
+    registro_medico: 'RM-ANT-66120',
+    is_general: true,
+    is_active: true
+  },
+  {
+    id: 'd0300000-0000-0000-0000-000000000003',
+    doctor_id: 'd0300000-0000-0000-0000-000000000003',
+    name: 'Dr. Daniel Felipe Vargas Ruiz',
+    email: 'daniel.vargas@sadi.med.co',
+    specialty: 'Medicina General (Admisión & Demanda Inducida)',
+    area_3280: 'Atención Médica General y Triaje Integral',
+    telefono: '+57 314 991 3003',
+    registro_medico: 'RM-CUN-88931',
+    is_general: true,
     is_active: true
   }
 ];
@@ -1095,17 +1135,22 @@ export const telemonitoringService = {
             curso = 'materno_perinatal';
           }
 
-          const docMap = {
-            primera_infancia: { id: 'd1111111-1111-1111-1111-111111111111', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
-            infancia: { id: 'd1111111-1111-1111-1111-111111111111', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
-            adolescencia: { id: 'd2222222-2222-2222-2222-222222222222', name: 'Dr. Juan Camilo Bermúdez Orozco', email: 'juan.bermudez@sadi.med.co' },
-            juventud: { id: 'd3333333-3333-3333-3333-333333333333', name: 'Dra. Sandra Milena Castaño Ríos', email: 'sandra.castano@sadi.med.co' },
-            adultez: { id: 'd4444444-4444-4444-4444-444444444444', name: 'Dr. Fernando Rincón Velásquez', email: 'fernando.rincon@sadi.med.co' },
-            vejez: { id: 'd5555555-5555-5555-5555-555555555555', name: 'Dra. Beatriz Elena Arango Salazar', email: 'beatriz.arango@sadi.med.co' },
-            materno_perinatal: { id: 'd6666666-6666-6666-6666-666666666666', name: 'Dr. Mauricio Villa Cardona', email: 'mauricio.villa@sadi.med.co' },
+          const assignedEmail = getAssignedDoctorEmailForPatient(p);
+          const docInfoMap = {
+            'paola.gil@sadi.med.co': { id: 'd1111111-1111-1111-1111-111111111111', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
+            'juan.bermudez@sadi.med.co': { id: 'd2222222-2222-2222-2222-222222222222', name: 'Dr. Juan Camilo Bermúdez Orozco', email: 'juan.bermudez@sadi.med.co' },
+            'sandra.castano@sadi.med.co': { id: 'd3333333-3333-3333-3333-333333333333', name: 'Dra. Sandra Milena Castaño Ríos', email: 'sandra.castano@sadi.med.co' },
+            'fernando.rincon@sadi.med.co': { id: 'd4444444-4444-4444-4444-444444444444', name: 'Dr. Fernando Rincón Velásquez', email: 'fernando.rincon@sadi.med.co' },
+            'beatriz.arango@sadi.med.co': { id: 'd5555555-5555-5555-5555-555555555555', name: 'Dra. Beatriz Elena Arango Salazar', email: 'beatriz.arango@sadi.med.co' },
+            'mauricio.villa@sadi.med.co': { id: 'd6666666-6666-6666-6666-666666666666', name: 'Dr. Mauricio Villa Cardona', email: 'mauricio.villa@sadi.med.co' },
+            'natalia.ocampo@sadi.med.co': { id: 'd7777777-7777-7777-7777-777777777777', name: 'Dra. Natalia Ocampo Henao', email: 'natalia.ocampo@sadi.med.co' },
+            'carlos.salazar@sadi.med.co': { id: 'd8888888-8888-8888-8888-888888888888', name: 'Dr. Carlos Eduardo Salazar Montoya', email: 'carlos.salazar@sadi.med.co' },
+            'alejandro.morales@sadi.med.co': { id: 'd0100000-0000-0000-0000-000000000001', name: 'Dr. Alejandro Morales Restrepo', email: 'alejandro.morales@sadi.med.co' },
+            'valentina.gomez@sadi.med.co': { id: 'd0200000-0000-0000-0000-000000000002', name: 'Dra. Valentina Gómez Salazar', email: 'valentina.gomez@sadi.med.co' },
+            'daniel.vargas@sadi.med.co': { id: 'd0300000-0000-0000-0000-000000000003', name: 'Dr. Daniel Felipe Vargas Ruiz', email: 'daniel.vargas@sadi.med.co' }
           };
 
-          const assignedDoc = docMap[curso] || docMap.adultez;
+          const assignedDoc = docInfoMap[assignedEmail] || docInfoMap['alejandro.morales@sadi.med.co'];
 
           return {
             ...p,
