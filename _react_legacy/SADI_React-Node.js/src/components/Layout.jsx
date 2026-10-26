@@ -18,7 +18,8 @@ import {
   Activity,
   ShieldCheck,
   FolderArchive,
-  Bot
+  Bot,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -36,6 +37,7 @@ const Layout = ({ children }) => {
     { path: '/telemonitoring', icon: Activity, label: 'Telemonitoreo 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/rias-3280', icon: ShieldCheck, label: 'Demanda Res. 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/vapi-agent', icon: Bot, label: 'Agente IA Vapi', roles: ['super_admin', 'operator', 'hospital_admin'] },
+    { path: '/ivr-schedule', icon: Clock, label: 'Cronograma IVR 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/patients', icon: Users, label: 'Pacientes', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/doctors', icon: Stethoscope, label: 'Doctores', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/segmentation', icon: Target, label: 'Segmentación', roles: ['super_admin', 'hospital_admin'] },

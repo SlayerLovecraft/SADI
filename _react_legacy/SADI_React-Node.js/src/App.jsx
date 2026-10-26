@@ -21,6 +21,7 @@ const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const TelemonitoringDashboardPage = lazy(() => import('@/pages/TelemonitoringDashboardPage'));
 const Rias3280ManagementPage = lazy(() => import('@/pages/Rias3280ManagementPage'));
 const VapiIntegrationPage = lazy(() => import('@/pages/VapiIntegrationPage'));
+const IvrSchedulePage = lazy(() => import('@/pages/IvrSchedulePage'));
 const PatientsPage = lazy(() => import('@/pages/PatientsPage'));
 const DoctorsPage = lazy(() => import('@/pages/DoctorsPage'));
 const SegmentationPage = lazy(() => import('@/pages/SegmentationPage'));
@@ -112,6 +113,24 @@ function App() {
                   element={
                     <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
                       <VapiIntegrationPage />
+                    </ProtectedRoute>
+                  } 
+                />
+
+                <Route 
+                  path="/ivr-schedule" 
+                  element={
+                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin']}>
+                      <IvrSchedulePage />
+                    </ProtectedRoute>
+                  } 
+                />
+                
+                <Route 
+                  path="/campaign-schedule" 
+                  element={
+                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin']}>
+                      <IvrSchedulePage />
                     </ProtectedRoute>
                   } 
                 />
