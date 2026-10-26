@@ -1068,13 +1068,45 @@ export const telemonitoringService = {
     return SEED_DOCTORS_3280;
   },
 
-  // Obtener lista completa de los 35 pacientes
+  // Obtener lista completa de pacientes
   async getPatients() {
     try {
       const { data, error } = await supabase.from('patients').select('*');
       if (!error && data && data.length > 0) {
         return data.map(p => {
-          const seedMatch = SEED_PATIENTS_3280.find(s => s.patient_id === p.patient_id || s.documento === p.document);
+          const birthdate = p.birthdate || p.birth_date || p.fecha_nacimiento;
+          let curso = p.curso_vida || 'adultez';
+          if (birthdate) {
+            const b = new Date(birthdate);
+            if (!isNaN(b.getTime())) {
+              const now = new Date();
+              let age = now.getFullYear() - b.getFullYear();
+              const m = now.getMonth() - b.getMonth();
+              if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+              if (age <= 5) curso = 'primera_infancia';
+              else if (age <= 11) curso = 'infancia';
+              else if (age <= 17) curso = 'adolescencia';
+              else if (age <= 28) curso = 'juventud';
+              else if (age <= 59) curso = 'adultez';
+              else curso = 'vejez';
+            }
+          }
+          if (p.program?.toLowerCase().includes('embarazo') || p.program?.toLowerCase().includes('materno') || p.es_gestante) {
+            curso = 'materno_perinatal';
+          }
+
+          const docMap = {
+            primera_infancia: { id: 'd1111111-1111-1111-1111-111111111111', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
+            infancia: { id: 'd1111111-1111-1111-1111-111111111111', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
+            adolescencia: { id: 'd2222222-2222-2222-2222-222222222222', name: 'Dr. Juan Camilo Bermúdez Orozco', email: 'juan.bermudez@sadi.med.co' },
+            juventud: { id: 'd3333333-3333-3333-3333-333333333333', name: 'Dra. Sandra Milena Castaño Ríos', email: 'sandra.castano@sadi.med.co' },
+            adultez: { id: 'd4444444-4444-4444-4444-444444444444', name: 'Dr. Fernando Rincón Velásquez', email: 'fernando.rincon@sadi.med.co' },
+            vejez: { id: 'd5555555-5555-5555-5555-555555555555', name: 'Dra. Beatriz Elena Arango Salazar', email: 'beatriz.arango@sadi.med.co' },
+            materno_perinatal: { id: 'd6666666-6666-6666-6666-666666666666', name: 'Dr. Mauricio Villa Cardona', email: 'mauricio.villa@sadi.med.co' },
+          };
+
+          const assignedDoc = docMap[curso] || docMap.adultez;
+
           return {
             ...p,
             id: p.patient_id || p.id,
@@ -1082,21 +1114,27 @@ export const telemonitoringService = {
             documento: p.document || p.documento,
             tipo_documento: p.tipo_documento || 'CC',
             telefono: p.phone || p.telefono,
-            fecha_nacimiento: p.birth_date || p.fecha_nacimiento,
-            dispositivos_caseros: seedMatch?.dispositivos_caseros || ['Tensiómetro Digital'],
-            doctor_nombre: seedMatch?.doctor_nombre || 'Especialista Asignado',
-            notas_clinicas: seedMatch?.notas_clinicas || 'Paciente en seguimiento 3280',
-            regimen: seedMatch?.regimen || 'Contributivo',
-            eps: seedMatch?.eps || 'Sura EPS'
+            fecha_nacimiento: birthdate,
+            curso_vida: curso,
+            doctor_asignado_id: assignedDoc.id,
+            doctor_nombre: assignedDoc.name,
+            doctor_email: assignedDoc.email,
+            dispositivos_caseros: p.program?.toLowerCase().includes('hipertension')
+              ? ['Tensiómetro Digital de Brazo']
+              : p.program?.toLowerCase().includes('asma')
+              ? ['Flujómetro Digital']
+              : ['Equipo de Telemonitoreo 3280'],
+            notas_clinicas: p.program ? `Programa activo: ${p.program}. Seguimiento Res. 3280.` : 'Seguimiento por curso de vida Res. 3280.',
+            regimen: 'Contributivo',
+            eps: 'EPS SADI Salud'
           };
         });
       }
     } catch (e) {
-      // Fallback a localStorage o semilla
+      // Fallback
     }
     const local = getLocal(LOCAL_STORAGE_KEY_PATIENTS, null);
-    if (local && local.length >= 35) return local;
-    setLocal(LOCAL_STORAGE_KEY_PATIENTS, SEED_PATIENTS_3280);
+    if (local && local.length >= 4) return local;
     return SEED_PATIENTS_3280;
   },
 

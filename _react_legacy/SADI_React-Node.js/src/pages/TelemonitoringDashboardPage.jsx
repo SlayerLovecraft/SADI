@@ -13,6 +13,7 @@ import { AIEvidenceModal } from '@/components/telemonitoring/AIEvidenceModal';
 import { NursingInterventionModal } from '@/components/telemonitoring/NursingInterventionModal';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { isPatientAssignedToDoctor } from './doctor/doctorUtils';
 
 const TelemonitoringDashboardPage = () => {
   const { user } = useAuth();
@@ -46,38 +47,11 @@ const TelemonitoringDashboardPage = () => {
       ]);
 
       if (user?.role === 'doctor') {
-        const docId = String(user?.doctor_id || user?.id || '').toLowerCase();
-        const docName = String(user?.nombre || '').toLowerCase();
-        const spec = String(user?.doctor_specialty || '').toLowerCase();
-
-        const isMyPatient = (p) => {
-          const pDocId = String(p.doctor_asignado_id || '').toLowerCase();
-          if (pDocId && docId && pDocId === docId) return true;
-
-          const pDocName = String(p.doctor_nombre || '').toLowerCase();
-          if (docName && pDocName) {
-            const firstPart = docName.replace('dr. ', '').replace('dra. ', '').split(' ')[0];
-            if (firstPart && pDocName.includes(firstPart)) return true;
-          }
-
-          if (spec.includes('pediatr') && (p.curso_vida === 'primera_infancia' || p.curso_vida === 'infancia')) return true;
-          if (spec.includes('adolesc') && p.curso_vida === 'adolescencia') return true;
-          if ((spec.includes('sexual') || spec.includes('general')) && p.curso_vida === 'juventud') return true;
-          if ((spec.includes('interna') || spec.includes('cardio')) && p.curso_vida === 'adultez') return true;
-          if (spec.includes('geriatr') && p.curso_vida === 'vejez') return true;
-          if ((spec.includes('materno') || spec.includes('ginec') || spec.includes('obstet')) && (p.curso_vida === 'materno_perinatal' || p.es_gestante)) return true;
-          if (spec.includes('odont') && (p.curso_vida === 'infancia' || p.curso_vida === 'primera_infancia')) return true;
-          if (spec.includes('onco') && (p.curso_vida === 'adultez' || p.curso_vida === 'vejez')) return true;
-
-          return false;
-        };
-
-        const myPatients = (patientsData || []).filter(isMyPatient);
-        const finalPatients = myPatients.length > 0 ? myPatients : (patientsData || []).slice(0, 5);
-        const myPatientIds = finalPatients.map(p => p.patient_id || p.id);
+        const myPatients = (patientsData || []).filter(p => isPatientAssignedToDoctor(p, user));
+        const myPatientIds = myPatients.map(p => p.patient_id || p.id);
         const myAlerts = (alertsData || []).filter(a => myPatientIds.includes(a.patient_id));
 
-        setPatients(finalPatients);
+        setPatients(myPatients);
         setAlerts(myAlerts);
       } else {
         setAlerts(alertsData || []);

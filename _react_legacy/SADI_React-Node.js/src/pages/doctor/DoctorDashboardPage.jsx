@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
+import { isPatientAssignedToDoctor } from './doctorUtils';
 
 const DoctorDashboardPage = () => {
   const { user } = useAuth();
@@ -41,37 +42,10 @@ const DoctorDashboardPage = () => {
       };
       setDoctorProfile(currentDoc);
 
-      // 2. Obtener pacientes asignados
+      // 2. Obtener pacientes asignados (Estricto 1 a 1 según Resolución 3280, sin fallbacks cruzados)
       const allPatients = await telemonitoringService.getPatients();
-
-      const isAssigned = (p) => {
-        const docId = String(currentDoc.id || currentDoc.doctor_id || '').toLowerCase();
-        const pDocId = String(p.doctor_asignado_id || '').toLowerCase();
-        if (pDocId && docId && pDocId === docId) return true;
-
-        const docName = String(currentDoc.name || '').toLowerCase();
-        const pDocName = String(p.doctor_nombre || '').toLowerCase();
-        if (docName && pDocName) {
-          const firstPart = docName.replace('dr. ', '').replace('dra. ', '').split(' ')[0];
-          if (firstPart && pDocName.includes(firstPart)) return true;
-        }
-
-        const spec = String(currentDoc.specialty || '').toLowerCase();
-        if (spec.includes('pediatr') && (p.curso_vida === 'primera_infancia' || p.curso_vida === 'infancia')) return true;
-        if (spec.includes('adolesc') && p.curso_vida === 'adolescencia') return true;
-        if ((spec.includes('sexual') || spec.includes('general')) && p.curso_vida === 'juventud') return true;
-        if ((spec.includes('interna') || spec.includes('cardio')) && p.curso_vida === 'adultez') return true;
-        if (spec.includes('geriatr') && p.curso_vida === 'vejez') return true;
-        if ((spec.includes('materno') || spec.includes('ginec') || spec.includes('obstet')) && (p.curso_vida === 'materno_perinatal' || p.es_gestante)) return true;
-        if (spec.includes('odont') && (p.curso_vida === 'infancia' || p.curso_vida === 'primera_infancia')) return true;
-        if (spec.includes('onco') && (p.curso_vida === 'adultez' || p.curso_vida === 'vejez')) return true;
-
-        return false;
-      };
-
-      const myPatients = allPatients.filter(isAssigned);
-      const finalPatients = myPatients.length > 0 ? myPatients : allPatients.slice(0, 5);
-      setAssignedPatients(finalPatients);
+      const myPatients = allPatients.filter(p => isPatientAssignedToDoctor(p, currentDoc));
+      setAssignedPatients(myPatients);
 
       // 3. Alertas de estos pacientes
       const allAlerts = await telemonitoringService.getAlerts();

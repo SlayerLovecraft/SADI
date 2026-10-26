@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
+import { isPatientAssignedToDoctor } from './doctorUtils';
 import { 
   clinicalRecordsService, 
   FOLDER_CATEGORIES, 
@@ -68,39 +69,17 @@ export default function DoctorClinicalRecordsPage() {
 
         const patList = await telemonitoringService.getPatients();
 
-        // RESTRICCIÓN CLÍNICA: Los doctores solo pueden ver y cargar historias de SUS pacientes asignados
-        const isMyPatient = (p) => {
-          if (user?.role !== 'doctor') return true;
-          const docId = String(currentDoctor.id || currentDoctor.doctor_id || '').toLowerCase();
-          const pDocId = String(p.doctor_asignado_id || '').toLowerCase();
-          if (pDocId && docId && pDocId === docId) return true;
+        // RESTRICCIÓN CLÍNICA ESTRICTA: Los doctores solo pueden ver y cargar historias de SUS pacientes asignados
+        const myPatients = user?.role === 'doctor'
+          ? patList.filter((p) => isPatientAssignedToDoctor(p, currentDoctor))
+          : patList;
 
-          const docName = String(currentDoctor.name || '').toLowerCase();
-          const pDocName = String(p.doctor_nombre || '').toLowerCase();
-          if (docName && pDocName) {
-            const firstPart = docName.replace('dr. ', '').replace('dra. ', '').split(' ')[0];
-            if (firstPart && pDocName.includes(firstPart)) return true;
-          }
+        setPatients(myPatients);
 
-          const spec = String(currentDoctor.specialty || '').toLowerCase();
-          if (spec.includes('pediatr') && (p.curso_vida === 'primera_infancia' || p.curso_vida === 'infancia')) return true;
-          if (spec.includes('adolesc') && p.curso_vida === 'adolescencia') return true;
-          if ((spec.includes('sexual') || spec.includes('general')) && p.curso_vida === 'juventud') return true;
-          if ((spec.includes('interna') || spec.includes('cardio')) && p.curso_vida === 'adultez') return true;
-          if (spec.includes('geriatr') && p.curso_vida === 'vejez') return true;
-          if ((spec.includes('materno') || spec.includes('ginec') || spec.includes('obstet')) && (p.curso_vida === 'materno_perinatal' || p.es_gestante)) return true;
-          if (spec.includes('odont') && (p.curso_vida === 'infancia' || p.curso_vida === 'primera_infancia')) return true;
-          if (spec.includes('onco') && (p.curso_vida === 'adultez' || p.curso_vida === 'vejez')) return true;
-
-          return false;
-        };
-
-        const filteredList = patList.filter(isMyPatient);
-        const finalList = filteredList.length > 0 ? filteredList : patList;
-        setPatients(finalList);
-
-        if (finalList.length > 0) {
-          setSelectedPatient(finalList[0]);
+        if (myPatients.length > 0) {
+          setSelectedPatient(myPatients[0]);
+        } else {
+          setSelectedPatient(null);
         }
       } catch (err) {
         console.error(err);

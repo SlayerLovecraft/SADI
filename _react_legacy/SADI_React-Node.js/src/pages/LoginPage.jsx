@@ -416,7 +416,7 @@ Generado desde SADI
                       setErrorMessage('');
                     }}
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="admin@hospital.com"
+                    placeholder="correo@institucion.gov.co"
                     required
                   />
                 </div>
@@ -455,24 +455,6 @@ Generado desde SADI
 
               <Button type="submit" className="w-full py-3" disabled={isSubmitting}>
                 {isSubmitting ? 'Validando...' : 'Ingresar al Portal Admin'}
-              </Button>
-
-              <Button 
-                type="button" 
-                onClick={async () => {
-                  setEmail('admin@sadi.gov.co');
-                  setPassword('Admin123!');
-                  setIsSubmitting(true);
-                  const result = await loginHospital('admin@sadi.gov.co', 'Admin123!');
-                  if (result.success) {
-                    navigate('/telemonitoring', { replace: true });
-                  }
-                  setIsSubmitting(false);
-                }} 
-                variant="outline"
-                className="w-full py-3 border-2 border-indigo-400 text-indigo-700 hover:bg-indigo-50 font-bold flex items-center justify-center gap-2 shadow-sm rounded-xl"
-              >
-                🩺 Acceso Rápido Demo (Telemonitoreo & Res. 3280)
               </Button>
             </form>
 

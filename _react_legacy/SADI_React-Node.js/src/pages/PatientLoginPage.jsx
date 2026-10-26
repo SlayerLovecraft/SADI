@@ -388,12 +388,12 @@ Este mensaje fue generado desde el sistema SADI
                       setErrorMessage('');
                     }}
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    placeholder="1234567890 o correo@email.com"
+                    placeholder="Número de identificación o correo"
                     required
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Use su número de cédula o correo electrónico
+                  Ingrese su credencial registrada
                 </p>
               </div>
 
@@ -423,9 +423,6 @@ Este mensaje fue generado desde el sistema SADI
                     required
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Por defecto es su número de cédula
-                </p>
               </div>
 
               <Button 

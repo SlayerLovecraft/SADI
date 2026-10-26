@@ -114,7 +114,7 @@ const DoctorLoginPage = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="doctor1@sadi.com.co"
+                  placeholder="doctor@institucion.med.co"
                   required
                 />
               </div>
@@ -130,126 +130,9 @@ const DoctorLoginPage = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="passwordstaff01"
+                  placeholder="••••••••"
                   required
                 />
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-gray-100">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-bold text-gray-700">8 Doctores Especialistas 3280 (Clic para autocompletar):</p>
-                <span className="text-[10px] text-gray-400">Clave: password123</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] max-h-48 overflow-y-auto pr-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('paola.gil@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg border border-emerald-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">👶 Dra. Paola Gil</span>
-                  <span className="text-[10px] text-emerald-700 block truncate">Pediatría (0-11 años)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('juan.bermudez@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-blue-50 hover:bg-blue-100 text-blue-900 rounded-lg border border-blue-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">🧑 Dr. Juan C. Bermúdez</span>
-                  <span className="text-[10px] text-blue-700 block truncate">Adolescencia (12-17 años)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('sandra.castano@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-lg border border-indigo-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">👩 Dra. Sandra Castaño</span>
-                  <span className="text-[10px] text-indigo-700 block truncate">Juventud (18-28 años)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('fernando.rincon@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-purple-50 hover:bg-purple-100 text-purple-900 rounded-lg border border-purple-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">🩺 Dr. Fernando Rincón</span>
-                  <span className="text-[10px] text-purple-700 block truncate">Adultez & Cardiovascular</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('beatriz.arango@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">👵 Dra. Beatriz Arango</span>
-                  <span className="text-[10px] text-amber-700 block truncate">Geriatría & Vejez (60+)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('mauricio.villa@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-rose-50 hover:bg-rose-100 text-rose-900 rounded-lg border border-rose-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">🤰 Dr. Mauricio Villa</span>
-                  <span className="text-[10px] text-rose-700 block truncate">Materno Perinatal (RIAMP)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('natalia.ocampo@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-teal-50 hover:bg-teal-100 text-teal-900 rounded-lg border border-teal-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">🦷 Dra. Natalia Ocampo</span>
-                  <span className="text-[10px] text-teal-700 block truncate">Salud Oral Transversal</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('carlos.salazar@sadi.med.co');
-                    setPassword('password123');
-                  }}
-                  className="p-1.5 text-left bg-cyan-50 hover:bg-cyan-100 text-cyan-900 rounded-lg border border-cyan-200 transition-colors"
-                >
-                  <span className="font-bold block truncate">🎗️ Dr. Carlos Salazar</span>
-                  <span className="text-[10px] text-cyan-700 block truncate">Oncología & Tamizajes</span>
-                </button>
-              </div>
-
-              <div className="mt-2 text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmail('doctor1@sadi.com.co');
-                    setPassword('passwordstaff01');
-                  }}
-                  className="text-[10px] text-gray-500 hover:text-blue-600 underline"
-                >
-                  O usar cuenta staff: doctor1@sadi.com.co (passwordstaff01)
-                </button>
               </div>
             </div>
 
