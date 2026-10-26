@@ -203,7 +203,7 @@ Este mensaje fue generado desde el sistema SADI
 
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-4">
-                  <img src='../images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
+                  <img src='/images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">Recuperar Contraseña</h1>
                 <p className="text-sm text-gray-500 mt-2">
@@ -277,7 +277,7 @@ Este mensaje fue generado desde el sistema SADI
 
               <div className="text-center mb-8">
                 <div className="flex justify-center mb-4">
-                  <img src='../images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
+                  <img src='/images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
                 </div>
                 <h1 className="text-2xl font-bold text-gray-900">Reportar Problema</h1>
               </div>
@@ -359,7 +359,7 @@ Este mensaje fue generado desde el sistema SADI
           <div className="bg-white rounded-2xl shadow-2xl p-8">
             <div className="text-center mb-8">
               <div className="flex justify-center mb-4">
-                <img src='../images/SADI_logo.jpg' alt="SADI Logo" className="h-20 w-auto"/>
+                <img src='/images/SADI_logo.png' alt="SADI Logo" className="h-20 w-auto"/>
               </div>
               <h1 className="text-3xl font-bold text-teal-700">Portal Pacientes</h1>
               <p className="text-sm text-gray-500 mt-2">Sistema de Apoyo para Demanda Inducida</p>
@@ -447,16 +447,6 @@ Este mensaje fue generado desde el sistema SADI
                 <Link to="/login" className="text-sm text-teal-600 hover:underline">
                   ¿Es personal del hospital? Ingrese aquí
                 </Link>
-              </div>
-            </div>
-
-            <div className="mt-6 p-4 bg-teal-50 border border-teal-200 rounded-lg">
-              <div className="flex gap-2">
-                <AlertCircle className="h-5 w-5 text-teal-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-teal-800">
-                  <p className="font-semibold mb-1">¿Primera vez aquí?</p>
-                  <p>Su contraseña inicial es su número de cédula. Se le solicitará cambiarla en su primer acceso.</p>
-                </div>
               </div>
             </div>
           </div>
