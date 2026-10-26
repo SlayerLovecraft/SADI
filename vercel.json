@@ -4,7 +4,6 @@
   "installCommand": "npm --prefix _react_legacy/SADI_React-Node.js install",
   "buildCommand": "npm --prefix _react_legacy/SADI_React-Node.js run build",
   "outputDirectory": "_react_legacy/SADI_React-Node.js/dist",
-  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/(.*)",
