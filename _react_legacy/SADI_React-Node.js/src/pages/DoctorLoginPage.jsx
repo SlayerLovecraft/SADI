@@ -136,6 +136,42 @@ const DoctorLoginPage = () => {
               </div>
             </div>
 
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">Cuentas de demostración rápida (clic para llenar):</p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('doctor1@sadi.com.co');
+                    setPassword('passwordstaff01');
+                  }}
+                  className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md border border-blue-200 transition-colors"
+                >
+                  👨‍⚕️ doctor1@sadi.com.co
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('paola.gil@sadi.med.co');
+                    setPassword('password123');
+                  }}
+                  className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors"
+                >
+                  👩‍⚕️ Dra. Paola Gil (Pediatría)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('fernando.rincon@sadi.med.co');
+                    setPassword('password123');
+                  }}
+                  className="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-md border border-purple-200 transition-colors"
+                >
+                  👨‍⚕️ Dr. Fernando Rincón (Cardiovascular)
+                </button>
+              </div>
+            </div>
+
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? 'Ingresando...' : 'Ingresar'}
             </Button>
