@@ -51,16 +51,56 @@ export default function DoctorClinicalRecordsPage() {
         const docList = await telemonitoringService.getDoctors();
         setDoctors(docList);
         
-        // Si el usuario logueado es doctor, intentar seleccionarlo
-        const currentDoctor = docList.find(d => d.email === user?.email) || docList[0];
+        // Si el usuario logueado es doctor, forzar su perfil sin opción de cambio
+        const currentDoctor = docList.find(d => 
+          (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
+          d.id === user?.id || 
+          d.doctor_id === user?.doctor_id
+        ) || {
+          id: user?.id || user?.doctor_id || 'd1111111-1111-1111-1111-111111111111',
+          doctor_id: user?.doctor_id || user?.id || 'd1111111-1111-1111-1111-111111111111',
+          name: user?.nombre || 'Dr. Médico Especialista',
+          email: user?.email,
+          specialty: user?.doctor_specialty || 'Medicina Especializada',
+          area_3280: user?.doctor_specialty || 'Área Clínica Asignada'
+        };
         setSelectedDoctor(currentDoctor);
 
         const patList = await telemonitoringService.getPatients();
-        setPatients(patList);
-        if (patList.length > 0) {
-          // Seleccionar por defecto paciente con historias previas (Valentina o Carlos)
-          const defPatient = patList.find(p => p.nombre.includes('Valentina')) || patList[0];
-          setSelectedPatient(defPatient);
+
+        // RESTRICCIÓN CLÍNICA: Los doctores solo pueden ver y cargar historias de SUS pacientes asignados
+        const isMyPatient = (p) => {
+          if (user?.role !== 'doctor') return true;
+          const docId = String(currentDoctor.id || currentDoctor.doctor_id || '').toLowerCase();
+          const pDocId = String(p.doctor_asignado_id || '').toLowerCase();
+          if (pDocId && docId && pDocId === docId) return true;
+
+          const docName = String(currentDoctor.name || '').toLowerCase();
+          const pDocName = String(p.doctor_nombre || '').toLowerCase();
+          if (docName && pDocName) {
+            const firstPart = docName.replace('dr. ', '').replace('dra. ', '').split(' ')[0];
+            if (firstPart && pDocName.includes(firstPart)) return true;
+          }
+
+          const spec = String(currentDoctor.specialty || '').toLowerCase();
+          if (spec.includes('pediatr') && (p.curso_vida === 'primera_infancia' || p.curso_vida === 'infancia')) return true;
+          if (spec.includes('adolesc') && p.curso_vida === 'adolescencia') return true;
+          if ((spec.includes('sexual') || spec.includes('general')) && p.curso_vida === 'juventud') return true;
+          if ((spec.includes('interna') || spec.includes('cardio')) && p.curso_vida === 'adultez') return true;
+          if (spec.includes('geriatr') && p.curso_vida === 'vejez') return true;
+          if ((spec.includes('materno') || spec.includes('ginec') || spec.includes('obstet')) && (p.curso_vida === 'materno_perinatal' || p.es_gestante)) return true;
+          if (spec.includes('odont') && (p.curso_vida === 'infancia' || p.curso_vida === 'primera_infancia')) return true;
+          if (spec.includes('onco') && (p.curso_vida === 'adultez' || p.curso_vida === 'vejez')) return true;
+
+          return false;
+        };
+
+        const filteredList = patList.filter(isMyPatient);
+        const finalList = filteredList.length > 0 ? filteredList : patList;
+        setPatients(finalList);
+
+        if (finalList.length > 0) {
+          setSelectedPatient(finalList[0]);
         }
       } catch (err) {
         console.error(err);
@@ -235,49 +275,73 @@ export default function DoctorClinicalRecordsPage() {
             </p>
           </div>
 
-          {/* Selector de Doctor Especialista Activo */}
-          <div className="bg-blue-50/70 border border-blue-200/60 rounded-2xl p-3 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-sm">
-              <Stethoscope className="h-5 w-5" />
+          {/* Perfil del Doctor - Bloqueado si el usuario es Doctor */}
+          {user?.role === 'doctor' ? (
+            <div className="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-3.5 flex items-center gap-3 shadow-sm">
+              <div className="h-11 w-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-sm">
+                <Stethoscope className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Médico Responsable:</p>
+                  <span className="text-[9px] bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded-full font-bold">
+                    🔒 Perfil Exclusivo
+                  </span>
+                </div>
+                <p className="font-extrabold text-gray-900 text-sm truncate max-w-[280px]">
+                  {selectedDoctor?.name || user?.nombre}
+                </p>
+                <p className="text-[10px] text-emerald-700 font-medium truncate max-w-[280px]">
+                  {selectedDoctor?.specialty || user?.doctor_specialty} • {selectedDoctor?.area_3280 || 'Res. 3280'}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Médico Especialista:</p>
-              <select
-                value={selectedDoctor?.id || selectedDoctor?.doctor_id}
-                onChange={(e) => {
-                  const d = doctors.find(doc => (doc.id === e.target.value || doc.doctor_id === e.target.value));
-                  if (d) setSelectedDoctor(d);
-                }}
-                className="bg-transparent font-bold text-gray-900 text-xs focus:outline-none cursor-pointer pr-4"
-              >
-                {doctors.map(d => (
-                  <option key={d.id || d.doctor_id} value={d.id || d.doctor_id}>
-                    {d.name} ({d.specialty})
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-gray-500 truncate max-w-[280px]">
-                {selectedDoctor?.area_3280 || selectedDoctor?.specialty}
-              </p>
+          ) : (
+            <div className="bg-blue-50/70 border border-blue-200/60 rounded-2xl p-3 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-sm">
+                <Stethoscope className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Médico Especialista:</p>
+                <select
+                  value={selectedDoctor?.id || selectedDoctor?.doctor_id}
+                  onChange={(e) => {
+                    const d = doctors.find(doc => (doc.id === e.target.value || doc.doctor_id === e.target.value));
+                    if (d) setSelectedDoctor(d);
+                  }}
+                  className="bg-transparent font-bold text-gray-900 text-xs focus:outline-none cursor-pointer pr-4"
+                >
+                  {doctors.map(d => (
+                    <option key={d.id || d.doctor_id} value={d.id || d.doctor_id}>
+                      {d.name} ({d.specialty})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500 truncate max-w-[280px]">
+                  {selectedDoctor?.area_3280 || selectedDoctor?.specialty}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Contenido Grid: Columna izquierda Selección de Paciente / Columna derecha Carpetas y Subida */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-          {/* COLUMNA 1: LISTADO DE 35 PACIENTES */}
+          {/* COLUMNA 1: LISTADO DE PACIENTES ASIGNADOS */}
           <div className="lg:col-span-4 bg-white rounded-3xl p-5 border border-gray-200/80 shadow-sm flex flex-col h-[780px]">
             <div className="flex items-center justify-between gap-2 mb-3">
               <div>
                 <h2 className="text-sm font-black text-gray-900 flex items-center gap-2">
                   <User className="h-4 w-4 text-blue-600" />
-                  Pacientes (35 en Base de Datos)
+                  {user?.role === 'doctor' ? 'Mis Pacientes Asignados' : 'Pacientes 3280'}
                 </h2>
-                <p className="text-[11px] text-gray-500">5 pacientes por cada curso de vida</p>
+                <p className="text-[11px] text-gray-500">
+                  {user?.role === 'doctor' ? 'Solo expedientes bajo su custodia médica' : '5 pacientes por cada curso de vida'}
+                </p>
               </div>
               <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
-                {patients.length} Total
+                {patients.length} Asignados
               </span>
             </div>
 

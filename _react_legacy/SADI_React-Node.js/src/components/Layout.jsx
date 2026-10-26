@@ -31,24 +31,26 @@ const Layout = ({ children }) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const allMenuItems = [
-    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['super_admin', 'operator', 'hospital_admin'] },
-    { path: '/telemonitoring', icon: Activity, label: 'Telemonitoreo 3280', roles: ['super_admin', 'operator', 'hospital_admin', 'doctor'] },
-    { path: '/rias-3280', icon: ShieldCheck, label: 'Demanda Res. 3280', roles: ['super_admin', 'operator', 'hospital_admin', 'doctor'] },
-    { path: '/doctor/clinical-records', icon: FolderArchive, label: 'Historias Clínicas', roles: ['super_admin', 'hospital_admin', 'doctor'] },
-    { path: '/vapi-agent', icon: Bot, label: 'Agente IA Vapi', roles: ['super_admin', 'operator', 'hospital_admin', 'doctor'] },
+    // Rutas Administrativas del Hospital (NO visibles para doctores)
+    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard Hospital', roles: ['super_admin', 'operator', 'hospital_admin'] },
+    { path: '/telemonitoring', icon: Activity, label: 'Telemonitoreo 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
+    { path: '/rias-3280', icon: ShieldCheck, label: 'Demanda Res. 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
+    { path: '/vapi-agent', icon: Bot, label: 'Agente IA Vapi', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/patients', icon: Users, label: 'Pacientes', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/doctors', icon: Stethoscope, label: 'Doctores', roles: ['super_admin', 'operator', 'hospital_admin'] },
     { path: '/segmentation', icon: Target, label: 'Segmentación', roles: ['super_admin', 'hospital_admin'] },
     { path: '/templates', icon: FileText, label: 'Plantillas SMS', roles: ['super_admin', 'hospital_admin'] },
     { path: '/campaigns', icon: Send, label: 'Campañas', roles: ['super_admin', 'hospital_admin'] },
     { path: '/interactions', icon: MessageSquare, label: 'Interacciones', roles: ['super_admin', 'hospital_admin'] },
-    { path: '/reports', icon: BarChart3, label: 'Reportes', roles: ['super_admin', 'hospital_admin'] },
-    { path: '/doctor/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['doctor'] },
-    { path: '/doctor/telemonitoring', icon: Activity, label: 'Telemonitoreo 3280', roles: ['doctor'] },
-    { path: '/doctor/patients', icon: Users, label: 'Mis Pacientes', roles: ['doctor'] },
-    { path: '/doctor/schedule', icon: CalendarDays, label: 'Mi Cronograma', roles: ['doctor'] },
-    { path: '/doctor/segmentation', icon: Target, label: 'Segmentación', roles: ['doctor'] },
-    { path: '/doctor/reports', icon: BarChart3, label: 'Reportes', roles: ['doctor'] },
+    { path: '/reports', icon: BarChart3, label: 'Reportes Hospital', roles: ['super_admin', 'hospital_admin'] },
+
+    // Rutas Clínicas Exclusivas de Doctores (Restringidas y enfocadas a su área)
+    { path: '/doctor/dashboard', icon: LayoutDashboard, label: 'Mi Panel Clínico', roles: ['doctor'] },
+    { path: '/doctor/patients', icon: Users, label: 'Mis Pacientes Asignados', roles: ['doctor'] },
+    { path: '/doctor/telemonitoring', icon: Activity, label: 'Telemonitoreo & Signos', roles: ['doctor'] },
+    { path: '/doctor/clinical-records', icon: FolderArchive, label: 'Historias Clínicas 3280', roles: ['doctor'] },
+    { path: '/doctor/schedule', icon: CalendarDays, label: 'Mi Cronograma de Citas', roles: ['doctor'] },
+    { path: '/doctor/reports', icon: BarChart3, label: 'Reportes e Indicadores', roles: ['doctor'] },
   ];
 
   const menuItems = allMenuItems.filter(item => item.roles.includes(user?.role));
@@ -84,13 +86,33 @@ const Layout = ({ children }) => {
 
   const SidebarContent = ({ closeOnNavigate }) => (
     <div className="flex h-full flex-col">
-      <div className="p-6 flex items-start justify-between gap-3">
+      <div className="p-6 flex items-start justify-between gap-3 border-b border-gray-100">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-blue-600">SADI</h1>
-          <p className="text-xs text-gray-500 mt-1">Sistema de Apoyo para Demanda Inducida</p>
-          {user?.hospitalId && (
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-blue-600">SADI</h1>
+            {user?.role === 'doctor' && (
+              <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 rounded-full">
+                Portal Médico
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {user?.role === 'doctor' ? 'Área Médica • Resolución 3280' : 'Sistema de Apoyo para Demanda Inducida'}
+          </p>
+
+          {user?.role === 'doctor' ? (
+            <div className="mt-2.5 p-2 bg-blue-50/80 rounded-xl border border-blue-100">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 truncate">
+                <Stethoscope className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                <span className="truncate">{user?.doctor_specialty || 'Especialista Asignado'}</span>
+              </div>
+              <p className="text-[10px] text-blue-600 mt-0.5 truncate">
+                Acceso restringido a pacientes asignados
+              </p>
+            </div>
+          ) : user?.hospitalId && (
             <div className="mt-2 px-2 py-1 bg-blue-50 rounded-lg text-xs text-blue-700 flex items-center gap-1">
-              <Building2 className="h-3 w-3" />
+              <Building2 className="h-3 w-3 shrink-0" />
               <span className="truncate max-w-[160px]">{user?.hospital_name || 'Hospital'}</span>
             </div>
           )}
