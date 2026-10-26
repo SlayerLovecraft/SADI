@@ -106,13 +106,26 @@ ${docsSummary}
 === ATENCIONES Y TAMIZAJES PENDIENTES (RESOLUCIÓN 3280) ===
 ${atencionesSummary}
 
-=== DIRECTRICES DE CONVERSACIÓN DE VOZ (VAPI) ===
-1. Saluda llamando al paciente por su nombre de pila ("Hola ${patient.nombre.split(' ')[0]}...").
-2. Identifícate claramente: "Te habla Camila, tu asistente médica de SADI y de tu IPS".
-3. Comunícale con claridad el motivo de la llamada: ${activeAlert ? 'hacer seguimiento inmediato a su medición registrada en su equipo casero' : 'coordinar sus atenciones y tamizajes de salud preventiva'}.
-4. Si el paciente confirma síntomas de alarma, activa la herramienta 'reportPatientSymptom' y dale las indicaciones de Código de Emergencia sin colgar.
-5. Escucha activamente sin interrumpir; habla con tono profesional, tranquilizador y pausado.
-6. Si el paciente pregunta por sus exámenes, tienes acceso a los informes de su expediente clínico citado arriba.`;
+=== PROTOCOLO IVR Y DIRECTRICES DE CONVERSACIÓN TELEFÓNICA (VAPI) ===
+1. DETECCIÓN DE CONTESTADOR / BUZÓN DE VOZ (ANTI-VOICEMAIL):
+   Si detectas que responde un contestador automático ("deje su mensaje", "buzón de voz", pitido prolongado o mensaje de operadora), termina la llamada inmediatamente con 'hangUp' sin dejar mensaje ni gastar minutos.
+
+2. SALUDO E IDENTIFICACIÓN INSTITUCIONAL:
+   "Hola ${patient.nombre.split(' ')[0]}, te habla Camila, tu asistente de salud del ${patient.hospital_name || 'Hospital Central SADI'} en convenio con tu EPS ${patient.eps}."
+
+3. CONFIRMACIÓN Y NAVEGACIÓN POR TECLADO NUMÉRICO (DTMF):
+   Para todas las decisiones y confirmaciones clave, solicita SIEMPRE pulsar teclas del teléfono para garantizar 100% de precisión y evitar malinterpretaciones por ruido:
+   - "Te contactamos para tu cita prioritaria de la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280 de 2018)."
+   - "Por favor marca 1 en tu teclado telefónico si confirmas tu asistencia, o marca 2 si necesitas reagendar para otra fecha."
+   - Acepta tanto el dígito presionado (DTMF '1' o '2') como si el paciente te lo dice verbalmente ("uno" o "dos", "sí confirmo").
+
+4. CAPTURA POR VOZ EXCLUSIVA (DIRECCIÓN Y SÍNTOMAS):
+   Únicamente solicita respuesta hablada cuando se trate de información abierta:
+   - "Para validar tu visita domiciliaria o entrega de medicamentos: ¿sigues residiendo en tu dirección registrada? Si cambió, dímela claramente después de mi señal."
+   - Si el paciente reporta dolor de cabeza pulsátil, mareo, visión borrosa o dolor torácico, activa inmediatamente la herramienta 'reportPatientSymptom' y activa el código de prioridad clínica sin colgar.
+
+5. TONO Y EMPATÍA:
+   Voz pausada, cálida, colombiana profesional y humanizada. Respeta los silencios y no interrumpas si el paciente está marcando en su teclado.`;
   },
 
   /**
@@ -220,7 +233,7 @@ ${atencionesSummary}
         stability: 0.5,
         similarityBoost: 0.8
       },
-      firstMessage: `Hola ${patient.nombre.split(' ')[0]}, te habla Camila de tu IPS y el programa SADI. ${activeAlert ? 'Te contacto por la medición que registraste hace unos momentos en tu equipo casero.' : 'Te contacto para coordinar tus chequeos preventivos de la Resolución 3280.'} ¿Cómo te encuentras en este momento?`,
+      firstMessage: `Hola ${patient.nombre.split(' ')[0]}, te habla Camila del ${patient.hospital_name || 'Hospital Central SADI'}. ${activeAlert ? 'Te contacto de urgencia por la medición alterada que registraste en tu equipo domiciliario.' : 'Te llamamos para coordinar tu cita preventiva de la Resolución 3280. Por favor marca 1 en tu teléfono si confirmas tu asistencia, o marca 2 si deseas reagendar.'}`,
       serverUrl: 'https://api.sadi.med.co/api/vapi/webhook',
       variableValues: {
         patient_id: patient.id,
