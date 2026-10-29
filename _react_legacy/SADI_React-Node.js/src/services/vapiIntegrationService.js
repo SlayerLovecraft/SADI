@@ -7,6 +7,40 @@ import { telemonitoringService } from './telemonitoringService';
 import { clinicalRecordsService, sanitizePatientFolder } from './clinicalRecordsService';
 import { getRequiredRIASAppointments, getCursoVida3280 } from './rias3280Engine';
 
+export function formatLast3DigitsInWords(doc) {
+  const digits = String(doc || '').replace(/\D/g, '').slice(-3);
+  if (digits.length < 3) return digits;
+
+  const unidades = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
+  const d1 = unidades[parseInt(digits[0], 10)] || digits[0];
+  const dosUltimos = parseInt(digits.slice(1), 10);
+
+  const numeros = {
+    0: 'cero cero', 1: 'cero uno', 2: 'cero dos', 3: 'cero tres', 4: 'cero cuatro', 5: 'cero cinco',
+    6: 'cero seis', 7: 'cero siete', 8: 'cero ocho', 9: 'cero nueve', 10: 'diez', 11: 'once',
+    12: 'doce', 13: 'trece', 14: 'catorce', 15: 'quince', 16: 'dieciséis', 17: 'diecisiete',
+    18: 'dieciocho', 19: 'diecinueve', 20: 'veinte', 21: 'veintiuno', 22: 'veintidós', 23: 'veintitrés',
+    24: 'veinticuatro', 25: 'veinticinco', 26: 'veintiséis', 27: 'veintisiete', 28: 'veintiocho', 29: 'veintinueve',
+    30: 'treinta', 31: 'treinta y uno', 32: 'treinta y dos', 33: 'treinta y tres', 34: 'treinta y cuatro',
+    35: 'treinta y cinco', 36: 'treinta y seis', 37: 'treinta y siete', 38: 'treinta y ocho', 39: 'treinta y nueve',
+    40: 'cuarenta', 41: 'cuarenta y uno', 42: 'cuarenta y dos', 43: 'cuarenta y tres', 44: 'cuarenta y cuatro',
+    45: 'cuarenta y cinco', 46: 'cuarenta y seis', 47: 'cuarenta y siete', 48: 'cuarenta y ocho', 49: 'cuarenta y nueve',
+    50: 'cincuenta', 51: 'cincuenta y uno', 52: 'cincuenta y dos', 53: 'cincuenta y tres', 54: 'cincuenta y cuatro',
+    55: 'cincuenta y cinco', 56: 'cincuenta y seis', 57: 'cincuenta y siete', 58: 'cincuenta y ocho', 59: 'cincuenta y nueve',
+    60: 'sesenta', 61: 'sesenta y uno', 62: 'sesenta y dos', 63: 'sesenta y tres', 64: 'sesenta y cuatro',
+    65: 'sesenta y cinco', 66: 'sesenta y seis', 67: 'sesenta y siete', 68: 'sesenta y ocho', 69: 'sesenta y nueve',
+    70: 'setenta', 71: 'setenta y uno', 72: 'setenta y dos', 73: 'setenta y tres', 74: 'setenta y cuatro',
+    75: 'setenta y cinco', 76: 'setenta y seis', 77: 'setenta y siete', 78: 'setenta y ocho', 79: 'setenta y nueve',
+    80: 'ochenta', 81: 'ochenta y uno', 82: 'ochenta y dos', 83: 'ochenta y tres', 84: 'ochenta y cuatro',
+    85: 'ochenta y cinco', 86: 'ochenta y seis', 87: 'ochenta y siete', 88: 'ochenta y ocho', 89: 'ochenta y nueve',
+    90: 'noventa', 91: 'noventa y uno', 92: 'noventa y dos', 93: 'noventa y tres', 94: 'noventa y cuatro',
+    95: 'noventa y cinco', 96: 'noventa y seis', 97: 'noventa y siete', 98: 'noventa y ocho', 99: 'noventa y nueve'
+  };
+
+  const d2 = numeros[dosUltimos] || String(dosUltimos);
+  return `${d1} ${d2}`;
+}
+
 export const vapiIntegrationService = {
   /**
    * Construye el contexto clínico en tiempo real de un paciente para alimentar a Vapi.
@@ -314,8 +348,8 @@ ${atencionesSummary}
       assistantOverrides: {
         variableValues: {
           name: (patientData.nombre || patientData.name || 'Paciente').split(' ')[0],
-          cedula_ultimos_3: String(patientData.documento || patientData.document || '').slice(-3) || '000',
-          programa_3280: patientData.programa3280 || 'Valoración Preventiva (Resolución 3280)',
+          cedula_ultimos_3: formatLast3DigitsInWords(patientData.documento || patientData.document || '518'),
+          programa_3280: (patientData.programa3280 || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho'),
           hospital_nombre: patientData.hospital_nombre || 'Hospital Central SADI',
           saludo_hora: new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches')
         }
