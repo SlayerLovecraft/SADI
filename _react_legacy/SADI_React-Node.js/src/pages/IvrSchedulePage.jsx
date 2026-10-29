@@ -22,6 +22,7 @@ import {
   IVR_TIME_SLOTS, 
   MAX_PATIENTS_PER_BATCH 
 } from '@/services/ivrScheduleService';
+import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 
 export default function IvrSchedulePage() {
   const { toast } = useToast();
@@ -38,6 +39,40 @@ export default function IvrSchedulePage() {
   const [selectedHumanCase, setSelectedHumanCase] = useState(null);
   const [humanNotes, setHumanNotes] = useState('');
   const [humanOutcome, setHumanOutcome] = useState('contactado_exitoso');
+
+  const [callingId, setCallingId] = useState(null);
+
+  const handleMakeLiveCall = async (patient) => {
+    setCallingId(patient.id);
+    toast({
+      title: "📞 Iniciando llamada en vivo...",
+      description: `Marcando a ${patient.nombre} (${patient.telefono}) a través de Puerto 22...`
+    });
+
+    try {
+      const res = await vapiIntegrationService.triggerLiveCall(patient.telefono, patient);
+      if (res.ok) {
+        toast({
+          title: "🟢 Llamada Conectada con Éxito",
+          description: `La llamada a ${patient.nombre} fue enviada al Gateway GSM (Puerto 22). ID: ${res.data?.id?.slice(0, 8)}...`
+        });
+      } else {
+        toast({
+          title: "Error al emitir llamada",
+          description: res.data?.message || JSON.stringify(res.data),
+          variant: "destructive"
+        });
+      }
+    } catch (e) {
+      toast({
+        title: "Error de conexión",
+        description: e.message,
+        variant: "destructive"
+      });
+    } finally {
+      setCallingId(null);
+    }
+  };
 
   useEffect(() => {
     loadSchedule();
@@ -327,15 +362,35 @@ export default function IvrSchedulePage() {
                   </p>
                 </div>
 
-                <Button
-                  size="sm"
-                  onClick={() => handleSimulateBatch(selectedSlotId)}
-                  disabled={isSimulating}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  {isSimulating ? 'Simulando llamadas...' : `Simular Tanda ${selectedSlot.hora}`}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleMakeLiveCall({
+                      id: 'test-user',
+                      nombre: 'Andrés',
+                      telefono: '+573232052148',
+                      documento: '1006010518',
+                      programa3280: 'Valoración Integral de Adultez (Resolución 3280)'
+                    })}
+                    disabled={callingId === 'test-user'}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold text-xs flex items-center gap-1.5"
+                    title="Lanza una llamada saliente inmediata a su número vía Puerto 22"
+                  >
+                    <Phone className={`w-3.5 h-3.5 text-emerald-600 ${callingId === 'test-user' ? 'animate-pulse' : ''}`} />
+                    {callingId === 'test-user' ? 'Marcando...' : 'Llamada de Prueba a mi Celular'}
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    onClick={() => handleSimulateBatch(selectedSlotId)}
+                    disabled={isSimulating}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    {isSimulating ? 'Simulando llamadas...' : `Simular Tanda ${selectedSlot.hora}`}
+                  </Button>
+                </div>
               </div>
 
               {/* Botones de tandas */}
@@ -433,12 +488,13 @@ export default function IvrSchedulePage() {
                       <th className="p-3">Estado de la Llamada</th>
                       <th className="p-3">Intentos</th>
                       <th className="p-3">Último Evento IVR</th>
+                      <th className="p-3 text-right">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {currentSlotPatients.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center p-8 text-gray-400">
+                        <td colSpan={7} className="text-center p-8 text-gray-400">
                           No hay pacientes programados en la tanda de las {selectedSlot.hora} con los filtros aplicados.
                         </td>
                       </tr>
@@ -493,6 +549,19 @@ export default function IvrSchedulePage() {
                           </td>
                           <td className="p-3 text-[11px] text-gray-600">
                             {item.ultimaInteraccion || 'Pendiente de inicio de tanda'}
+                          </td>
+                          <td className="p-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleMakeLiveCall(item)}
+                              disabled={callingId === item.id}
+                              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 text-xs py-1 px-2.5 flex items-center gap-1.5 ml-auto font-medium"
+                              title="Llamar directamente a este paciente usando el Gateway GSM (Puerto 22)"
+                            >
+                              <Phone className={`w-3.5 h-3.5 ${callingId === item.id ? 'animate-pulse text-amber-600' : ''}`} />
+                              {callingId === item.id ? 'Llamando...' : 'Llamar (P22)'}
+                            </Button>
                           </td>
                         </tr>
                       ))

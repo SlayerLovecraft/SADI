@@ -285,5 +285,53 @@ ${atencionesSummary}
     }
 
     return { status: 'unknown_tool', tool: toolName };
+  },
+
+  /**
+   * Dispara una llamada saliente real en vivo a través de Vapi y el Gateway GSM (Puerto 22)
+   */
+  async triggerLiveCall(phoneNumber, patientData = {}) {
+    const defaultPhoneId = import.meta.env.VITE_VAPI_PHONE_NUMBER_ID || 'e8c40cb0-dd96-4131-bc44-a8a43fc603bb';
+    const defaultAssistantId = import.meta.env.VITE_VAPI_ASSISTANT_ID || '0c149a8e-f677-4c95-b61d-466426f70ba4';
+    const apiKey = 'aa03f387-f4b8-4bae-a3da-74aed240ad39';
+
+    let formattedPhone = String(phoneNumber).trim();
+    if (!formattedPhone.startsWith('+')) {
+      if (formattedPhone.startsWith('57')) {
+        formattedPhone = '+' + formattedPhone;
+      } else {
+        formattedPhone = '+57' + formattedPhone;
+      }
+    }
+
+    const payload = {
+      assistantId: defaultAssistantId,
+      phoneNumberId: defaultPhoneId,
+      customer: {
+        number: formattedPhone,
+        name: patientData.nombre || patientData.name || 'Paciente SADI'
+      },
+      assistantOverrides: {
+        variableValues: {
+          name: (patientData.nombre || patientData.name || 'Paciente').split(' ')[0],
+          cedula_ultimos_3: String(patientData.documento || patientData.document || '').slice(-3) || '000',
+          programa_3280: patientData.programa3280 || 'Valoración Preventiva (Resolución 3280)',
+          hospital_nombre: patientData.hospital_nombre || 'Hospital Central SADI',
+          saludo_hora: new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches')
+        }
+      }
+    };
+
+    const res = await fetch('https://api.vapi.ai/call/phone', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    return { ok: res.ok, status: res.status, data };
   }
 };
