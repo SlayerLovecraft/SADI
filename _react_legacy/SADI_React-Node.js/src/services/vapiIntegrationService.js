@@ -349,8 +349,9 @@ ${atencionesSummary}
         variableValues: {
           name: (patientData.nombre || patientData.name || 'Paciente').split(' ')[0],
           cedula_ultimos_3: formatLast3DigitsInWords(patientData.documento || patientData.document || '518'),
-          programa_3280: (patientData.programa3280 || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho'),
-          hospital_nombre: patientData.hospital_nombre || 'Hospital Central SADI',
+          programa_3280: (patientData.programa3280 || patientData.program || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho'),
+          hospital_nombre: patientData.hospital_nombre || patientData.hospitalName || 'Hospital Regional San Andrés',
+          direccion: patientData.direccion || patientData.address || 'Calle 15 #14-112',
           saludo_hora: new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches')
         }
       }
