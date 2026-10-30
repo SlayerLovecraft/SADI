@@ -269,3 +269,71 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.create_patient_secure(UUID, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, TEXT, BOOLEAN) TO authenticated, service_role;
+
+
+-- ==============================================================================
+-- RPC: actualizar_direccion_paciente
+-- Actualización segura y atómica de la dirección desde Vapi y Agente de Voz SADI
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.actualizar_direccion_paciente(
+  nueva_direccion TEXT,
+  documento TEXT DEFAULT NULL,
+  telefono TEXT DEFAULT NULL,
+  ciudad TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  v_patient_id UUID;
+  v_name TEXT;
+  v_updated_address TEXT;
+  v_clean_phone TEXT;
+BEGIN
+  nueva_direccion := trim(coalesce(nueva_direccion, ''));
+  documento := trim(coalesce(documento, ''));
+  v_clean_phone := regexp_replace(coalesce(telefono, ''), '[^0-9]', '', 'g');
+
+  IF nueva_direccion = '' THEN
+    RETURN jsonb_build_object('success', false, 'message', 'La dirección no puede estar vacía');
+  END IF;
+
+  -- 1. Intentar localizar por documento exacto
+  IF documento <> '' THEN
+    SELECT patient_id, name INTO v_patient_id, v_name
+    FROM public.patients
+    WHERE document = documento
+    LIMIT 1;
+  END IF;
+
+  -- 2. Si no se encontró por documento, intentar por teléfono
+  IF v_patient_id IS NULL AND v_clean_phone <> '' THEN
+    SELECT patient_id, name INTO v_patient_id, v_name
+    FROM public.patients
+    WHERE regexp_replace(phone, '[^0-9]', '', 'g') LIKE '%' || right(v_clean_phone, 7)
+    LIMIT 1;
+  END IF;
+
+  IF v_patient_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'message', 'No se encontró paciente coincidente');
+  END IF;
+
+  UPDATE public.patients
+  SET address = nueva_direccion,
+      city = COALESCE(ciudad, city, 'Palmira')
+  WHERE patient_id = v_patient_id
+  RETURNING address INTO v_updated_address;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'message', 'Dirección actualizada correctamente en el sistema SADI',
+    'patient_id', v_patient_id,
+    'nombre', v_name,
+    'direccion_actualizada', v_updated_address
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.actualizar_direccion_paciente(TEXT, TEXT, TEXT, TEXT) TO anon, authenticated, service_role;

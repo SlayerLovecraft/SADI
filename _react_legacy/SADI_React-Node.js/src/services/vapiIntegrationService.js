@@ -348,6 +348,7 @@ ${atencionesSummary}
       assistantOverrides: {
         variableValues: {
           name: (patientData.nombre || patientData.name || 'Paciente').split(' ')[0],
+          documento: String(patientData.documento || patientData.document || '1006010518'),
           cedula_ultimos_3: formatLast3DigitsInWords(patientData.documento || patientData.document || '518'),
           programa_3280: (patientData.programa3280 || patientData.program || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho'),
           hospital_nombre: patientData.hospital_nombre || patientData.hospitalName || 'Hospital Regional San Andrés',
