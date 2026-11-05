@@ -31,6 +31,7 @@ import {
 } from '@/services/ivrScheduleService';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import { roadmapService, MESES_DEL_ANIO } from '@/services/roadmapService';
+import VisualGanttRoadmap from '@/components/VisualGanttRoadmap';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export default function IvrSchedulePage() {
 
   // Sub-sección del Roadmap: 'resolucion' | 'campanas' | 'individual'
   const [roadmapSection, setRoadmapSection] = useState('resolucion');
+  const [roadmapDisplayMode, setRoadmapDisplayMode] = useState('visual'); // 'visual' | 'tabla'
   const [selectedYear, setSelectedYear] = useState(today.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
 
@@ -455,6 +457,57 @@ export default function IvrSchedulePage() {
                 </div>
               </div>
             </div>
+
+            {/* SELECTOR DE MODO DE VISUALIZACIÓN: GANTT VISUAL VS TABLA DETALLADA */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRoadmapDisplayMode('visual')}
+                  className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 ${
+                    roadmapDisplayMode === 'visual'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <Layers className="w-4 h-4" />
+                  Línea de Tiempo Visual (Gantt Clínico)
+                </button>
+
+                <button
+                  onClick={() => setRoadmapDisplayMode('tabla')}
+                  className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 ${
+                    roadmapDisplayMode === 'tabla'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Tablas Detalladas por Sección
+                </button>
+              </div>
+
+              <span className="text-xs text-gray-500 font-medium">
+                {roadmapDisplayMode === 'visual' 
+                  ? '💡 Haz clic en cualquier tarjeta de la línea temporal para ver pacientes y agendamientos.'
+                  : 'Exploración tabular exhaustiva de registros clínicos y llamadas.'}
+              </span>
+            </div>
+
+            {/* COMPONENTE ROADMAP VISUAL GANTT */}
+            {roadmapDisplayMode === 'visual' && (
+              <VisualGanttRoadmap
+                resolutionData={resolutionRoadmap}
+                campaignsData={campaignsRoadmap}
+                individualData={individualRoadmap}
+                selectedYear={selectedYear}
+                selectedMonth={selectedMonth}
+                onMakeCall={handleMakeLiveCall}
+                onViewTranscript={(item) => {
+                  setSelectedTranscriptItem(item);
+                  setShowTranscriptModal(true);
+                }}
+              />
+            )}
 
             {/* SELECTOR DE LAS 3 SUB-SECCIONES DEL ROADMAP */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
