@@ -75,12 +75,15 @@ export const segmentService = {
       // Preparar datos para insertar
       const insertData = {
         nombre: segmentData.nombre,
-        edad_min: segmentData.edadMin || null,
-        edad_max: segmentData.edadMax || null,
+        edad_min: segmentData.edadMin !== undefined ? segmentData.edadMin : null,
+        edad_max: segmentData.edadMax !== undefined ? segmentData.edadMax : null,
         sexo: segmentData.sexo || 'Todos',
         ciudad: segmentData.ciudad || null,
         programa: segmentData.programa || null,
-        hospital_id: segmentData.hospitalId
+        hospital_id: segmentData.hospitalId,
+        curso_vida: segmentData.cursoVida || null,
+        edad_tipo: segmentData.edadTipo || 'cualquiera',
+        edad_custom: segmentData.edadCustom || null
       };
 
       console.log('📤 Datos a insertar:', insertData);
@@ -132,11 +135,14 @@ export const segmentService = {
       
       const updateData = {
         nombre: segmentData.nombre,
-        edad_min: segmentData.edadMin || null,
-        edad_max: segmentData.edadMax || null,
+        edad_min: segmentData.edadMin !== undefined ? segmentData.edadMin : null,
+        edad_max: segmentData.edadMax !== undefined ? segmentData.edadMax : null,
         sexo: segmentData.sexo || 'Todos',
         ciudad: segmentData.ciudad || null,
         programa: segmentData.programa || null,
+        curso_vida: segmentData.cursoVida || null,
+        edad_tipo: segmentData.edadTipo || 'cualquiera',
+        edad_custom: segmentData.edadCustom || null,
         updated_at: new Date().toISOString()
       };
 
@@ -240,8 +246,51 @@ export const segmentService = {
       // Filtrar pacientes en JavaScript según los criterios del segmento
       let filteredPatients = allPatients || [];
 
-      // FILTRO DE EDAD (calculada desde birthdate)
-      if (segment.edad_min !== null || segment.edad_max !== null) {
+      // FILTRO POR CURSO DE VIDA O EDAD PERSONALIZADA
+      if (segment.curso_vida && segment.curso_vida !== 'todos' && segment.curso_vida !== 'cualquiera') {
+        filteredPatients = filteredPatients.filter(patient => {
+          if (!patient.birthdate) return false;
+          const birthDate = new Date(patient.birthdate);
+          const today = new Date();
+          let years = today.getFullYear() - birthDate.getFullYear();
+          let months = today.getMonth() - birthDate.getMonth();
+          if (months < 0 || (months === 0 && today.getDate() < birthDate.getDate())) years--;
+          const totalMonths = (today.getFullYear() - birthDate.getFullYear()) * 12 + (today.getMonth() - birthDate.getMonth());
+
+          const isGestante = (patient.program || '').toLowerCase().includes('materno') ||
+                             (patient.program || '').toLowerCase().includes('prenatal');
+
+          switch (segment.curso_vida) {
+            case 'primera_infancia':
+              return totalMonths < 72;
+            case 'infancia':
+              return totalMonths >= 72 && totalMonths < 144;
+            case 'adolescencia':
+              return years >= 12 && years <= 17;
+            case 'juventud':
+              return years >= 18 && years <= 28;
+            case 'adultez':
+              return years >= 29 && years <= 59;
+            case 'vejez':
+              return years >= 60;
+            case 'materno_perinatal':
+              return isGestante;
+            default:
+              return true;
+          }
+        });
+      } else if (segment.edad_custom && (segment.edad_custom.anos || segment.edad_custom.meses || segment.edad_custom.dias)) {
+        const targetAnos = Number(segment.edad_custom.anos) || 0;
+        filteredPatients = filteredPatients.filter(patient => {
+          if (!patient.birthdate) return false;
+          const birthDate = new Date(patient.birthdate);
+          const today = new Date();
+          let years = today.getFullYear() - birthDate.getFullYear();
+          if (today.getMonth() < birthDate.getMonth() || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) years--;
+          return years <= targetAnos;
+        });
+      } else if (segment.edad_min !== null || segment.edad_max !== null) {
+        // FILTRO DE EDAD CLÁSICO (calculada desde birthdate)
         filteredPatients = filteredPatients.filter(patient => {
           if (!patient.birthdate) return false;
           

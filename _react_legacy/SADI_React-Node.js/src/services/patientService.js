@@ -64,14 +64,8 @@ function getCurrentHospitalId() {
     }
 
     const user = JSON.parse(userData);
-    
-    if (!user.hospitalId) {
-      console.error('❌ Usuario no tiene hospitalId asignado');
-      return null;
-    }
-
-    console.log('✅ Hospital ID del usuario:', user.hospitalId);
-    return user.hospitalId;
+    const targetId = user.hospitalId || user.hospital_id || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
+    return targetId;
   } catch (error) {
     console.error('❌ Error obteniendo hospitalId:', error);
     return null;

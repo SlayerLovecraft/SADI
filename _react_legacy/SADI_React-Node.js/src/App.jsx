@@ -110,11 +110,7 @@ function App() {
 
                 <Route 
                   path="/vapi-agent" 
-                  element={
-                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
-                      <VapiIntegrationPage />
-                    </ProtectedRoute>
-                  } 
+                  element={<Navigate to="/rias-3280" replace />}
                 />
 
                 <Route 

@@ -41,6 +41,9 @@ const SegmentationPage = () => {
 
   const [newSegment, setNewSegment] = useState({
     nombre: '',
+    edadTipo: 'cualquiera', // 'cualquiera' | 'curso_vida' | 'personalizado'
+    cursoVida: 'primera_infancia',
+    edadCustom: { anos: '', meses: '', dias: '' },
     edadMin: '',
     edadMax: '',
     sexo: 'Todos',
@@ -50,6 +53,9 @@ const SegmentationPage = () => {
 
   const [editSegment, setEditSegment] = useState({
     nombre: '',
+    edadTipo: 'cualquiera',
+    cursoVida: 'primera_infancia',
+    edadCustom: { anos: '', meses: '', dias: '' },
     edadMin: '',
     edadMax: '',
     sexo: 'Todos',
@@ -76,6 +82,9 @@ const SegmentationPage = () => {
         const mappedSegments = result.data.map(seg => ({
           id: seg.id,
           nombre: seg.nombre,
+          edadTipo: seg.edad_tipo || 'cualquiera',
+          cursoVida: seg.curso_vida || null,
+          edadCustom: seg.edad_custom || null,
           edadMin: seg.edad_min,
           edadMax: seg.edad_max,
           sexo: seg.sexo,
@@ -301,33 +310,101 @@ const SegmentationPage = () => {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="edadMin">Edad Mínima</Label>
-                    <input
-                      id="edadMin"
-                      type="number"
-                      value={newSegment.edadMin}
-                      onChange={(e) => setNewSegment({ ...newSegment, edadMin: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                      placeholder="Opcional"
-                      min="0"
-                      max="120"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="edadMax">Edad Máxima</Label>
-                    <input
-                      id="edadMax"
-                      type="number"
-                      value={newSegment.edadMax}
-                      onChange={(e) => setNewSegment({ ...newSegment, edadMax: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                      placeholder="Opcional"
-                      min="0"
-                      max="120"
-                    />
-                  </div>
+                {/* Selección de Tipo de Edad según Resolución 3280 */}
+                <div className="bg-emerald-50/70 p-3.5 rounded-2xl border border-emerald-200/80 space-y-3">
+                  <Label htmlFor="edadTipo" className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                    <span>🎯</span> Edad de los Pacientes (Cursos de Vida Res. 3280 / Personalizado)
+                  </Label>
+                  <select
+                    id="edadTipo"
+                    value={newSegment.edadTipo}
+                    onChange={(e) => setNewSegment({ ...newSegment, edadTipo: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-500 font-medium"
+                  >
+                    <option value="cualquiera">Cualquiera (Sin restricción de edad)</option>
+                    <option value="curso_vida">Segmento de la Resolución 3280 (Cursos de Vida)</option>
+                    <option value="personalizado">Personalizado (Rango exacto en Años, Meses y Días)</option>
+                  </select>
+
+                  {newSegment.edadTipo === 'curso_vida' && (
+                    <div className="pt-1">
+                      <Label className="text-[11px] font-semibold text-emerald-900">Curso de Vida Res. 3280:</Label>
+                      <select
+                        value={newSegment.cursoVida}
+                        onChange={(e) => setNewSegment({ ...newSegment, cursoVida: e.target.value })}
+                        className="w-full mt-1 px-3 py-2 text-xs bg-white border border-emerald-300 rounded-xl"
+                      >
+                        <option value="primera_infancia">Primera Infancia (0 a 5 años, 11m, 29d)</option>
+                        <option value="infancia">Infancia (6 a 11 años)</option>
+                        <option value="adolescencia">Adolescencia (12 a 17 años)</option>
+                        <option value="juventud">Juventud (18 a 28 años)</option>
+                        <option value="adultez">Adultez (29 a 59 años)</option>
+                        <option value="vejez">Vejez (60 años o más)</option>
+                        <option value="materno_perinatal">Ruta Materno Perinatal (RIAMP)</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {newSegment.edadTipo === 'personalizado' && (
+                    <div className="pt-2 bg-white p-3 rounded-xl border border-emerald-200">
+                      <p className="text-[11px] font-bold text-gray-700 mb-2">
+                        Rango de edad personalizado (Solo números):
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <Label className="text-[10px] text-gray-500">Años</Label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Ej: 5"
+                            value={newSegment.edadCustom.anos}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '');
+                              setNewSegment({
+                                ...newSegment,
+                                edadCustom: { ...newSegment.edadCustom, anos: val }
+                              });
+                            }}
+                            className="w-full mt-0.5 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-gray-500">Meses</Label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Ej: 6"
+                            value={newSegment.edadCustom.meses}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '');
+                              setNewSegment({
+                                ...newSegment,
+                                edadCustom: { ...newSegment.edadCustom, meses: val }
+                              });
+                            }}
+                            className="w-full mt-0.5 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[10px] text-gray-500">Días</Label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Ej: 15"
+                            value={newSegment.edadCustom.dias}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '');
+                              setNewSegment({
+                                ...newSegment,
+                                edadCustom: { ...newSegment.edadCustom, dias: val }
+                              });
+                            }}
+                            className="w-full mt-0.5 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="sexo">Sexo</Label>

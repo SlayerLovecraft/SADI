@@ -88,44 +88,60 @@ export const campaignService = {
       
       // Validar datos requeridos
       if (!campaignData.hospitalId) {
-        throw new Error('hospitalId es requerido');
+        campaignData.hospitalId = 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
       }
       if (!campaignData.nombre) {
         throw new Error('nombre es requerido');
       }
-      if (!campaignData.templateId) {
-        throw new Error('templateId es requerido');
-      }
-      if (!campaignData.segmentId) {
-        throw new Error('segmentId es requerido');
+
+      // Si no viene templateId, buscar la primera disponible o usar UUID por defecto
+      let templateId = campaignData.templateId;
+      if (!templateId) {
+        const { data: defaultTemplates } = await supabase.from('templates').select('id').limit(1);
+        templateId = defaultTemplates?.[0]?.id || '10000000-0000-0000-0000-000000000001';
       }
 
-      // Obtener pacientes del segmento para calcular destinatarios
-      const { data: patientsData } = await segmentService.getPatientsInSegment(
-        campaignData.segmentId
-      );
+      // Si no viene segmentId, buscar el primero disponible
+      let segmentId = campaignData.segmentId;
+      if (!segmentId) {
+        const { data: defaultSegments } = await supabase.from('segments').select('id').limit(1);
+        segmentId = defaultSegments?.[0]?.id || '30000000-0000-0000-0000-000000000001';
+      }
+
+      // Obtener pacientes para calcular destinatarios
+      let patientsData = [];
+      if (segmentId) {
+        const res = await segmentService.getPatientsInSegment(segmentId);
+        patientsData = res.data || [];
+      } else {
+        const { data: allP } = await supabase.from('patients').select('*').eq('hospital_id', campaignData.hospitalId);
+        patientsData = allP || [];
+      }
       
-      const destinatarios = patientsData?.length || 0;
+      let destinatarios = patientsData?.length || 0;
 
-      // Calcular participantes por demografía de forma más robusta
+      // Calcular participantes por demografía
       const participantes = {
         hombres: 0,
         mujeres: 0,
         ninos: 0,
-        ninas: 0
+        ninas: 0,
+        edad_tipo: campaignData.edadTipo || 'cualquiera',
+        edad_curso_vida: campaignData.edadCursoVida || null,
+        edad_custom: campaignData.edadCustom || null,
+        modo_reintento: campaignData.modoReintento || 'hasta_responder',
+        contexto_agente: campaignData.contextoAgente || ''
       };
 
       if (patientsData && patientsData.length > 0) {
         patientsData.forEach(patient => {
-          // Calcular edad si tiene fecha de nacimiento
           let edad = patient.edad || 0;
-          if (!edad && patient.fecha_nacimiento) {
-            const birthDate = new Date(patient.fecha_nacimiento);
+          if (!edad && (patient.birthdate || patient.fecha_nacimiento)) {
+            const birthDate = new Date(patient.birthdate || patient.fecha_nacimiento);
             const today = new Date();
             edad = today.getFullYear() - birthDate.getFullYear();
           }
           
-          // Normalizar género
           const sexo = (patient.sex || patient.sexo || '').toLowerCase();
           const esHombre = ['masculino', 'm', 'male', 'hombre'].includes(sexo);
           const esMujer = ['femenino', 'f', 'female', 'mujer'].includes(sexo);
@@ -140,20 +156,36 @@ export const campaignService = {
         });
       }
 
+      const anio = campaignData.anio ? Number(campaignData.anio) : new Date().getFullYear();
+      const mes = campaignData.mes ? Number(campaignData.mes) : (new Date().getMonth() + 1);
+      const diaInicio = campaignData.diaInicio ? Number(campaignData.diaInicio) : 1;
+      const mm = String(mes).padStart(2, '0');
+      const dd = String(diaInicio).padStart(2, '0');
+      const fechaProgramada = campaignData.fechaProgramada || `${anio}-${mm}-${dd}`;
+      const horaProgramada = campaignData.horaProgramada || '10:00:00';
+
       // Preparar datos para insertar
       const insertData = {
         nombre: campaignData.nombre,
-        template_id: campaignData.templateId,
-        segment_id: campaignData.segmentId,
+        template_id: templateId,
+        segment_id: segmentId,
         hospital_id: campaignData.hospitalId,
-        fecha_programada: campaignData.fechaProgramada,
-        hora_programada: campaignData.horaProgramada,
+        fecha_programada: fechaProgramada,
+        hora_programada: horaProgramada,
         estado: 'Programada',
         destinatarios: destinatarios,
         enviados: 0,
         entregados: 0,
         fallidos: 0,
-        participantes: participantes
+        participantes: participantes,
+        anio: anio,
+        mes: mes,
+        dia_inicio: diaInicio,
+        edad_tipo: campaignData.edadTipo || 'cualquiera',
+        edad_curso_vida: campaignData.edadCursoVida || null,
+        edad_custom: campaignData.edadCustom || null,
+        modo_reintento: campaignData.modoReintento || 'hasta_responder',
+        contexto_agente: campaignData.contextoAgente || ''
       };
 
       console.log('📤 Datos a insertar:', insertData);

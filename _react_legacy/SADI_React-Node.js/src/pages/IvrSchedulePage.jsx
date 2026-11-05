@@ -1,8 +1,13 @@
 // ==============================================================================
-// IvrSchedulePage.jsx - CRONOGRAMA AUTOMÁTICO DE LLAMADAS IVR SADI 3280
-// Tandas de 32 pacientes cada 30 min (10:00 AM a 06:00 PM)
-// Reasignación automática a la tanda siguiente si no contesta
-// Reporte de casos aislados para intervención humana
+// IvrSchedulePage.jsx - CRONOGRAMA AUTOMÁTICO Y ROADMAP MENSUAL SADI 3280
+// 1. ROADMAP MENSUAL EN 3 SECCIONES:
+//    - Sección 1: Resolución 3280 (Todos los pacientes, hitos clínicos calculados,
+//      horarios 10am-6pm inamovibles, renovación fin de mes, histórico de meses y descarga)
+//    - Sección 2: Campañas (Ruta de campañas activas del mes, filtros de edad, reintentos)
+//    - Sección 3: Individual o Particular (Llamadas bajo demanda, efectividad y transcripciones)
+//    - Descarga Excel (3 hojas: Resolución 3280, Campañas, Individuales)
+// 2. MONITOR DE TANDAS DIARIAS (Tandas de 32 pacientes cada 30 min)
+// 3. BANDEJA DE CASOS AISLADOS (Gestión Humana)
 // ==============================================================================
 
 import React, { useState, useEffect } from 'react';
@@ -12,7 +17,9 @@ import {
   Clock, PhoneCall, CheckCircle2, AlertTriangle, UserX, 
   RotateCw, Play, ShieldAlert, Sparkles, Phone, MessageSquare, 
   Calendar, Check, UserCheck, Search, Filter, Info, ChevronRight,
-  Settings, ArrowRight, ShieldCheck
+  Settings, ArrowRight, ShieldCheck, Download, FileSpreadsheet,
+  Eye, CheckCircle, FileText, Layers, History, Users, RefreshCw,
+  Baby, Stethoscope, ChevronLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -23,12 +30,38 @@ import {
   MAX_PATIENTS_PER_BATCH 
 } from '@/services/ivrScheduleService';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { roadmapService, MESES_DEL_ANIO } from '@/services/roadmapService';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function IvrSchedulePage() {
   const { toast } = useToast();
+  const today = new Date();
+
+  // Pestaña principal: 'roadmap' | 'tandas' | 'casos_humanos' | 'config'
+  const [activeTab, setActiveTab] = useState('roadmap');
+
+  // Sub-sección del Roadmap: 'resolucion' | 'campanas' | 'individual'
+  const [roadmapSection, setRoadmapSection] = useState('resolucion');
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
+
+  // Estados de datos del Roadmap
+  const [resolutionRoadmap, setResolutionRoadmap] = useState([]);
+  const [campaignsRoadmap, setCampaignsRoadmap] = useState([]);
+  const [individualRoadmap, setIndividualRoadmap] = useState([]);
+  const [loadingRoadmap, setLoadingRoadmap] = useState(false);
+  const [filterCursoVida, setFilterCursoVida] = useState('todos');
+  const [roadmapSearch, setRoadmapSearch] = useState('');
+
+  // Estados de tandas diarias
   const [scheduleData, setScheduleData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('tandas'); // 'tandas' | 'casos_humanos' | 'config'
+  const [loadingDaily, setLoadingDaily] = useState(true);
   const [selectedSlotId, setSelectedSlotId] = useState('t1');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
@@ -40,21 +73,99 @@ export default function IvrSchedulePage() {
   const [humanNotes, setHumanNotes] = useState('');
   const [humanOutcome, setHumanOutcome] = useState('contactado_exitoso');
 
+  // Modal de Transcripción de llamada
+  const [selectedTranscriptItem, setSelectedTranscriptItem] = useState(null);
+  const [showTranscriptModal, setShowTranscriptModal] = useState(false);
+
   const [callingId, setCallingId] = useState(null);
 
-  const handleMakeLiveCall = async (patient) => {
-    setCallingId(patient.id);
+  useEffect(() => {
+    loadRoadmapData(selectedYear, selectedMonth);
+    loadDailySchedule();
+  }, []);
+
+  const loadRoadmapData = async (year = selectedYear, month = selectedMonth) => {
+    setLoadingRoadmap(true);
+    try {
+      const [resData, campData, indivData] = await Promise.all([
+        roadmapService.getResolutionRoadmap(null, year, month),
+        roadmapService.getCampaignsRoadmap(null, year, month),
+        roadmapService.getIndividualCallsRoadmap(null, year, month)
+      ]);
+      setResolutionRoadmap(resData);
+      setCampaignsRoadmap(campData);
+      setIndividualRoadmap(indivData);
+    } catch (e) {
+      console.error('Error cargando roadmap:', e);
+      toast({
+        title: "Error cargando roadmap",
+        description: e.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingRoadmap(false);
+    }
+  };
+
+  const loadDailySchedule = async (force = false) => {
+    setLoadingDaily(true);
+    try {
+      const data = await ivrScheduleService.getDailySchedule(null, force);
+      setScheduleData(data);
+    } catch (e) {
+      console.error('Error cargando cronograma diario:', e);
+    } finally {
+      setLoadingDaily(false);
+    }
+  };
+
+  const handleYearMonthChange = (newYear, newMonth) => {
+    setSelectedYear(newYear);
+    setSelectedMonth(newMonth);
+    loadRoadmapData(newYear, newMonth);
+  };
+
+  const handleDownloadExcel = () => {
+    try {
+      const fileName = roadmapService.exportRoadmapToExcel(
+        resolutionRoadmap,
+        campaignsRoadmap,
+        individualRoadmap,
+        selectedYear,
+        selectedMonth
+      );
+      toast({
+        title: "📥 Descarga Completa",
+        description: `Se ha descargado el archivo Excel "${fileName}" con 3 hojas dedicadas.`
+      });
+    } catch (e) {
+      console.error('Error al exportar:', e);
+      toast({
+        title: "Error al exportar Excel",
+        description: e.message,
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleMakeLiveCall = async (item) => {
+    setCallingId(item.id);
     toast({
       title: "📞 Iniciando llamada en vivo...",
-      description: `Marcando a ${patient.nombre} (${patient.telefono}) a través de Puerto 22...`
+      description: `Marcando a ${item.nombre} (${item.telefono}) a través de Puerto 22...`
     });
 
     try {
-      const res = await vapiIntegrationService.triggerLiveCall(patient.telefono, patient);
+      const res = await vapiIntegrationService.triggerLiveCall(item.telefono, {
+        nombre: item.nombre,
+        cedula: item.documento,
+        programa: item.programaPrincipal,
+        direccion: item.direccion || 'Caldas'
+      });
       if (res.ok) {
         toast({
           title: "🟢 Llamada Conectada con Éxito",
-          description: `La llamada a ${patient.nombre} fue enviada al Gateway GSM (Puerto 22). ID: ${res.data?.id?.slice(0, 8)}...`
+          description: `La llamada a ${item.nombre} fue enviada al Gateway GSM (Puerto 22). ID: ${res.data?.id?.slice(0, 8)}...`
         });
       } else {
         toast({
@@ -71,27 +182,6 @@ export default function IvrSchedulePage() {
       });
     } finally {
       setCallingId(null);
-    }
-  };
-
-  useEffect(() => {
-    loadSchedule();
-  }, []);
-
-  const loadSchedule = async (force = false) => {
-    setLoading(true);
-    try {
-      const data = await ivrScheduleService.getDailySchedule(null, force);
-      setScheduleData(data);
-    } catch (e) {
-      console.error('Error cargando cronograma:', e);
-      toast({
-        title: "Error al cargar cronograma",
-        description: e.message,
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -166,7 +256,18 @@ export default function IvrSchedulePage() {
     });
   };
 
-  // Métricas calculadas
+  // Filtrado de pacientes de la sección Resolución del Roadmap
+  const filteredResolutionItems = resolutionRoadmap.filter(item => {
+    const matchesCourse = filterCursoVida === 'todos' || item.cursoVida === filterCursoVida;
+    const matchesSearch = roadmapSearch === '' ||
+      item.nombre.toLowerCase().includes(roadmapSearch.toLowerCase()) ||
+      item.documento.includes(roadmapSearch) ||
+      item.telefono.includes(roadmapSearch) ||
+      item.programaPrincipal.toLowerCase().includes(roadmapSearch.toLowerCase());
+    return matchesCourse && matchesSearch;
+  });
+
+  // Métricas calculadas para Tandas Diarias
   const items = scheduleData?.items || [];
   const totalPacientes = items.length;
   const confirmados = items.filter(i => i.estado === 'confirmada').length;
@@ -175,7 +276,6 @@ export default function IvrSchedulePage() {
   const casosHumanos = items.filter(i => i.estado === 'caso_aislado_humano' || i.gestionHumana?.requerida).length;
   const programados = items.filter(i => i.estado === 'programada').length;
 
-  // Filtrado de pacientes de la tanda seleccionada
   const currentSlotPatients = items.filter(i => {
     if (activeTab === 'casos_humanos') {
       return i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano';
@@ -191,143 +291,96 @@ export default function IvrSchedulePage() {
   });
 
   const selectedSlot = IVR_TIME_SLOTS.find(s => s.id === selectedSlotId) || IVR_TIME_SLOTS[0];
+  const nombreMesSeleccionado = MESES_DEL_ANIO.find(m => m.id === Number(selectedMonth))?.nombre || `Mes ${selectedMonth}`;
 
   return (
     <Layout>
       <Helmet>
-        <title>Cronograma IVR 3280 • Tandas de Llamadas - SADI</title>
+        <title>Cronograma y Roadmap 3280 • SADI</title>
       </Helmet>
 
       <div className="p-6 max-w-7xl mx-auto space-y-6">
+
+        {/* ========================================================================= */}
         {/* ENCABEZADO PRINCIPAL */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-cyan-900 text-white p-6 rounded-2xl shadow-xl">
+        {/* ========================================================================= */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-cyan-900 text-white p-6 rounded-3xl shadow-xl">
           <div>
             <div className="flex items-center gap-3">
-              <span className="p-2.5 bg-blue-500/20 rounded-xl backdrop-blur-md border border-blue-400/30">
-                <Clock className="w-7 h-7 text-cyan-300" />
+              <span className="p-2.5 bg-blue-500/20 rounded-2xl backdrop-blur-md border border-blue-400/30">
+                <Calendar className="w-7 h-7 text-cyan-300" />
               </span>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight">Cronograma de Automatización IVR</h1>
-                <p className="text-sm text-cyan-200 mt-0.5">
-                  Tandas de 32 pacientes cada 30 minutos (10:00 AM - 6:00 PM) • Resolución 3280 de 2018
+                <h1 className="text-2xl font-black tracking-tight">Cronograma & Roadmap Mensual SADI</h1>
+                <p className="text-xs text-cyan-200 mt-0.5">
+                  Planificación inamovible de llamadas Res. 3280, Campañas y Trazabilidad de Atenciones Particulares
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="text-right mr-2 hidden sm:block">
-              <span className="text-xs uppercase tracking-wider text-cyan-300 block font-semibold">Estado del Motor</span>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mt-1 ${
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              onClick={handleDownloadExcel}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-2xl shadow-lg gap-2 py-2.5"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Descargar Excel (3 Hojas)
+            </Button>
+
+            <div className="text-right hidden sm:block">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
                 config.isLiveEnabled 
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
                   : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
               }`}>
                 <span className={`w-2 h-2 rounded-full ${config.isLiveEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                {config.isLiveEnabled ? 'EN VIVO AUTOMÁTICO' : 'STANDBY SEGURO (Sin llamadas reales)'}
+                {config.isLiveEnabled ? 'EN VIVO AUTOMÁTICO' : 'MODO STANDBY SEGURO'}
               </span>
             </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToggleEngine}
-              className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-medium"
-            >
-              {config.isLiveEnabled ? 'Pausar a Standby' : 'Activar Motor'}
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs font-medium"
-              title="Reiniciar cronograma diario"
-            >
-              <RotateCw className="w-4 h-4" />
-            </Button>
           </div>
         </div>
 
-        {/* METRICS CARDS */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex items-center justify-between text-gray-500 text-xs font-medium">
-              <span>Programados Hoy</span>
-              <Calendar className="w-4 h-4 text-blue-600" />
-            </div>
-            <p className="text-2xl font-bold text-gray-900 mt-2">{totalPacientes}</p>
-            <span className="text-[11px] text-gray-500">{programados} en cola inicial</span>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-emerald-100 shadow-sm bg-emerald-50/20">
-            <div className="flex items-center justify-between text-emerald-700 text-xs font-medium">
-              <span>Confirmados (Tecla 1)</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            </div>
-            <p className="text-2xl font-bold text-emerald-700 mt-2">{confirmados}</p>
-            <span className="text-[11px] text-emerald-600">Asistencia garantizada</span>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-blue-100 shadow-sm bg-blue-50/20">
-            <div className="flex items-center justify-between text-blue-700 text-xs font-medium">
-              <span>Reagendados (Tecla 2)</span>
-              <PhoneCall className="w-4 h-4 text-blue-600" />
-            </div>
-            <p className="text-2xl font-bold text-blue-700 mt-2">{reagendados}</p>
-            <span className="text-[11px] text-blue-600">Piden nueva fecha</span>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-amber-100 shadow-sm bg-amber-50/20">
-            <div className="flex items-center justify-between text-amber-700 text-xs font-medium">
-              <span>En Reintento (Tanda Sig.)</span>
-              <RotateCw className="w-4 h-4 text-amber-600" />
-            </div>
-            <p className="text-2xl font-bold text-amber-700 mt-2">{enReintento}</p>
-            <span className="text-[11px] text-amber-600">Pasan a próx. intervalo</span>
-          </div>
-
-          <div 
-            onClick={() => setActiveTab('casos_humanos')}
-            className="bg-white p-4 rounded-xl border border-red-200 shadow-sm bg-red-50/30 cursor-pointer hover:border-red-300 transition-colors"
+        {/* ========================================================================= */}
+        {/* NAVEGACIÓN PRINCIPAL: ROADMAP VS TANDAS DIARIAS VS CASOS AISLADOS */}
+        {/* ========================================================================= */}
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
+          <button
+            onClick={() => setActiveTab('roadmap')}
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
+              activeTab === 'roadmap'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+            }`}
           >
-            <div className="flex items-center justify-between text-red-700 text-xs font-medium">
-              <span>Casos Aislados (Humano)</span>
-              <UserX className="w-4 h-4 text-red-600" />
-            </div>
-            <p className="text-2xl font-bold text-red-700 mt-2">{casosHumanos}</p>
-            <span className="text-[11px] text-red-600 font-semibold flex items-center gap-1">
-              Requieren llamada manual <ChevronRight className="w-3 h-3" />
-            </span>
-          </div>
-        </div>
+            <Layers className="w-4 h-4" />
+            Roadmap Mensual 3280 (3 Secciones)
+          </button>
 
-        {/* NAVEGACIÓN POR PESTAÑAS */}
-        <div className="flex gap-2 border-b border-gray-200 pb-2">
           <button
             onClick={() => setActiveTab('tandas')}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'tandas'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
             }`}
           >
             <Clock className="w-4 h-4" />
-            Tandas de Llamadas (30 min)
+            Monitor de Tandas Diarias (30 min)
           </button>
 
           <button
             onClick={() => setActiveTab('casos_humanos')}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'casos_humanos'
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-red-600 text-white shadow-md'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
             }`}
           >
             <ShieldAlert className="w-4 h-4" />
-            Bandeja Casos Aislados No Contactados
+            Casos Aislados No Contactados
             {casosHumanos > 0 && (
-              <span className="px-2 py-0.5 text-xs bg-white text-red-600 rounded-full font-bold">
+              <span className="px-2 py-0.5 text-[10px] bg-red-100 text-red-700 rounded-full font-black">
                 {casosHumanos}
               </span>
             )}
@@ -335,70 +388,487 @@ export default function IvrSchedulePage() {
 
           <button
             onClick={() => setActiveTab('config')}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'config'
-                ? 'bg-gray-800 text-white shadow-sm'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-gray-900 text-white shadow-md'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
             }`}
           >
             <Settings className="w-4 h-4" />
-            Parámetros y Arquitectura de Automatización
+            Parámetros de Automatización
           </button>
         </div>
 
-        {/* CONTENIDO PESTAÑA 1: TANDAS DE LLAMADAS */}
-        {activeTab === 'tandas' && (
+        {/* ========================================================================= */}
+        {/* PESTAÑA 1: ROADMAP MENSUAL EN 3 SECCIONES */}
+        {/* ========================================================================= */}
+        {activeTab === 'roadmap' && (
           <div className="space-y-6">
-            {/* CARROUSEL DE SLOTS DE TIEMPO (10:00 AM A 06:00 PM) */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-blue-600" />
-                    Seleccionar Franja Horaria de la Tanda (Intervalos de 30 minutos)
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Máximo {MAX_PATIENTS_PER_BATCH} llamadas por tanda. Los que no contesten pasan inmediatamente a la siguiente.
-                  </p>
+
+            {/* BARRA DE NAVEGACIÓN HISTÓRICA POR MES Y AÑO */}
+            <div className="bg-white p-5 rounded-3xl border border-gray-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 text-blue-700 rounded-2xl border border-blue-100">
+                  <Calendar className="w-5 h-5" />
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleMakeLiveCall({
-                      id: 'test-user',
-                      nombre: 'Andrés',
-                      telefono: '+573232052148',
-                      documento: '1006010518',
-                      programa3280: 'Valoración Integral de Adultez (Resolución 3280)'
-                    })}
-                    disabled={callingId === 'test-user'}
-                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold text-xs flex items-center gap-1.5"
-                    title="Lanza una llamada saliente inmediata a su número vía Puerto 22"
-                  >
-                    <Phone className={`w-3.5 h-3.5 text-emerald-600 ${callingId === 'test-user' ? 'animate-pulse' : ''}`} />
-                    {callingId === 'test-user' ? 'Marcando...' : 'Llamada de Prueba a mi Celular'}
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    onClick={() => handleSimulateBatch(selectedSlotId)}
-                    disabled={isSimulating}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    {isSimulating ? 'Simulando llamadas...' : `Simular Tanda ${selectedSlot.hora}`}
-                  </Button>
+                <div>
+                  <h2 className="text-base font-black text-gray-900">
+                    Roadmap de Atenciones: {nombreMesSeleccionado} {selectedYear}
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Cronograma inamovible calculado. Navega a cualquier mes para consultar o descargar históricos.
+                  </p>
                 </div>
               </div>
 
-              {/* Botones de tandas */}
+              {/* Selectores de Año y Mes */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-gray-50 p-1.5 rounded-2xl border border-gray-200">
+                  <span className="text-[11px] font-bold text-gray-500 pl-2">Año:</span>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => handleYearMonthChange(Number(e.target.value), selectedMonth)}
+                    className="bg-white text-xs font-bold text-gray-900 px-3 py-1.5 rounded-xl border border-gray-200 focus:outline-none"
+                  >
+                    {[2025, 2026, 2027, 2028].map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-gray-50 p-1.5 rounded-2xl border border-gray-200">
+                  <span className="text-[11px] font-bold text-gray-500 pl-2">Mes:</span>
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => handleYearMonthChange(selectedYear, Number(e.target.value))}
+                    className="bg-white text-xs font-bold text-gray-900 px-3 py-1.5 rounded-xl border border-gray-200 focus:outline-none"
+                  >
+                    {MESES_DEL_ANIO.map(m => (
+                      <option key={m.id} value={m.id}>{m.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-2 rounded-2xl border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Renovación Automática Fin de Mes Activa
+                </div>
+              </div>
+            </div>
+
+            {/* SELECTOR DE LAS 3 SUB-SECCIONES DEL ROADMAP */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <button
+                onClick={() => setRoadmapSection('resolucion')}
+                className={`p-4 rounded-3xl text-left border transition-all ${
+                  roadmapSection === 'resolucion'
+                    ? 'bg-blue-600 text-white shadow-lg border-blue-600 ring-4 ring-blue-100'
+                    : 'bg-white hover:bg-gray-50 text-gray-900 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider font-extrabold opacity-80">Sección 1</span>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                    roadmapSection === 'resolucion' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
+                  }`}>
+                    {resolutionRoadmap.length} Pacientes
+                  </span>
+                </div>
+                <h3 className="text-base font-black mt-1">Resolución 3280</h3>
+                <p className={`text-xs mt-1 leading-relaxed ${roadmapSection === 'resolucion' ? 'text-blue-100' : 'text-gray-500'}`}>
+                  Todos los pacientes del hospital programados por fecha de nacimiento e hitos de curso de vida.
+                </p>
+              </button>
+
+              <button
+                onClick={() => setRoadmapSection('campanas')}
+                className={`p-4 rounded-3xl text-left border transition-all ${
+                  roadmapSection === 'campanas'
+                    ? 'bg-indigo-600 text-white shadow-lg border-indigo-600 ring-4 ring-indigo-100'
+                    : 'bg-white hover:bg-gray-50 text-gray-900 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider font-extrabold opacity-80">Sección 2</span>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                    roadmapSection === 'campanas' ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700'
+                  }`}>
+                    {campaignsRoadmap.length} Campañas
+                  </span>
+                </div>
+                <h3 className="text-base font-black mt-1">Campañas Activas</h3>
+                <p className={`text-xs mt-1 leading-relaxed ${roadmapSection === 'campanas' ? 'text-indigo-100' : 'text-gray-500'}`}>
+                  Ruta mensual de llamadas con filtros de edad (cursos de vida/personalizado) y reintentos.
+                </p>
+              </button>
+
+              <button
+                onClick={() => setRoadmapSection('individual')}
+                className={`p-4 rounded-3xl text-left border transition-all ${
+                  roadmapSection === 'individual'
+                    ? 'bg-cyan-700 text-white shadow-lg border-cyan-700 ring-4 ring-cyan-100'
+                    : 'bg-white hover:bg-gray-50 text-gray-900 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider font-extrabold opacity-80">Sección 3</span>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                    roadmapSection === 'individual' ? 'bg-white/20 text-white' : 'bg-cyan-50 text-cyan-800'
+                  }`}>
+                    {individualRoadmap.length} Salidas
+                  </span>
+                </div>
+                <h3 className="text-base font-black mt-1">Individual o Particular</h3>
+                <p className={`text-xs mt-1 leading-relaxed ${roadmapSection === 'individual' ? 'text-cyan-100' : 'text-gray-500'}`}>
+                  Llamadas bajo demanda desde Demanda Res. 3280 con LOGs, efectividad y transcripción.
+                </p>
+              </button>
+            </div>
+
+            {/* ------------------------------------------------------------- */}
+            {/* SUB-SECCIÓN 1: RESOLUCIÓN 3280 */}
+            {/* ------------------------------------------------------------- */}
+            {roadmapSection === 'resolucion' && (
+              <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden space-y-4 p-5">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                  <div>
+                    <h3 className="text-lg font-black text-gray-900">
+                      Línea Temporal Inamovible • Resolución 3280 de 2018
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Cubre el 100% de los pacientes asignados en días hábiles (10:00 AM a 06:00 PM). Renovación automática al finalizar el mes.
+                    </p>
+                  </div>
+
+                  {/* Filtros de Curso de Vida y Búsqueda */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por nombre, cédula o programa..."
+                        value={roadmapSearch}
+                        onChange={(e) => setRoadmapSearch(e.target.value)}
+                        className="pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <select
+                      value={filterCursoVida}
+                      onChange={(e) => setFilterCursoVida(e.target.value)}
+                      className="text-xs px-3 py-1.5 border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
+                    >
+                      <option value="todos">Todos los Cursos de Vida</option>
+                      <option value="primera_infancia">Primera Infancia (0 a 5 años)</option>
+                      <option value="infancia">Infancia (6 a 11 años)</option>
+                      <option value="adolescencia">Adolescencia (12 a 17 años)</option>
+                      <option value="juventud">Juventud (18 a 28 años)</option>
+                      <option value="adultez">Adultez (29 a 59 años)</option>
+                      <option value="vejez">Vejez (60+ años)</option>
+                      <option value="materno_perinatal">Ruta Materno Perinatal (RIAMP)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* TABLA DETALLADA DE LA RESOLUCIÓN */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-100">
+                      <tr>
+                        <th className="p-3">Fecha & Día</th>
+                        <th className="p-3">Hora / Tanda</th>
+                        <th className="p-3">Paciente / Documento</th>
+                        <th className="p-3">Teléfono</th>
+                        <th className="p-3">Curso de Vida & Edad</th>
+                        <th className="p-3">Hito Clínico Res. 3280</th>
+                        <th className="p-3">Estado</th>
+                        <th className="p-3 text-right">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredResolutionItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="text-center p-8 text-gray-400">
+                            No hay atenciones programadas en este mes con los filtros aplicados.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredResolutionItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="p-3 whitespace-nowrap">
+                              <div className="font-bold text-gray-900">{item.fechaProgramada}</div>
+                              <div className="text-[10px] text-gray-500 font-medium">{item.diaNombre}</div>
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 font-bold text-[11px]">
+                                {item.horaProgramada}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <div className="font-bold text-gray-900">{item.nombre}</div>
+                              <div className="text-[11px] text-gray-500">{item.documento}</div>
+                            </td>
+                            <td className="p-3 font-mono text-gray-700 whitespace-nowrap">
+                              {item.telefono}
+                            </td>
+                            <td className="p-3">
+                              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded text-[11px]">
+                                {item.cursoVidaLabel}
+                              </span>
+                              <div className="text-[10px] text-gray-500 mt-0.5">{item.edadFormato}</div>
+                            </td>
+                            <td className="p-3 max-w-sm">
+                              <div className="font-semibold text-gray-900 leading-tight">{item.hitoClinico}</div>
+                              <div className="text-[10px] text-gray-400 font-mono mt-0.5">CUPS: {item.codigoCups}</div>
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                item.estado === 'Confirmada'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : item.estado === 'Reagendada'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : item.estado === 'No Contesta'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}>
+                                {item.estado}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right whitespace-nowrap">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleMakeLiveCall(item)}
+                                disabled={callingId === item.id}
+                                className="text-xs font-bold gap-1 rounded-xl text-blue-700 hover:bg-blue-50 border-blue-200"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                                {callingId === item.id ? 'Marcando...' : 'Llamar'}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ------------------------------------------------------------- */}
+            {/* SUB-SECCIÓN 2: CAMPAÑAS DEL MES */}
+            {/* ------------------------------------------------------------- */}
+            {roadmapSection === 'campanas' && (
+              <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden p-5 space-y-4">
+                <div className="border-b border-gray-100 pb-4">
+                  <h3 className="text-lg font-black text-gray-900">
+                    Ruta de Llamadas a Campañas Activas • {nombreMesSeleccionado} {selectedYear}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Muestra las campañas activas de este mes, la duración calculada según el volumen de pacientes, el segmento de edad y la política de reintentos.
+                  </p>
+                </div>
+
+                {campaignsRoadmap.length === 0 ? (
+                  <div className="text-center p-12 text-gray-400">
+                    <p className="text-sm">No hay campañas programadas para {nombreMesSeleccionado} {selectedYear}.</p>
+                    <p className="text-xs text-gray-400 mt-1">Crea una nueva campaña en la sección "Campañas" asignándole este año y mes.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {campaignsRoadmap.map((camp) => (
+                      <div key={camp.id} className="p-5 rounded-2xl border border-indigo-100 bg-indigo-50/20 space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full uppercase">
+                              Inicio: Día {camp.diaInicio} ({camp.fechaInicio})
+                            </span>
+                            <h4 className="text-base font-black text-gray-900 mt-1">{camp.nombre}</h4>
+                          </div>
+                          <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                            {camp.estado}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs text-gray-700">
+                          <div><strong>Segmento / Edad:</strong> {camp.rangoEdadDisplay}</div>
+                          <div><strong>Estrategia de Reintento:</strong> {camp.modoReintento}</div>
+                          <div><strong>Duración Estimada Agente:</strong> {camp.duracionEstimada}</div>
+                          <div><strong>Destinatarios Totales:</strong> {camp.destinatarios} pacientes</div>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-xl border border-indigo-100 text-xs">
+                          <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">
+                            Directrices para el Agente IA:
+                          </span>
+                          <p className="text-gray-700 italic leading-relaxed">
+                            "{camp.contextoAgente}"
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ------------------------------------------------------------- */}
+            {/* SUB-SECCIÓN 3: INDIVIDUAL O PARTICULAR */}
+            {/* ------------------------------------------------------------- */}
+            {roadmapSection === 'individual' && (
+              <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden p-5 space-y-4">
+                <div className="border-b border-gray-100 pb-4">
+                  <h3 className="text-lg font-black text-gray-900">
+                    Línea Temporal de Atenciones y Llamadas Individuales Res. 3280
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Historial cronológico de las llamadas individuales funcionales ejecutadas desde "Demanda Res. 3280" con LOGs de efectividad y transcripción íntegra.
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-100">
+                      <tr>
+                        <th className="p-3">Fecha y Hora</th>
+                        <th className="p-3">Paciente / Cédula</th>
+                        <th className="p-3">Teléfono</th>
+                        <th className="p-3">Motivo / Protocolo</th>
+                        <th className="p-3">Resultado</th>
+                        <th className="p-3">Duración</th>
+                        <th className="p-3 text-right">Transcripción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {individualRoadmap.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="text-center p-8 text-gray-400">
+                            No hay llamadas individuales registradas en {nombreMesSeleccionado} {selectedYear}. Emite llamadas particulares en "Demanda Res. 3280" para visualizarlas aquí.
+                          </td>
+                        </tr>
+                      ) : (
+                        individualRoadmap.map((indiv) => (
+                          <tr key={indiv.id} className="hover:bg-cyan-50/30 transition-colors">
+                            <td className="p-3 font-semibold text-gray-900 whitespace-nowrap">
+                              {indiv.fechaHora}
+                            </td>
+                            <td className="p-3">
+                              <div className="font-bold text-gray-900">{indiv.pacienteNombre}</div>
+                              <div className="text-[11px] text-gray-500">{indiv.documento}</div>
+                            </td>
+                            <td className="p-3 font-mono text-gray-700 whitespace-nowrap">
+                              {indiv.telefono}
+                            </td>
+                            <td className="p-3 max-w-xs truncate text-gray-700" title={indiv.motivoContacto}>
+                              {indiv.motivoContacto}
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                indiv.resultado === 'Efectiva'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {indiv.resultado}
+                              </span>
+                            </td>
+                            <td className="p-3 text-gray-600 whitespace-nowrap">
+                              {indiv.duracionSegundos} seg
+                            </td>
+                            <td className="p-3 text-right whitespace-nowrap">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setSelectedTranscriptItem(indiv);
+                                  setShowTranscriptModal(true);
+                                }}
+                                className="text-xs font-bold text-blue-700 hover:text-blue-900 gap-1"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Ver Transcripción
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* PESTAÑA 2: MONITOR DE TANDAS DIARIAS (10:00 AM - 06:00 PM) */}
+        {/* ========================================================================= */}
+        {activeTab === 'tandas' && (
+          <div className="space-y-6">
+            {/* CARDS DE MÉTRICAS */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                <div className="flex items-center justify-between text-gray-500 text-xs font-medium">
+                  <span>Programados Hoy</span>
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                </div>
+                <p className="text-2xl font-black text-gray-900 mt-2">{totalPacientes}</p>
+                <span className="text-[11px] text-gray-500">{programados} en cola inicial</span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm bg-emerald-50/20">
+                <div className="flex items-center justify-between text-emerald-700 text-xs font-medium">
+                  <span>Confirmados (Tecla 1)</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <p className="text-2xl font-black text-emerald-700 mt-2">{confirmados}</p>
+                <span className="text-[11px] text-emerald-600">Asistencia garantizada</span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm bg-blue-50/20">
+                <div className="flex items-center justify-between text-blue-700 text-xs font-medium">
+                  <span>Reagendados (Tecla 2)</span>
+                  <PhoneCall className="w-4 h-4 text-blue-600" />
+                </div>
+                <p className="text-2xl font-black text-blue-700 mt-2">{reagendados}</p>
+                <span className="text-[11px] text-blue-600">Piden nueva fecha</span>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm bg-amber-50/20">
+                <div className="flex items-center justify-between text-amber-700 text-xs font-medium">
+                  <span>En Reintento (Tanda Sig.)</span>
+                  <RotateCw className="w-4 h-4 text-amber-600" />
+                </div>
+                <p className="text-2xl font-black text-amber-700 mt-2">{enReintento}</p>
+                <span className="text-[11px] text-amber-600">Pasan a próx. intervalo</span>
+              </div>
+
+              <div 
+                onClick={() => setActiveTab('casos_humanos')}
+                className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm bg-red-50/30 cursor-pointer hover:border-red-300 transition-colors"
+              >
+                <div className="flex items-center justify-between text-red-700 text-xs font-medium">
+                  <span>Casos Aislados (Humano)</span>
+                  <UserX className="w-4 h-4 text-red-600" />
+                </div>
+                <p className="text-2xl font-black text-red-700 mt-2">{casosHumanos}</p>
+                <span className="text-[11px] text-red-600 font-bold flex items-center gap-1">
+                  Requieren llamada manual <ChevronRight className="w-3 h-3" />
+                </span>
+              </div>
+            </div>
+
+            {/* CARRUSEL DE HORARIOS DE TANDAS */}
+            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-gray-700">Seleccionar Tanda Operativa (17 Intervalos de 30 min):</span>
+                <span className="text-[11px] text-blue-600 font-semibold">Tanda seleccionada: {selectedSlot.hora}</span>
+              </div>
+
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
                 {IVR_TIME_SLOTS.map((slot) => {
                   const slotItems = items.filter(i => i.slotId === slot.id);
                   const isSelected = selectedSlotId === slot.id;
-                  const isFull = slotItems.length >= MAX_PATIENTS_PER_BATCH;
 
                   return (
                     <button
@@ -415,7 +885,7 @@ export default function IvrSchedulePage() {
                           {slot.hora}
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
-                          isFull 
+                          slotItems.length >= MAX_PATIENTS_PER_BATCH 
                             ? 'bg-purple-100 text-purple-700' 
                             : slotItems.length > 0 
                             ? 'bg-blue-100 text-blue-700' 
@@ -434,47 +904,27 @@ export default function IvrSchedulePage() {
             </div>
 
             {/* TABLA DE PACIENTES DE LA TANDA */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-gray-900">
-                      Pacientes Asignados a la Tanda de las {selectedSlot.hora}
-                    </h3>
-                    <p className="text-xs text-gray-500">
-                      {currentSlotPatients.length} paciente(s) en esta franja
-                    </p>
-                  </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">
+                    Pacientes Asignados a la Tanda de las {selectedSlot.hora}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    {currentSlotPatients.length} paciente(s) en esta franja
+                  </p>
                 </div>
 
-                {/* Filtros */}
                 <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Buscar por nombre, cédula o tel..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="py-1.5 px-3 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  <Button
+                    size="sm"
+                    onClick={() => handleSimulateBatch(selectedSlot.id)}
+                    disabled={isSimulating || currentSlotPatients.length === 0}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm gap-1.5"
                   >
-                    <option value="todos">Todos los estados</option>
-                    <option value="programada">Programadas</option>
-                    <option value="confirmada">Confirmadas (Tecla 1)</option>
-                    <option value="reagendada">Reagendadas (Tecla 2)</option>
-                    <option value="en_reintento">En Reintento</option>
-                    <option value="caso_aislado_humano">Casos Aislados</option>
-                  </select>
+                    <Play className="w-3.5 h-3.5" />
+                    {isSimulating ? 'Lanzando Tanda...' : `Lanzar Tanda (${selectedSlot.hora})`}
+                  </Button>
                 </div>
               </div>
 
@@ -485,82 +935,46 @@ export default function IvrSchedulePage() {
                       <th className="p-3">Paciente / Cédula</th>
                       <th className="p-3">Teléfono</th>
                       <th className="p-3">Curso de Vida & Ruta 3280</th>
-                      <th className="p-3">Estado de la Llamada</th>
+                      <th className="p-3">Estado</th>
                       <th className="p-3">Intentos</th>
-                      <th className="p-3">Último Evento IVR</th>
                       <th className="p-3 text-right">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {currentSlotPatients.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center p-8 text-gray-400">
-                          No hay pacientes programados en la tanda de las {selectedSlot.hora} con los filtros aplicados.
+                        <td colSpan={6} className="text-center p-8 text-gray-400">
+                          No hay pacientes programados en la tanda de las {selectedSlot.hora}.
                         </td>
                       </tr>
                     ) : (
-                      currentSlotPatients.map((item) => (
-                        <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
+                      currentSlotPatients.map((patient) => (
+                        <tr key={patient.id} className="hover:bg-gray-50/60">
                           <td className="p-3">
-                            <span className="font-bold text-gray-900 block">{item.nombre}</span>
-                            <span className="text-[11px] text-gray-500">C.C. {item.documento}</span>
+                            <div className="font-bold text-gray-900">{patient.nombre}</div>
+                            <div className="text-[11px] text-gray-500">{patient.documento}</div>
                           </td>
-                          <td className="p-3 font-mono text-gray-700">
-                            {item.telefono}
+                          <td className="p-3 font-mono text-gray-700">{patient.telefono}</td>
+                          <td className="p-3">
+                            <div className="font-semibold text-gray-900">{patient.programa}</div>
+                            <div className="text-[10px] text-gray-500">{patient.cursoVida}</div>
                           </td>
                           <td className="p-3">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700 block w-fit mb-1">
-                              {item.cursoVida} ({item.edad} años)
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                              {patient.estado}
                             </span>
-                            <span className="text-gray-700 text-[11px] line-clamp-1">
-                              {item.programa3280}
-                            </span>
                           </td>
-                          <td className="p-3">
-                            {item.estado === 'confirmada' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                                <Check className="w-3.5 h-3.5" /> Confirmó (Tecla 1)
-                              </span>
-                            )}
-                            {item.estado === 'reagendada' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800">
-                                <PhoneCall className="w-3.5 h-3.5" /> Reagendó (Tecla 2)
-                              </span>
-                            )}
-                            {item.estado === 'en_reintento' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
-                                <RotateCw className="w-3.5 h-3.5 animate-spin" /> Pasó a Tanda {item.slotHora}
-                              </span>
-                            )}
-                            {item.estado === 'caso_aislado_humano' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-800">
-                                <AlertTriangle className="w-3.5 h-3.5" /> Requiere Humano
-                              </span>
-                            )}
-                            {item.estado === 'programada' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700">
-                                <Clock className="w-3.5 h-3.5" /> En Espera
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            <span className="font-bold text-gray-700">{item.intentos}</span>
-                            <span className="text-gray-400 text-[11px]">/3 max</span>
-                          </td>
-                          <td className="p-3 text-[11px] text-gray-600">
-                            {item.ultimaInteraccion || 'Pendiente de inicio de tanda'}
-                          </td>
+                          <td className="p-3 text-gray-700 font-semibold">{patient.intentos || 0}</td>
                           <td className="p-3 text-right">
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleMakeLiveCall(item)}
-                              disabled={callingId === item.id}
-                              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200 text-xs py-1 px-2.5 flex items-center gap-1.5 ml-auto font-medium"
-                              title="Llamar directamente a este paciente usando el Gateway GSM (Puerto 22)"
+                              onClick={() => handleMakeLiveCall(patient)}
+                              disabled={callingId === patient.id}
+                              className="text-xs font-bold rounded-xl text-blue-700 hover:bg-blue-50"
                             >
-                              <Phone className={`w-3.5 h-3.5 ${callingId === item.id ? 'animate-pulse text-amber-600' : ''}`} />
-                              {callingId === item.id ? 'Llamando...' : 'Llamar (P22)'}
+                              <Phone className="w-3.5 h-3.5" />
+                              Llamar
                             </Button>
                           </td>
                         </tr>
@@ -573,270 +987,182 @@ export default function IvrSchedulePage() {
           </div>
         )}
 
-        {/* CONTENIDO PESTAÑA 2: CASOS AISLADOS (GESTIÓN HUMANA) */}
+        {/* ========================================================================= */}
+        {/* PESTAÑA 3: BANDEJA CASOS AISLADOS (GESTIÓN HUMANA) */}
+        {/* ========================================================================= */}
         {activeTab === 'casos_humanos' && (
-          <div className="space-y-6">
-            <div className="bg-red-50 border border-red-200 p-5 rounded-2xl flex items-start gap-4">
-              <span className="p-2.5 bg-red-100 rounded-xl text-red-700 flex-shrink-0">
-                <ShieldAlert className="w-6 h-6" />
-              </span>
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
               <div>
-                <h3 className="text-base font-bold text-red-900">
-                  Bandeja de Casos No Contactados (Gestión Manual / Trabajo Social)
+                <h3 className="text-lg font-black text-gray-900">
+                  Bandeja de Casos Aislados para Gestión Humana
                 </h3>
-                <p className="text-xs text-red-700 mt-1">
-                  Pacientes que no contestaron en ninguna de las tandas programadas a lo largo del día. Según las directrices del hospital, un profesional de trabajo social o enfermería debe comunicarse directamente vía llamada telefónica o WhatsApp para garantizar la cobertura de la Resolución 3280.
+                <p className="text-xs text-gray-500">
+                  Pacientes que no contestaron en ninguna de las tandas del día. Requieren contacto telefónico o domiciliario directo por el personal de enfermería.
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').length === 0 ? (
-                <div className="col-span-full bg-white p-12 rounded-2xl border border-gray-200 text-center text-gray-400">
-                  <UserCheck className="w-12 h-12 mx-auto mb-3 text-emerald-500" />
-                  <p className="font-bold text-gray-800 text-base">No hay casos aislados pendientes</p>
-                  <p className="text-xs text-gray-500 mt-1">Todos los pacientes han sido contactados exitosamente por el agente IVR o aún tienen tandas pendientes.</p>
-                </div>
-              ) : (
-                items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').map((item) => (
-                  <div 
-                    key={item.id} 
-                    className={`bg-white rounded-xl border p-4 shadow-sm flex flex-col justify-between ${
-                      item.gestionHumana?.atendido 
-                        ? 'border-emerald-200 bg-emerald-50/20' 
-                        : 'border-red-200 hover:border-red-300'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div>
-                          <span className="font-bold text-gray-900 text-sm block">{item.nombre}</span>
-                          <span className="text-xs text-gray-500 font-mono">C.C. {item.documento}</span>
-                        </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          item.gestionHumana?.atendido 
-                            ? 'bg-emerald-100 text-emerald-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {item.gestionHumana?.atendido ? 'Gestionado por Humano' : 'No Contactado en Todo el Día'}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1.5 text-xs text-gray-600 my-3">
-                        <div className="flex items-center gap-2">
-                          <Phone className="w-3.5 h-3.5 text-gray-400" />
-                          <span className="font-semibold text-gray-800">{item.telefono}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
-                          <span className="line-clamp-1">{item.programa3280}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                          <Clock className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Intentos realizados por el agente: {item.intentos}</span>
-                        </div>
-                      </div>
-
-                      {/* Historial de tandas fallidas */}
-                      <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-100 text-[10px] space-y-1 mb-4">
-                        <span className="font-semibold text-gray-700 block">Historial de tandas:</span>
-                        {item.historialIntentos.map((h, i) => (
-                          <div key={i} className="text-gray-600 flex justify-between">
-                            <span>{h.tanda}:</span>
-                            <span className="text-red-600 font-medium">{h.resultado}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {item.gestionHumana?.atendido && (
-                        <div className="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 text-[11px] mb-3">
-                          <span className="font-bold text-emerald-900 block">Gestión Manual Registrada:</span>
-                          <p className="text-emerald-800 mt-0.5">{item.gestionHumana.notas}</p>
-                          <span className="text-[10px] text-emerald-600 block mt-1">Por: {item.gestionHumana.responsable}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2 pt-2 border-t border-gray-100">
-                      <a
-                        href={`tel:${item.telefono}`}
-                        className="flex-1 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-center font-bold text-xs hover:bg-blue-100 flex items-center justify-center gap-1"
-                      >
-                        <Phone className="w-3.5 h-3.5" /> Llamar
-                      </a>
-                      <a
-                        href={`https://wa.me/57${item.telefono}?text=Hola%20${encodeURIComponent(item.nombre)},%20te%20escribimos%20del%20Hospital%20SADI%20para%20tu%20cita%20de%20la%20Resolución%203280.`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex-1 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-center font-bold text-xs hover:bg-emerald-100 flex items-center justify-center gap-1"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
-                      </a>
-                      <Button
-                        size="sm"
-                        onClick={() => setSelectedHumanCase(item)}
-                        className="py-1 px-3 bg-gray-900 text-white text-xs"
-                      >
-                        Registrar
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-100">
+                  <tr>
+                    <th className="p-3">Paciente</th>
+                    <th className="p-3">Documento</th>
+                    <th className="p-3">Teléfono</th>
+                    <th className="p-3">Programa Res. 3280</th>
+                    <th className="p-3">Intentos del Agente</th>
+                    <th className="p-3 text-right">Gestión</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center p-8 text-gray-400">
+                        No hay casos aislados pendientes. Todos los pacientes del día fueron contactados o están en reintento programado.
+                      </td>
+                    </tr>
+                  ) : (
+                    items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').map((c) => (
+                      <tr key={c.id} className="hover:bg-red-50/20">
+                        <td className="p-3 font-bold text-gray-900">{c.nombre}</td>
+                        <td className="p-3 text-gray-600">{c.documento}</td>
+                        <td className="p-3 font-mono text-gray-700">{c.telefono}</td>
+                        <td className="p-3 text-gray-700">{c.programa}</td>
+                        <td className="p-3 text-red-600 font-bold">{c.intentos} intentos fallidos</td>
+                        <td className="p-3 text-right">
+                          <Button
+                            size="sm"
+                            onClick={() => setSelectedHumanCase(c)}
+                            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl"
+                          >
+                            Registrar Gestión
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
-        {/* CONTENIDO PESTAÑA 3: CONFIGURACIÓN Y ARQUITECTURA */}
+        {/* ========================================================================= */}
+        {/* PESTAÑA 4: CONFIGURACIÓN */}
+        {/* ========================================================================= */}
         {activeTab === 'config' && (
-          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">
-                Arquitectura y Automatización del Motor IVR SADI 3280
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">
-                Cómo opera el sistema de llamadas salientes para cumplir la demanda inducida reglamentaria.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-gray-700">
-              <div className="space-y-4">
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                  <h4 className="font-bold text-blue-900 text-sm mb-1">1. ¿Cómo sabe a quién y cuándo llamar?</h4>
-                  <p>
-                    El motor cruza la fecha de nacimiento (Curso de Vida: Primera Infancia, Infancia, Adolescencia, Juventud, Adultez, Vejez, Materno-Perinatal) con las atenciones obligatorias de la <strong>Resolución 3280 de 2018</strong>. Los pacientes cuya ventana de atención vence en la fecha son agendados automáticamente en el cronograma del día.
-                  </p>
-                </div>
-
-                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                  <h4 className="font-bold text-indigo-900 text-sm mb-1">2. ¿Cómo accede a los datos el agente de voz?</h4>
-                  <p>
-                    Al iniciar la llamada saliente, SADI inyecta dinámicamente en el asistente Vapi los datos del paciente (nombre, médico asignado, hospital, últimos signos vitales caseros y alerta médica). Además, cuenta con <em>Function Calling (Tools)</em> para consultar en vivo el expediente clínico y agendar citas en menos de 400 milisegundos.
-                  </p>
-                </div>
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <h3 className="text-lg font-black text-gray-900">Configuración del Motor de Automatización IVR</h3>
+            <p className="text-xs text-gray-500">
+              Ajustes de intervalos de tandas (10:00 AM a 06:00 PM), límite de 32 llamadas por franja y reintentos automáticos.
+            </p>
+            <div className="grid grid-cols-2 gap-4 text-xs pt-2">
+              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                <span className="font-bold text-gray-900 block mb-1">Capacidad Máxima por Tanda:</span>
+                <span className="text-gray-600">32 pacientes cada 30 minutos (17 tandas diarias = 544 llamadas/día).</span>
               </div>
-
-              <div className="space-y-4">
-                <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                  <h4 className="font-bold text-emerald-900 text-sm mb-1">3. Distribución por Tandas de 32 Pacientes (30 min)</h4>
-                  <p>
-                    Para no saturar las líneas ni el centro de contacto hospitalario, las llamadas se lanzan en bloques de <strong>32 pacientes cada 30 minutos</strong> desde las <strong>10:00 AM hasta las 06:00 PM</strong> (17 tandas diarias).
-                  </p>
-                </div>
-
-                <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
-                  <h4 className="font-bold text-amber-900 text-sm mb-1">4. Reintentos Inmediatos y Casos Aislados</h4>
-                  <p>
-                    Si un paciente no contesta en su tanda (10:00 AM), el motor lo reasigna automáticamente a la tanda siguiente (10:30 AM). Si tras recorrer las tandas del día sigue sin contestar, el caso pasa inmediatamente a la <strong>Bandeja de Casos No Contactados</strong> para que una enfermera o trabajadora social lo atienda manualmente.
-                  </p>
-                </div>
+              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                <span className="font-bold text-gray-900 block mb-1">Gateway de Salida:</span>
+                <span className="text-gray-600">Troncal GSM Puerto 22 conectada vía Vapi/Twilio.</span>
               </div>
-            </div>
-
-            <div className="border-t border-gray-100 pt-6 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-gray-900 text-sm block">Modo Operativo Actual</span>
-                <span className="text-xs text-gray-500">
-                  {config.isLiveEnabled 
-                    ? 'El sistema está en modo EN VIVO. Se realizarán llamadas telefónicas salientes reales.' 
-                    : 'El sistema está en Standby Seguro. No se emitirán llamadas reales hasta que el hospital lo autorice.'}
-                </span>
-              </div>
-
-              <Button
-                onClick={handleToggleEngine}
-                className={config.isLiveEnabled ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}
-              >
-                {config.isLiveEnabled ? 'Pausar a Standby' : 'Activar Modo En Vivo'}
-              </Button>
             </div>
           </div>
         )}
+
       </div>
 
-      {/* MODAL REGISTRO DE GESTIÓN HUMANA */}
-      <AnimatePresence>
-        {selectedHumanCase && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
-            >
-              <div className="flex items-center justify-between border-b pb-3">
-                <div className="flex items-center gap-2 text-red-600">
-                  <ShieldAlert className="w-5 h-5" />
-                  <h3 className="font-bold text-gray-900">Registrar Gestión Manual</h3>
+      {/* MODAL DE TRANSCRIPCIÓN COMPLETA */}
+      <Dialog open={showTranscriptModal} onOpenChange={setShowTranscriptModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-gray-900 flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+              Transcripción y Registro de Llamada Particular
+            </DialogTitle>
+            <DialogDescription>
+              {selectedTranscriptItem?.pacienteNombre} • {selectedTranscriptItem?.telefono} • {selectedTranscriptItem?.fechaHora}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedTranscriptItem && (
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-200 text-xs">
+                <div>
+                  <span className="text-gray-500 block">Motivo / Protocolo:</span>
+                  <span className="font-bold text-gray-900">{selectedTranscriptItem.motivoContacto}</span>
                 </div>
-                <button 
-                  onClick={() => setSelectedHumanCase(null)}
-                  className="text-gray-400 hover:text-gray-600 text-lg font-bold"
+                <div>
+                  <span className="text-gray-500 block">Resultado:</span>
+                  <span className="font-bold text-emerald-700">{selectedTranscriptItem.resultado} ({selectedTranscriptItem.duracionSegundos} seg)</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs font-bold text-gray-700 block mb-1">Resumen Clínico IA:</span>
+                <p className="text-xs text-gray-700 bg-blue-50/70 p-3 rounded-xl border border-blue-100">
+                  {selectedTranscriptItem.resumenClinico}
+                </p>
+              </div>
+
+              <div>
+                <span className="text-xs font-bold text-gray-700 block mb-2">Diálogo Completo:</span>
+                <div className="bg-slate-900 text-slate-100 p-4 rounded-2xl text-xs font-sans whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto border border-slate-800">
+                  {selectedTranscriptItem.transcripcion}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE GESTIÓN HUMANA */}
+      {selectedHumanCase && (
+        <Dialog open={!!selectedHumanCase} onOpenChange={() => setSelectedHumanCase(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-gray-900">
+                Registrar Gestión Humana para {selectedHumanCase.nombre}
+              </DialogTitle>
+              <DialogDescription>
+                Paciente no contactado tras agotar las tandas del día.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSaveHumanIntervention} className="space-y-4 pt-2">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Resultado de la Intervención:</label>
+                <select
+                  value={humanOutcome}
+                  onChange={(e) => setHumanOutcome(e.target.value)}
+                  className="w-full text-xs p-2.5 border border-gray-300 rounded-xl bg-white"
                 >
-                  &times;
-                </button>
+                  <option value="contactado_exitoso">Contactado y Cita Confirmada</option>
+                  <option value="reagendado_manual">Reagendado Manualmente para otra fecha</option>
+                  <option value="visita_domiciliaria_requerida">Requiere Visita Domiciliaria</option>
+                  <option value="numero_erroneo">Número Erróneo o Inexistente</option>
+                </select>
               </div>
 
-              <div className="text-xs space-y-1">
-                <p><strong>Paciente:</strong> {selectedHumanCase.nombre}</p>
-                <p><strong>Cédula:</strong> {selectedHumanCase.documento}</p>
-                <p><strong>Teléfono:</strong> {selectedHumanCase.telefono}</p>
-                <p><strong>Programa 3280:</strong> {selectedHumanCase.programa3280}</p>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-1">Notas de la Auxiliar de Enfermería:</label>
+                <textarea
+                  rows={3}
+                  value={humanNotes}
+                  onChange={(e) => setHumanNotes(e.target.value)}
+                  placeholder="Detalles del contacto humano con el paciente o familiar..."
+                  className="w-full text-xs p-2.5 border border-gray-300 rounded-xl"
+                  required
+                />
               </div>
 
-              <form onSubmit={handleSaveHumanIntervention} className="space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 block mb-1">
-                    Resultado del contacto manual
-                  </label>
-                  <select
-                    value={humanOutcome}
-                    onChange={(e) => setHumanOutcome(e.target.value)}
-                    className="w-full text-xs p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="contactado_exitoso">Contactado con éxito (Confirma asistencia)</option>
-                    <option value="reagendado_manual">Reagendado manualmente por el profesional</option>
-                    <option value="numero_equivocado">Número equivocado / Inexistente (Reportar EPS)</option>
-                    <option value="rechazo_atencion">Paciente rechaza atención 3280</option>
-                  </select>
-                </div>
+              <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs py-2.5 rounded-xl">
+                Guardar y Cerrar Caso Aislado
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
-                <div>
-                  <label className="text-xs font-semibold text-gray-700 block mb-1">
-                    Notas y Observaciones de la Gestión
-                  </label>
-                  <textarea
-                    rows={4}
-                    required
-                    value={humanNotes}
-                    onChange={(e) => setHumanNotes(e.target.value)}
-                    placeholder="Ej: Se contactó por llamada directa, se le informó sobre la consulta de detección temprana y aceptó cita para el viernes..."
-                    className="w-full text-xs p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="flex gap-2 justify-end pt-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => setSelectedHumanCase(null)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    size="sm"
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    Guardar Gestión
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </Layout>
   );
 }

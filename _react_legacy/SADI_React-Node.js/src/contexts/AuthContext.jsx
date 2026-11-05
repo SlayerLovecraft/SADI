@@ -399,7 +399,7 @@ export const AuthProvider = ({ children }) => {
           email: email,
           role: 'hospital_admin',
           nombre: 'Personal Clínico SADI',
-          hospitalId: 'hosp-001',
+          hospitalId: 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
           hospital_name: 'Hospital Central SADI (Caldas)',
           ciudad: 'Manizales',
           direccion: 'Carrera 23 # 45-10'
