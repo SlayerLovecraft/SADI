@@ -501,6 +501,7 @@ export default function IvrSchedulePage() {
                 individualData={individualRoadmap}
                 selectedYear={selectedYear}
                 selectedMonth={selectedMonth}
+                onChangeMonth={handleYearMonthChange}
                 onMakeCall={handleMakeLiveCall}
                 onViewTranscript={(item) => {
                   setSelectedTranscriptItem(item);

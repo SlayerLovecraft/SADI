@@ -218,20 +218,22 @@ export const roadmapService = {
    * Genera el Roadmap Mensual de Resolución 3280 para TODOS los pacientes del hospital.
    * Inamovible, distribuido ordenadamente en días laborables y franjas de 10:00 AM a 06:00 PM.
    */
-  async getResolutionRoadmap(hospitalId = DEFAULT_HOSPITAL_ID, year = new Date().getFullYear(), month = new Date().getMonth() + 1) {
-    const storageKey = `sadi_roadmap_res3280_${hospitalId}_${year}_${month}`;
+  async getResolutionRoadmap(hospitalId = DEFAULT_HOSPITAL_ID, year = new Date().getFullYear(), month = new Date().getMonth() + 1, forceRefresh = false) {
+    const storageKey = `sadi_roadmap_res3280_v2_${hospitalId}_${year}_${month}`;
 
     // 1. Verificar si ya está persistido en caché local
-    try {
-      const cached = localStorage.getItem(storageKey);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && parsed.length > 0) {
-          return parsed;
+    if (!forceRefresh) {
+      try {
+        const cached = localStorage.getItem(storageKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            return parsed;
+          }
         }
+      } catch (e) {
+        console.warn('Error leyendo caché de roadmap:', e);
       }
-    } catch (e) {
-      console.warn('Error leyendo caché de roadmap:', e);
     }
 
     // 2. Obtener todos los pacientes
@@ -260,14 +262,33 @@ export const roadmapService = {
 
     const availableSlots = IVR_TIME_SLOTS; // 17 slots (10:00 AM a 06:00 PM)
 
-    // 4. Distribuir pacientes ordenadamente en el mes de manera inamovible
+    // Contador de pacientes por día para asignación de franjas horarias
+    const dayCounters = {};
+
+    // 4. Distribuir pacientes ordenadamente en el mes según su fecha de nacimiento y reglas 3280
     const roadmapItems = patients.map((patient, index) => {
       const milestone = this.calculatePatientMilestones(patient, year, month);
       
-      // Asignar día y slot de forma determinista
-      const dayIndex = index % workdays.length;
-      const assignedDay = workdays[dayIndex];
-      const slotIndex = Math.floor(index / workdays.length) % availableSlots.length;
+      // Asignar día preferido según el día de nacimiento del paciente
+      let targetDayNum = (index % daysInMonth) + 1;
+      if (patient.birthdate) {
+        const bDate = new Date(patient.birthdate);
+        const bDay = bDate.getDate();
+        if (bDay && !isNaN(bDay)) {
+          targetDayNum = Math.min(bDay, daysInMonth);
+        }
+      }
+
+      // Buscar el día laborable exacto o el más próximo
+      let assignedDay = workdays.find(w => w.dayNum === targetDayNum);
+      if (!assignedDay) {
+        assignedDay = workdays.find(w => w.dayNum > targetDayNum) || workdays[workdays.length - 1];
+      }
+
+      const dayKey = assignedDay.dayNum;
+      dayCounters[dayKey] = (dayCounters[dayKey] || 0);
+      const slotIndex = dayCounters[dayKey] % availableSlots.length;
+      dayCounters[dayKey]++;
       const assignedSlot = availableSlots[slotIndex];
 
       // Determinar estado simulado consistente para trazabilidad
@@ -488,6 +509,8 @@ export const roadmapService = {
           id: log.id || `indiv_${idx}`,
           fechaHora: fechaHoraFormateada,
           rawDate: createdDate,
+          diaNumero: createdDate.getDate(),
+          hora: createdDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }),
           pacienteNombre: log.paciente_nombre || log.patient_name || 'Paciente Particular',
           documento: log.documento || log.patient_document || 'CC 1234567890',
           telefono: log.telefono_destino || log.phone || '+573057120876',
