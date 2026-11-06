@@ -32,6 +32,7 @@ import {
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import { roadmapService, MESES_DEL_ANIO } from '@/services/roadmapService';
 import VisualGanttRoadmap from '@/components/VisualGanttRoadmap';
+import ResolutionAnnualMatrix from '@/components/ResolutionAnnualMatrix';
 import {
   Dialog,
   DialogContent,
@@ -458,58 +459,6 @@ export default function IvrSchedulePage() {
               </div>
             </div>
 
-            {/* SELECTOR DE MODO DE VISUALIZACIÓN: GANTT VISUAL VS TABLA DETALLADA */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setRoadmapDisplayMode('visual')}
-                  className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 ${
-                    roadmapDisplayMode === 'visual'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <Layers className="w-4 h-4" />
-                  Línea de Tiempo Visual (Gantt Clínico)
-                </button>
-
-                <button
-                  onClick={() => setRoadmapDisplayMode('tabla')}
-                  className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 ${
-                    roadmapDisplayMode === 'tabla'
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <FileText className="w-4 h-4" />
-                  Tablas Detalladas por Sección
-                </button>
-              </div>
-
-              <span className="text-xs text-gray-500 font-medium">
-                {roadmapDisplayMode === 'visual' 
-                  ? '💡 Haz clic en cualquier tarjeta de la línea temporal para ver pacientes y agendamientos.'
-                  : 'Exploración tabular exhaustiva de registros clínicos y llamadas.'}
-              </span>
-            </div>
-
-            {/* COMPONENTE ROADMAP VISUAL GANTT */}
-            {roadmapDisplayMode === 'visual' && (
-              <VisualGanttRoadmap
-                resolutionData={resolutionRoadmap}
-                campaignsData={campaignsRoadmap}
-                individualData={individualRoadmap}
-                selectedYear={selectedYear}
-                selectedMonth={selectedMonth}
-                onChangeMonth={handleYearMonthChange}
-                onMakeCall={handleMakeLiveCall}
-                onViewTranscript={(item) => {
-                  setSelectedTranscriptItem(item);
-                  setShowTranscriptModal(true);
-                }}
-              />
-            )}
-
             {/* SELECTOR DE LAS 3 SUB-SECCIONES DEL ROADMAP */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
@@ -525,12 +474,12 @@ export default function IvrSchedulePage() {
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
                     roadmapSection === 'resolucion' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
                   }`}>
-                    {resolutionRoadmap.length} Pacientes
+                    400.000 Pacientes (Censo)
                   </span>
                 </div>
                 <h3 className="text-base font-black mt-1">Resolución 3280</h3>
                 <p className={`text-xs mt-1 leading-relaxed ${roadmapSection === 'resolucion' ? 'text-blue-100' : 'text-gray-500'}`}>
-                  Todos los pacientes del hospital programados por fecha de nacimiento e hitos de curso de vida.
+                  Cronograma anual matriz (1/4 items A-J + 3/4 12 meses). Clic en celdas para cohort e historia clínica.
                 </p>
               </button>
 
@@ -580,133 +529,14 @@ export default function IvrSchedulePage() {
             </div>
 
             {/* ------------------------------------------------------------- */}
-            {/* SUB-SECCIÓN 1: RESOLUCIÓN 3280 */}
+            {/* SUB-SECCIÓN 1: RESOLUCIÓN 3280 (MATRIZ 1/4 + 3/4 SEGÚN BOCETO) */}
             {/* ------------------------------------------------------------- */}
             {roadmapSection === 'resolucion' && (
-              <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden space-y-4 p-5">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 pb-4">
-                  <div>
-                    <h3 className="text-lg font-black text-gray-900">
-                      Línea Temporal Inamovible • Resolución 3280 de 2018
-                    </h3>
-                    <p className="text-xs text-gray-500">
-                      Cubre el 100% de los pacientes asignados en días hábiles (10:00 AM a 06:00 PM). Renovación automática al finalizar el mes.
-                    </p>
-                  </div>
-
-                  {/* Filtros de Curso de Vida y Búsqueda */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Buscar por nombre, cédula o programa..."
-                        value={roadmapSearch}
-                        onChange={(e) => setRoadmapSearch(e.target.value)}
-                        className="pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <select
-                      value={filterCursoVida}
-                      onChange={(e) => setFilterCursoVida(e.target.value)}
-                      className="text-xs px-3 py-1.5 border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
-                    >
-                      <option value="todos">Todos los Cursos de Vida</option>
-                      <option value="primera_infancia">Primera Infancia (0 a 5 años)</option>
-                      <option value="infancia">Infancia (6 a 11 años)</option>
-                      <option value="adolescencia">Adolescencia (12 a 17 años)</option>
-                      <option value="juventud">Juventud (18 a 28 años)</option>
-                      <option value="adultez">Adultez (29 a 59 años)</option>
-                      <option value="vejez">Vejez (60+ años)</option>
-                      <option value="materno_perinatal">Ruta Materno Perinatal (RIAMP)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* TABLA DETALLADA DE LA RESOLUCIÓN */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-100">
-                      <tr>
-                        <th className="p-3">Fecha & Día</th>
-                        <th className="p-3">Hora / Tanda</th>
-                        <th className="p-3">Paciente / Documento</th>
-                        <th className="p-3">Teléfono</th>
-                        <th className="p-3">Curso de Vida & Edad</th>
-                        <th className="p-3">Hito Clínico Res. 3280</th>
-                        <th className="p-3">Estado</th>
-                        <th className="p-3 text-right">Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredResolutionItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="text-center p-8 text-gray-400">
-                            No hay atenciones programadas en este mes con los filtros aplicados.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredResolutionItems.map((item) => (
-                          <tr key={item.id} className="hover:bg-blue-50/40 transition-colors">
-                            <td className="p-3 whitespace-nowrap">
-                              <div className="font-bold text-gray-900">{item.fechaProgramada}</div>
-                              <div className="text-[10px] text-gray-500 font-medium">{item.diaNombre}</div>
-                            </td>
-                            <td className="p-3 whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 font-bold text-[11px]">
-                                {item.horaProgramada}
-                              </span>
-                            </td>
-                            <td className="p-3">
-                              <div className="font-bold text-gray-900">{item.nombre}</div>
-                              <div className="text-[11px] text-gray-500">{item.documento}</div>
-                            </td>
-                            <td className="p-3 font-mono text-gray-700 whitespace-nowrap">
-                              {item.telefono}
-                            </td>
-                            <td className="p-3">
-                              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded text-[11px]">
-                                {item.cursoVidaLabel}
-                              </span>
-                              <div className="text-[10px] text-gray-500 mt-0.5">{item.edadFormato}</div>
-                            </td>
-                            <td className="p-3 max-w-sm">
-                              <div className="font-semibold text-gray-900 leading-tight">{item.hitoClinico}</div>
-                              <div className="text-[10px] text-gray-400 font-mono mt-0.5">CUPS: {item.codigoCups}</div>
-                            </td>
-                            <td className="p-3 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                                item.estado === 'Confirmada'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : item.estado === 'Reagendada'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : item.estado === 'No Contesta'
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-gray-100 text-gray-700'
-                              }`}>
-                                {item.estado}
-                              </span>
-                            </td>
-                            <td className="p-3 text-right whitespace-nowrap">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleMakeLiveCall(item)}
-                                disabled={callingId === item.id}
-                                className="text-xs font-bold gap-1 rounded-xl text-blue-700 hover:bg-blue-50 border-blue-200"
-                              >
-                                <Phone className="w-3.5 h-3.5" />
-                                {callingId === item.id ? 'Marcando...' : 'Llamar'}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <ResolutionAnnualMatrix
+                selectedYear={selectedYear}
+                onYearChange={(newYear) => handleYearMonthChange(newYear, selectedMonth)}
+                onDownloadExcel={handleDownloadExcel}
+              />
             )}
 
             {/* ------------------------------------------------------------- */}

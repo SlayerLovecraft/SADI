@@ -123,7 +123,7 @@ const Layout = ({ children }) => {
             variant="outline"
             size="icon"
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden rounded-xl"
+            className="rounded-xl"
             aria-label="Cerrar menú"
           >
             <X className="h-5 w-5" />
@@ -139,7 +139,7 @@ const Layout = ({ children }) => {
             <Link
               key={item.path}
               to={item.path}
-              onClick={() => (closeOnNavigate ? setSidebarOpen(false) : null)}
+              onClick={() => setSidebarOpen(false)}
               className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${
                 isActive ? 'bg-blue-50 text-blue-700 font-semibold ring-1 ring-blue-100' : 'text-gray-700 hover:bg-gray-50'
               }`}
@@ -170,40 +170,48 @@ const Layout = ({ children }) => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-x-hidden">
-      <aside className="hidden lg:block fixed left-0 top-0 h-full w-72 bg-white border-r border-gray-200 shadow-sm z-40">
-        <SidebarContent closeOnNavigate={false} />
-      </aside>
-
+    <div className="min-h-screen bg-gray-50 overflow-x-hidden flex flex-col">
+      {/* Drawer Plegable (Off-Canvas) - Oculto por defecto en todas las pantallas */}
       <AnimatePresence>
         {sidebarOpen && (
-          <motion.aside
-            initial={{ x: -300 }}
-            animate={{ x: 0 }}
-            exit={{ x: -300 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="fixed left-0 top-0 h-full w-72 bg-white border-r border-gray-200 shadow-lg z-40 lg:hidden"
-          >
-            <SidebarContent closeOnNavigate />
-          </motion.aside>
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40"
+              onClick={() => setSidebarOpen(false)}
+            />
+            <motion.aside
+              initial={{ x: -320 }}
+              animate={{ x: 0 }}
+              exit={{ x: -320 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 32 }}
+              className="fixed left-0 top-0 h-full w-80 bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col"
+            >
+              <SidebarContent closeOnNavigate />
+            </motion.aside>
+          </>
         )}
       </AnimatePresence>
 
-      <main className="lg:ml-72 min-h-screen min-w-0">
-        <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/80 backdrop-blur">
-          <div className="flex items-center justify-between px-4 py-3 lg:px-8">
+      <main className="w-full min-h-screen min-w-0 flex flex-col">
+        <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/90 backdrop-blur">
+          <div className="flex items-center justify-between px-4 py-2.5 lg:px-6">
             <div className="flex items-center gap-3 min-w-0">
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden rounded-xl"
-                aria-label="Abrir menú"
+                onClick={() => setSidebarOpen((prev) => !prev)}
+                className="rounded-xl border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 shadow-sm"
+                aria-label="Alternar menú lateral"
+                title="Menú de Navegación"
               >
                 <Menu className="h-5 w-5" />
               </Button>
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 truncate">{user?.hospital_name || 'Panel'}</p>
+                <p className="text-xs text-gray-500 truncate">{user?.hospital_name || 'Hospital SADI'}</p>
                 <h2 className="text-base font-semibold text-gray-900 truncate">{pageTitle}</h2>
               </div>
             </div>
@@ -213,7 +221,7 @@ const Layout = ({ children }) => {
                 <p className="text-sm font-medium text-gray-900 truncate max-w-[240px]">{user?.nombre}</p>
                 <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
               </div>
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center text-sm font-semibold">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center text-sm font-semibold shadow-sm">
                 {initials}
               </div>
               <Button
@@ -221,8 +229,9 @@ const Layout = ({ children }) => {
                 size="icon"
                 onClick={handleLogout}
                 disabled={isLoggingOut}
-                className="rounded-xl"
+                className="rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-200"
                 aria-label="Cerrar sesión"
+                title="Cerrar Sesión"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
@@ -230,17 +239,10 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        <div className="p-4 lg:p-8 min-w-0 max-w-full">
+        <div className="flex-1 p-2 sm:p-4 lg:p-6 min-w-0 max-w-full">
           {children}
         </div>
       </main>
-
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
     </div>
   );
 };

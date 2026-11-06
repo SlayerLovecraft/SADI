@@ -16,15 +16,15 @@ import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from './rias3280Catal
 import { getCursoVida3280 } from './rias3280Engine';
 
 export const MESES_DEL_ANIO = [
-  { id: 1,  nombre: 'Enero' },
-  { id: 2,  nombre: 'Febrero' },
-  { id: 3,  nombre: 'Marzo' },
-  { id: 4,  nombre: 'Abril' },
-  { id: 5,  nombre: 'Mayo' },
-  { id: 6,  nombre: 'Junio' },
-  { id: 7,  nombre: 'Julio' },
-  { id: 8,  nombre: 'Agosto' },
-  { id: 9,  nombre: 'Septiembre' },
+  { id: 1, nombre: 'Enero' },
+  { id: 2, nombre: 'Febrero' },
+  { id: 3, nombre: 'Marzo' },
+  { id: 4, nombre: 'Abril' },
+  { id: 5, nombre: 'Mayo' },
+  { id: 6, nombre: 'Junio' },
+  { id: 7, nombre: 'Julio' },
+  { id: 8, nombre: 'Agosto' },
+  { id: 9, nombre: 'Septiembre' },
   { id: 10, nombre: 'Octubre' },
   { id: 11, nombre: 'Noviembre' },
   { id: 12, nombre: 'Diciembre' }
@@ -73,7 +73,7 @@ export const roadmapService = {
     const birth = new Date(patient.birthdate);
     // Calcular edad respecto al mes objetivo
     const targetDate = new Date(targetYear, targetMonth - 1, 15);
-    
+
     let years = targetDate.getFullYear() - birth.getFullYear();
     let months = targetDate.getMonth() - birth.getMonth();
     let days = targetDate.getDate() - birth.getDate();
@@ -88,9 +88,9 @@ export const roadmapService = {
     const totalMonths = (targetDate.getFullYear() - birth.getFullYear()) * 12 + (targetDate.getMonth() - birth.getMonth());
 
     const isFemale = (patient.sex || '').toLowerCase().startsWith('f') || (patient.sex || '').toLowerCase() === 'mujer';
-    const isGestante = (patient.program || '').toLowerCase().includes('materno') || 
-                       (patient.program || '').toLowerCase().includes('prenatal') || 
-                       (patient.program || '').toLowerCase().includes('embarazo');
+    const isGestante = (patient.program || '').toLowerCase().includes('materno') ||
+      (patient.program || '').toLowerCase().includes('prenatal') ||
+      (patient.program || '').toLowerCase().includes('embarazo');
 
     // 1. RUTA MATERNO PERINATAL (RIAMP)
     if (isGestante) {
@@ -147,7 +147,7 @@ export const roadmapService = {
         cursoVidaLabel: 'Infancia (6 a 11 años)',
         edadFormato: `${years} años`,
         programaPrincipal: 'Atención en Salud Escolar y Valoración Integral de Infancia',
-        hitoClinico: isVisualYear 
+        hitoClinico: isVisualYear
           ? `Valoración integral médica anual + Tamizaje de Agudeza Visual Snellen (${years} años)`
           : `Valoración médica de crecimiento y desarrollo + Salud Bucal semestral (${years} años)`,
         codigoCups: '890201-INF'
@@ -161,7 +161,7 @@ export const roadmapService = {
         cursoVidaLabel: 'Adolescencia (12 a 17 años)',
         edadFormato: `${years} años`,
         programaPrincipal: 'Atención Integral de la Adolescencia y Hebiatría',
-        hitoClinico: isFemale 
+        hitoClinico: isFemale
           ? `Valoración integral médica anual + Asesoría en Anticoncepción y Tamizaje Hemoglobina (${years} años)`
           : `Valoración integral médica anual + Salud Sexual, Reproductiva y Tamizaje Psicosocial (${years} años)`,
         codigoCups: '890201-ADO'
@@ -175,7 +175,7 @@ export const roadmapService = {
         cursoVidaLabel: 'Juventud (18 a 28 años)',
         edadFormato: `${years} años`,
         programaPrincipal: 'Atención Integral en Salud para la Juventud',
-        hitoClinico: isFemale && years >= 25 
+        hitoClinico: isFemale && years >= 25
           ? `Valoración médica general + Tamizaje Ca Cuello Uterino (Citología/ADN-VPH) y Planificación`
           : `Valoración integral médica + Tamizaje de ITS (VIH/Sífilis) y Asesoría en Salud Reproductiva`,
         codigoCups: '890201-JUV'
@@ -268,7 +268,7 @@ export const roadmapService = {
     // 4. Distribuir pacientes ordenadamente en el mes según su fecha de nacimiento y reglas 3280
     const roadmapItems = patients.map((patient, index) => {
       const milestone = this.calculatePatientMilestones(patient, year, month);
-      
+
       // Asignar día preferido según el día de nacimiento del paciente
       let targetDayNum = (index % daysInMonth) + 1;
       if (patient.birthdate) {
@@ -295,7 +295,7 @@ export const roadmapService = {
       let estado = 'Programada';
       const today = new Date();
       const itemDate = new Date(`${assignedDay.dateStr}T12:00:00`);
-      
+
       if (itemDate < today) {
         // Fechas pasadas
         estado = (index % 7 === 0) ? 'Reagendada' : (index % 11 === 0) ? 'No Contesta' : 'Confirmada';
@@ -354,7 +354,7 @@ export const roadmapService = {
   async getCampaignsRoadmap(hospitalId = DEFAULT_HOSPITAL_ID, year = new Date().getFullYear(), month = new Date().getMonth() + 1) {
     try {
       const targetHospId = hospitalId || DEFAULT_HOSPITAL_ID;
-      
+
       // Obtener campañas de Supabase
       const { data: dbCampaigns, error } = await supabase
         .from('campaigns')
@@ -500,10 +500,10 @@ export const roadmapService = {
           hour12: true
         });
 
-        const isEfectiva = log.resultado_contacto === 'Efectiva' || 
-                           log.resultado_contacto === 'contactado_exitoso' || 
-                           log.paciente_acepto_cita === true ||
-                           log.paciente_confirmo_sintomas === true;
+        const isEfectiva = log.resultado_contacto === 'Efectiva' ||
+          log.resultado_contacto === 'contactado_exitoso' ||
+          log.paciente_acepto_cita === true ||
+          log.paciente_confirmo_sintomas === true;
 
         return {
           id: log.id || `indiv_${idx}`,
@@ -522,8 +522,8 @@ export const roadmapService = {
           transcripcion: typeof log.transcripcion_dialogo === 'string'
             ? log.transcripcion_dialogo
             : Array.isArray(log.transcripcion_dialogo)
-            ? log.transcripcion_dialogo.map(m => `${m.role || m.speaker || 'Agente'}: ${m.message || m.text || ''}`).join('\n')
-            : 'Agente: Buenas tardes. Le informamos que autoriza el tratamiento de sus datos de salud... Paciente: De acuerdo, confirmo mi asistencia.'
+              ? log.transcripcion_dialogo.map(m => `${m.role || m.speaker || 'Agente'}: ${m.message || m.text || ''}`).join('\n')
+              : 'Agente: Buenas tardes. Le informamos que autoriza el tratamiento de sus datos de salud... Paciente: De acuerdo, confirmo mi asistencia.'
         };
       });
     } catch (e) {
