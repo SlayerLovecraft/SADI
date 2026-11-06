@@ -302,7 +302,7 @@ export default function IvrSchedulePage() {
         <title>Cronograma y Roadmap 3280 • SADI</title>
       </Helmet>
 
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
+      <div className="w-full min-w-0 space-y-6">
 
         {/* ========================================================================= */}
         {/* ENCABEZADO PRINCIPAL */}
@@ -459,6 +459,58 @@ export default function IvrSchedulePage() {
               </div>
             </div>
 
+            {/* SELECTOR DE MODO DE VISUALIZACIÓN: GANTT VISUAL VS TABLA DETALLADA */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRoadmapDisplayMode('visual')}
+                  className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 ${
+                    roadmapDisplayMode === 'visual'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <Layers className="w-4 h-4" />
+                  Línea de Tiempo Visual (Gantt Clínico)
+                </button>
+
+                <button
+                  onClick={() => setRoadmapDisplayMode('tabla')}
+                  className={`px-4 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-2 ${
+                    roadmapDisplayMode === 'tabla'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Tablas Detalladas por Sección
+                </button>
+              </div>
+
+              <span className="text-xs text-gray-500 font-medium">
+                {roadmapDisplayMode === 'visual' 
+                  ? '💡 Haz clic en cualquier tarjeta de la línea temporal para ver pacientes y agendamientos.'
+                  : 'Exploración tabular exhaustiva de registros clínicos y llamadas.'}
+              </span>
+            </div>
+
+            {/* COMPONENTE ROADMAP VISUAL GANTT */}
+            {roadmapDisplayMode === 'visual' && (
+              <VisualGanttRoadmap
+                resolutionData={resolutionRoadmap}
+                campaignsData={campaignsRoadmap}
+                individualData={individualRoadmap}
+                selectedYear={selectedYear}
+                selectedMonth={selectedMonth}
+                onChangeMonth={handleYearMonthChange}
+                onMakeCall={handleMakeLiveCall}
+                onViewTranscript={(item) => {
+                  setSelectedTranscriptItem(item);
+                  setShowTranscriptModal(true);
+                }}
+              />
+            )}
+
             {/* SELECTOR DE LAS 3 SUB-SECCIONES DEL ROADMAP */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
@@ -477,9 +529,9 @@ export default function IvrSchedulePage() {
                     400.000 Pacientes (Censo)
                   </span>
                 </div>
-                <h3 className="text-base font-black mt-1">Resolución 3280</h3>
+                <h3 className="text-base font-black mt-1">Resolución 3280 (Matriz Anual)</h3>
                 <p className={`text-xs mt-1 leading-relaxed ${roadmapSection === 'resolucion' ? 'text-blue-100' : 'text-gray-500'}`}>
-                  Cronograma anual matriz (1/4 items A-J + 3/4 12 meses). Clic en celdas para cohort e historia clínica.
+                  Caja completa de pantalla (1/4 Cursos de Vida A a J + 3/4 12 Meses). Celdas clickeables con Wizard de Campaña de 4 Pasos.
                 </p>
               </button>
 
@@ -529,12 +581,15 @@ export default function IvrSchedulePage() {
             </div>
 
             {/* ------------------------------------------------------------- */}
-            {/* SUB-SECCIÓN 1: RESOLUCIÓN 3280 (MATRIZ 1/4 + 3/4 SEGÚN BOCETO) */}
+            {/* SUB-SECCIÓN 1: RESOLUCIÓN 3280 (MATRIZ ANUAL 1/4 + 3/4)       */}
             {/* ------------------------------------------------------------- */}
             {roadmapSection === 'resolucion' && (
               <ResolutionAnnualMatrix
                 selectedYear={selectedYear}
-                onYearChange={(newYear) => handleYearMonthChange(newYear, selectedMonth)}
+                onYearChange={(y) => {
+                  setSelectedYear(y);
+                  loadRoadmapData(y, selectedMonth);
+                }}
                 onDownloadExcel={handleDownloadExcel}
               />
             )}

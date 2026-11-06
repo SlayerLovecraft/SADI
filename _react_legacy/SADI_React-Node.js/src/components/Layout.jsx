@@ -1,194 +1,216 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Stethoscope,
-  CalendarDays,
-  Target, 
-  FileText, 
-  Send, 
-  MessageSquare, 
-  BarChart3, 
-  LogOut,
+import {
   Menu,
   X,
-  Building2,
+  LayoutDashboard,
+  Users,
   Activity,
-  ShieldCheck,
-  FolderArchive,
-  Bot,
-  Clock
+  Send,
+  Calendar,
+  LogOut,
+  Building2,
+  Settings,
+  Shield,
+  UserCheck,
+  Radio,
+  FileText,
+  BarChart3,
+  Bot
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Layout = ({ children }) => {
+  // Por requerimiento expreso del usuario, el menú es un burger plegable oculto (hide) por defecto
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const allMenuItems = [
-    // Rutas Administrativas del Hospital (NO visibles para doctores)
-    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard Hospital', roles: ['super_admin', 'operator', 'hospital_admin'] },
-    { path: '/telemonitoring', icon: Activity, label: 'Telemonitoreo 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
-    { path: '/rias-3280', icon: ShieldCheck, label: 'Demanda Res. 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
-    { path: '/ivr-schedule', icon: Clock, label: 'Cronograma IVR 3280', roles: ['super_admin', 'operator', 'hospital_admin'] },
-    { path: '/patients', icon: Users, label: 'Pacientes', roles: ['super_admin', 'operator', 'hospital_admin'] },
-    { path: '/doctors', icon: Stethoscope, label: 'Doctores', roles: ['super_admin', 'operator', 'hospital_admin'] },
-    { path: '/segmentation', icon: Target, label: 'Segmentación', roles: ['super_admin', 'hospital_admin'] },
-    { path: '/templates', icon: FileText, label: 'Plantillas SMS', roles: ['super_admin', 'hospital_admin'] },
-    { path: '/campaigns', icon: Send, label: 'Campañas', roles: ['super_admin', 'hospital_admin'] },
-    { path: '/interactions', icon: MessageSquare, label: 'Interacciones', roles: ['super_admin', 'hospital_admin'] },
-    { path: '/reports', icon: BarChart3, label: 'Reportes Hospital', roles: ['super_admin', 'hospital_admin'] },
-
-    // Rutas Clínicas Exclusivas de Doctores (Restringidas y enfocadas a su área)
-    { path: '/doctor/dashboard', icon: LayoutDashboard, label: 'Mi Panel Clínico', roles: ['doctor'] },
-    { path: '/doctor/patients', icon: Users, label: 'Mis Pacientes Asignados', roles: ['doctor'] },
-    { path: '/doctor/telemonitoring', icon: Activity, label: 'Telemonitoreo & Signos', roles: ['doctor'] },
-    { path: '/doctor/clinical-records', icon: FolderArchive, label: 'Historias Clínicas 3280', roles: ['doctor'] },
-    { path: '/doctor/schedule', icon: CalendarDays, label: 'Mi Cronograma de Citas', roles: ['doctor'] },
-    { path: '/doctor/reports', icon: BarChart3, label: 'Reportes e Indicadores', roles: ['doctor'] },
+  const navigation = [
+    { name: 'Dashboard Hospital', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Telemonitoreo 3280', path: '/telemonitoreo', icon: Activity },
+    { name: 'Demanda Res. 3280', path: '/demanda-resolucion', icon: Shield },
+    { name: 'Cronograma IVR 3280', path: '/ivr-schedule', icon: Calendar },
+    { name: 'Pacientes', path: '/patients', icon: Users },
+    { name: 'Doctores', path: '/doctors', icon: UserCheck },
+    { name: 'Segmentación', path: '/segmentation', icon: Radio },
+    { name: 'Plantillas SMS', path: '/templates', icon: FileText },
+    { name: 'Campañas', path: '/campaigns', icon: Send },
+    { name: 'Interacciones', path: '/interactions', icon: MessageSquareIcon },
+    { name: 'Reportes Hospital', path: '/reports', icon: BarChart3 }
   ];
 
-  const menuItems = allMenuItems.filter(item => item.roles.includes(user?.role));
-
-  const pageTitle = (() => {
-    const current = menuItems.find((i) => location.pathname === i.path) ||
-      menuItems.find((i) => location.pathname.startsWith(i.path));
-    return current?.label || 'SADI';
-  })();
-
-  const initials = (() => {
-    const source = String(user?.nombre || user?.email || '').trim();
-    const parts = source.split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return 'U';
-    const first = parts[0]?.[0] || 'U';
-    const second = parts.length > 1 ? (parts[1]?.[0] || '') : (parts[0]?.[1] || '');
-    return (first + second).toUpperCase();
-  })();
+  function MessageSquareIcon(props) {
+    return (
+      <svg
+        {...props}
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    );
+  }
 
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
       await logout();
-      setTimeout(() => {
-        navigate(user?.role === 'doctor' ? '/doctor/login' : '/login', { replace: true });
-        setIsLoggingOut(false);
-      }, 100);
+      navigate('/login');
     } catch (error) {
-      navigate(user?.role === 'doctor' ? '/doctor/login' : '/login', { replace: true });
+      console.error('Error al cerrar sesión:', error);
+    } finally {
       setIsLoggingOut(false);
     }
   };
 
-  const SidebarContent = ({ closeOnNavigate }) => (
-    <div className="flex h-full flex-col">
-      <div className="p-6 flex items-start justify-between gap-3 border-b border-gray-100">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-blue-600">SADI</h1>
-            {user?.role === 'doctor' && (
-              <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 rounded-full">
-                Portal Médico
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            {user?.role === 'doctor' ? 'Área Médica • Resolución 3280' : 'Sistema de Apoyo para Demanda Inducida'}
-          </p>
+  const getPageTitle = () => {
+    const current = navigation.find(item => item.path === location.pathname);
+    return current ? current.name : 'SADI - Sistema de Demanda Inducida';
+  };
 
-          {user?.role === 'doctor' ? (
-            <div className="mt-2.5 p-2 bg-blue-50/80 rounded-xl border border-blue-100">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 truncate">
-                <Stethoscope className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                <span className="truncate">{user?.doctor_specialty || 'Especialista Asignado'}</span>
-              </div>
-              <p className="text-[10px] text-blue-600 mt-0.5 truncate">
-                Acceso restringido a pacientes asignados
-              </p>
-            </div>
-          ) : user?.hospitalId && (
-            <div className="mt-2 px-2 py-1 bg-blue-50 rounded-lg text-xs text-blue-700 flex items-center gap-1">
-              <Building2 className="h-3 w-3 shrink-0" />
-              <span className="truncate max-w-[160px]">{user?.hospital_name || 'Hospital'}</span>
-            </div>
-          )}
+  const initials = user?.nombre
+    ? user.nombre
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .substring(0, 2)
+        .toUpperCase()
+    : 'U';
+
+  const SidebarContent = ({ closeOnNavigate = true }) => (
+    <div className="flex flex-col h-full bg-white">
+      {/* Brand & Hospital Header */}
+      <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-md shadow-blue-500/20 text-white font-black text-lg">
+            S
+          </div>
+          <div>
+            <h1 className="text-xl font-black tracking-tight text-gray-900 leading-none">
+              SADI
+            </h1>
+            <p className="text-[11px] font-semibold text-blue-600 mt-1">
+              Resolución 3280 de 2018
+            </p>
+          </div>
         </div>
-        {closeOnNavigate && (
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setSidebarOpen(false)}
-            className="rounded-xl"
-            aria-label="Cerrar menú"
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSidebarOpen(false)}
+          className="rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+          aria-label="Cerrar menú"
+        >
+          <X className="h-5 w-5" />
+        </Button>
       </div>
 
-      <nav className="px-3 pb-4 space-y-1 flex-1 overflow-y-auto">
-        {menuItems.map((item) => {
+      {/* Hospital Badge */}
+      <div className="px-5 py-3 bg-gradient-to-r from-blue-50/70 to-indigo-50/70 border-b border-blue-100/50">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
+          <div className="min-w-0">
+            <span className="text-xs font-bold text-gray-900 block truncate">
+              {user?.hospital_name || 'Hospital Central SADI'}
+            </span>
+            <span className="text-[10px] text-blue-700 font-semibold block">
+              Red Hospitalaria Integrada
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation List */}
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        {navigation.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname.startsWith(item.path);
+          const isActive = location.pathname === item.path;
           return (
             <Link
               key={item.path}
               to={item.path}
-              onClick={() => setSidebarOpen(false)}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${
-                isActive ? 'bg-blue-50 text-blue-700 font-semibold ring-1 ring-blue-100' : 'text-gray-700 hover:bg-gray-50'
+              onClick={() => {
+                if (closeOnNavigate) setSidebarOpen(false);
+              }}
+              className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 ${
+                isActive
+                  ? 'bg-blue-600 text-white font-bold shadow-sm shadow-blue-600/30'
+                  : 'text-gray-600 hover:bg-gray-100/80 hover:text-gray-900'
               }`}
             >
-              <Icon className="h-5 w-5 shrink-0" />
-              <span className="min-w-0 truncate">{item.label}</span>
+              <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+              <span className="truncate">{item.name}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-gray-200">
-        <div className="mb-3 px-4">
-          <p className="text-sm font-medium text-gray-900 truncate">{user?.nombre}</p>
-          <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
+      {/* User Footer Profile */}
+      <div className="p-4 border-t border-gray-100 bg-gray-50/70">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center text-xs font-black shadow-sm shrink-0">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-gray-900 truncate">
+                {user?.nombre || 'Personal Médico'}
+              </p>
+              <p className="text-[10px] text-gray-500 capitalize truncate">
+                {user?.role?.replace('_', ' ') || 'Coordinador Clínico'}
+              </p>
+            </div>
+          </div>
         </div>
         <Button
           variant="outline"
-          className="w-full justify-start rounded-xl"
+          size="sm"
           onClick={handleLogout}
           disabled={isLoggingOut}
+          className="w-full rounded-xl text-xs font-bold text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 gap-2 h-9"
         >
-          <LogOut className="h-4 w-4 mr-2" />
-          {isLoggingOut ? 'Cerrando...' : 'Cerrar Sesión'}
+          <LogOut className="h-3.5 w-3.5" />
+          <span>{isLoggingOut ? 'Cerrando...' : 'Cerrar Sesión'}</span>
         </Button>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-x-hidden flex flex-col">
-      {/* Drawer Plegable (Off-Canvas) - Oculto por defecto en todas las pantallas */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden flex flex-col">
+      {/* MENÚ BURGER PLEGABLE (OFF-CANVAS DRAWER) - OCULTO POR DEFECTO EN TODAS LAS PANTALLAS */}
       <AnimatePresence>
         {sidebarOpen && (
           <>
+            {/* Backdrop con desenfoque suave */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50"
               onClick={() => setSidebarOpen(false)}
             />
+
+            {/* Sidebar Drawer que se desliza desde la izquierda */}
             <motion.aside
-              initial={{ x: -320 }}
+              initial={{ x: '-100%' }}
               animate={{ x: 0 }}
-              exit={{ x: -320 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 32 }}
-              className="fixed left-0 top-0 h-full w-80 bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col"
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="fixed left-0 top-0 bottom-0 w-80 max-w-[85vw] bg-white border-r border-gray-200 shadow-2xl z-50 flex flex-col"
             >
               <SidebarContent closeOnNavigate />
             </motion.aside>
@@ -196,40 +218,58 @@ const Layout = ({ children }) => {
         )}
       </AnimatePresence>
 
+      {/* CONTENEDOR PRINCIPAL - 100% ANCHO DE PANTALLA */}
       <main className="w-full min-h-screen min-w-0 flex flex-col">
-        <header className="sticky top-0 z-30 border-b border-gray-200 bg-white/90 backdrop-blur">
-          <div className="flex items-center justify-between px-4 py-2.5 lg:px-6">
+        {/* Cabecera superior compacta con botón burger siempre visible */}
+        <header className="sticky top-0 z-30 border-b border-gray-200/80 bg-white/95 backdrop-blur-md shadow-xs">
+          <div className="flex items-center justify-between px-3 sm:px-5 py-2.5">
+            {/* Botón Burger + Título */}
             <div className="flex items-center gap-3 min-w-0">
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => setSidebarOpen((prev) => !prev)}
-                className="rounded-xl border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 shadow-sm"
-                aria-label="Alternar menú lateral"
+                onClick={() => setSidebarOpen(true)}
+                className="rounded-xl border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 shadow-xs shrink-0 h-9 w-9"
+                aria-label="Abrir Menú de Navegación"
                 title="Menú de Navegación"
               >
                 <Menu className="h-5 w-5" />
               </Button>
+
               <div className="min-w-0">
-                <p className="text-xs text-gray-500 truncate">{user?.hospital_name || 'Hospital SADI'}</p>
-                <h2 className="text-base font-semibold text-gray-900 truncate">{pageTitle}</h2>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 hidden sm:inline-block">
+                    {user?.hospital_name || 'Hospital SADI'}
+                  </span>
+                  <span className="text-[11px] text-gray-400 hidden sm:inline-block">•</span>
+                  <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
+                    {getPageTitle()}
+                  </h2>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:block text-right leading-tight">
-                <p className="text-sm font-medium text-gray-900 truncate max-w-[240px]">{user?.nombre}</p>
-                <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
+            {/* Acciones de Cabecera (Usuario & Salida) */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="hidden md:flex flex-col text-right">
+                <span className="text-xs font-bold text-gray-900 truncate max-w-[180px]">
+                  {user?.nombre || 'Personal Médico'}
+                </span>
+                <span className="text-[10px] text-gray-500 capitalize">
+                  {user?.role?.replace('_', ' ') || 'Coordinador'}
+                </span>
               </div>
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center text-sm font-semibold shadow-sm">
+
+              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-xs shrink-0">
                 {initials}
               </div>
+
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 onClick={handleLogout}
                 disabled={isLoggingOut}
-                className="rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                className="rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 sm:h-9 sm:w-9"
                 aria-label="Cerrar sesión"
                 title="Cerrar Sesión"
               >
@@ -239,7 +279,8 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        <div className="flex-1 p-2 sm:p-4 lg:p-6 min-w-0 max-w-full">
+        {/* CONTENIDO DE LA PÁGINA: Ocupa todo el ancho disponible */}
+        <div className="flex-1 w-full min-w-0 p-2 sm:p-4 lg:p-6">
           {children}
         </div>
       </main>
