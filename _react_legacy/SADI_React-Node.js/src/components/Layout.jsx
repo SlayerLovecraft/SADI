@@ -32,15 +32,11 @@ const Layout = ({ children }) => {
 
   const navigation = [
     { name: 'Dashboard Hospital', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Telemonitoreo 3280', path: '/telemonitoreo', icon: Activity },
     { name: 'Demanda Res. 3280', path: '/demanda-resolucion', icon: Shield },
     { name: 'Cronograma IVR 3280', path: '/ivr-schedule', icon: Calendar },
     { name: 'Pacientes', path: '/patients', icon: Users },
     { name: 'Doctores', path: '/doctors', icon: UserCheck },
-    { name: 'Segmentación', path: '/segmentation', icon: Radio },
-    { name: 'Plantillas SMS', path: '/templates', icon: FileText },
     { name: 'Campañas', path: '/campaigns', icon: Send },
-    { name: 'Interacciones', path: '/interactions', icon: MessageSquareIcon },
     { name: 'Reportes Hospital', path: '/reports', icon: BarChart3 }
   ];
 
@@ -94,16 +90,15 @@ const Layout = ({ children }) => {
       {/* Brand & Hospital Header */}
       <div className="p-5 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 flex items-center justify-center shadow-md shadow-blue-500/20 text-white font-black text-lg">
-            S
-          </div>
+          <img 
+            src="/images/SADI_logo.png" 
+            alt="Logo SADI" 
+            className="h-10 w-auto object-contain"
+          />
           <div>
             <h1 className="text-xl font-black tracking-tight text-gray-900 leading-none">
               SADI
             </h1>
-            <p className="text-[11px] font-semibold text-blue-600 mt-1">
-              Resolución 3280 de 2018
-            </p>
           </div>
         </div>
         <Button

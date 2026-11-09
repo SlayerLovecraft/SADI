@@ -92,19 +92,11 @@ function App() {
 
                 <Route 
                   path="/telemonitoring" 
-                  element={
-                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
-                      <TelemonitoringDashboardPage />
-                    </ProtectedRoute>
-                  } 
+                  element={<Navigate to="/demanda-resolucion" replace />}
                 />
                 <Route 
                   path="/telemonitoreo" 
-                  element={
-                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
-                      <TelemonitoringDashboardPage />
-                    </ProtectedRoute>
-                  } 
+                  element={<Navigate to="/demanda-resolucion" replace />}
                 />
 
                 <Route 
@@ -167,20 +159,12 @@ function App() {
                 
                 <Route 
                   path="/segmentation" 
-                  element={
-                    <ProtectedRoute roles={['super_admin', 'hospital_admin']}>
-                      <SegmentationPage />
-                    </ProtectedRoute>
-                  } 
+                  element={<Navigate to="/campaigns" replace />}
                 />
                 
                 <Route 
                   path="/templates" 
-                  element={
-                    <ProtectedRoute roles={['super_admin', 'hospital_admin']}>
-                      <TemplatesPage />
-                    </ProtectedRoute>
-                  } 
+                  element={<Navigate to="/campaigns" replace />}
                 />
                 
                 <Route 
@@ -203,11 +187,7 @@ function App() {
                 
                 <Route 
                   path="/interactions" 
-                  element={
-                    <ProtectedRoute roles={['super_admin', 'hospital_admin']}>
-                      <InteractionsPage />
-                    </ProtectedRoute>
-                  } 
+                  element={<Navigate to="/demanda-resolucion" replace />}
                 />
                 
                 <Route 
