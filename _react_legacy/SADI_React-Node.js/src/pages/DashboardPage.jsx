@@ -149,12 +149,12 @@ const DashboardPage = () => {
 
       setStats({
         totalPatients: CENSUS_TOTAL,
-        activeCampaigns: pendingCampaigns > 0 ? pendingCampaigns : 1,
-        deliveryRate: deliveryRate > 0 ? deliveryRate : '98.4',
-        totalInteractions: 0,
+        activeCampaigns: pendingCampaigns,
+        deliveryRate: deliveryRate,
+        totalInteractions: interactionsSummary.count || 0,
       });
 
-      calculateCampaignStats(campaignsData, CENSUS_TOTAL);
+      calculateCampaignStats(campaignsData);
       generateRecentActivity(campaignsData, interactionsSummary.recent);
     } catch (err) {
       setError(err?.message || 'Error cargando dashboard');
@@ -199,7 +199,7 @@ const DashboardPage = () => {
     return () => clearInterval(intervalId);
   }, [hospitalIdForQueries, loadDashboardData, user]);
 
-  const calculateCampaignStats = (campaigns, totalPatientsCount = 0) => {
+  const calculateCampaignStats = (campaigns = []) => {
     const statuses = campaigns.map(getEffectiveCampaignStatus);
     const enProgreso = statuses.filter((s) => s === 'Activa').length;
     const completadas = statuses.filter((s) => s === 'Completada').length;
@@ -220,16 +220,8 @@ const DashboardPage = () => {
       }
     });
 
-    // Si las campañas aún no tienen participantes calculados, tomar la distribución real del censo (400.000 pacientes)
-    if (hombres === 0 && mujeres === 0 && ninos === 0 && ninas === 0) {
-      hombres = 194000;
-      mujeres = 206000;
-      ninos = 76000;
-      ninas = 74000;
-    }
-
     setCampaignStats({
-      enProgreso: enProgreso > 0 ? enProgreso : 1,
+      enProgreso,
       completadas,
       programadas,
       hombres,
@@ -239,13 +231,13 @@ const DashboardPage = () => {
     });
   };
 
-  const generateRecentActivity = (campaigns, interactions) => {
+  const generateRecentActivity = (campaigns = [], interactions = []) => {
     const activities = [];
     
-    // Agregar campañas recientes
+    // Solo si hay campañas reales
     const recentCampaigns = campaigns
       .sort((a, b) => new Date(b.created_at || b.fecha_creacion) - new Date(a.created_at || a.fecha_creacion))
-      .slice(0, 2);
+      .slice(0, 3);
     
     recentCampaigns.forEach(campaign => {
       const status = getEffectiveCampaignStatus(campaign);
@@ -257,21 +249,16 @@ const DashboardPage = () => {
       });
     });
 
-    // Actividades del sistema y canales
-    activities.push({
-      type: 'interaction',
-      message: 'Gateway GSM Puerto 22 listo para llamadas en vivo',
-      time: 'Hace un momento',
-      color: 'bg-emerald-500'
-    });
-    activities.push({
-      type: 'interaction',
-      message: 'Canales multicanal (WhatsApp, SMS, E-mail) en espera',
-      time: 'Hace 5 minutos',
-      color: 'bg-cyan-500'
+    (interactions || []).slice(0, 3).forEach(inter => {
+      activities.push({
+        type: 'interaction',
+        message: `Interacción ${inter.tipo || inter.type || 'asistencial'} registrada`,
+        time: getTimeAgo(new Date(inter.created_at)),
+        color: 'bg-emerald-500'
+      });
     });
 
-    setRecentActivity(activities.slice(0, 4));
+    setRecentActivity(activities);
   };
 
   const getTimeAgo = (date) => {
