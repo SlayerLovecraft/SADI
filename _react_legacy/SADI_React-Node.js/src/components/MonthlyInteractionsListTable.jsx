@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Calendar, Clock, Filter, RefreshCw, PhoneCall, MessageSquare, Send, Mail,
   MapPin, UserCheck, UserPlus, UserX, Shield, Sparkles, ChevronLeft, ChevronRight,
-  Search, CheckCircle2, AlertCircle, FileText, Building2, Trees, Eye, PhoneForwarded
+  Search, CheckCircle2, AlertCircle, FileText, Building2, Trees, Eye, PhoneForwarded, Lock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { demanda3280Service, GRUPOS_RIESGO_3280 } from '@/services/demanda3280Service';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import {
@@ -23,6 +24,7 @@ const MESES = [
 
 export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [currentYear, setCurrentYear] = useState(2026);
   const [currentMonth, setCurrentMonth] = useState(11); // Noviembre por defecto
@@ -140,6 +142,12 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
       tipoUsuario: filterTipoUsuario
     });
 
+    // Restricción por rol de Enfermera / Personal Clínico:
+    // Solo ve los pacientes correspondientes a los Cursos de Vida asignados por el Hospital
+    if (user?.role === 'doctor' && Array.isArray(user?.cursos_vida_asignados) && !user.cursos_vida_asignados.includes('todos')) {
+      list = list.filter(i => user.cursos_vida_asignados.includes(i.cursoVida));
+    }
+
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       list = list.filter(i => 
@@ -162,7 +170,8 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
     filterVereda,
     filterGrupoRiesgo,
     filterTipoUsuario,
-    searchTerm
+    searchTerm,
+    user
   ]);
 
   // Paginación
@@ -172,8 +181,18 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
     return filteredInteractions.slice(start, start + itemsPerPage);
   }, [filteredInteractions, currentPage]);
 
-  // Disparar llamada inmediata por Puerto 22
+  // Disparar llamada inmediata por Puerto 22 con validación de permisos
   const handleDirectCall = async (item) => {
+    // Verificar restricción de permisos del personal
+    if (user?.role === 'doctor' && user?.solo_lectura && !user?.puede_lanzar_llamadas) {
+      toast({
+        title: "🔒 Permiso Restringido por el Hospital",
+        description: "Su usuario tiene permisos de 'Solo Lectura'. No está autorizada para emitir llamadas salientes a los pacientes.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setCallingId(item.id);
     toast({
       title: "📞 Conectando Llamada en Vivo (Puerto 22)...",

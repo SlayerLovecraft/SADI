@@ -149,12 +149,17 @@ function App() {
                 />
 
                 <Route 
-                  path="/doctors" 
+                  path="/staff" 
                   element={
                     <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin']}>
                       <DoctorsPage />
                     </ProtectedRoute>
                   } 
+                />
+
+                <Route 
+                  path="/doctors" 
+                  element={<Navigate to="/staff" replace />}
                 />
                 
                 <Route 

@@ -195,6 +195,15 @@ export const getAssignedDoctorEmailForPatient = (patient) => {
  */
 export const isPatientAssignedToDoctor = (patient, doctorUser) => {
   if (!patient || !doctorUser) return false;
+
+  // 1. Si el usuario de Personal / Enfermería tiene Cursos de Vida asignados explícitamente por el Hospital
+  const cursosAsignados = doctorUser.cursos_vida_asignados;
+  if (Array.isArray(cursosAsignados) && cursosAsignados.length > 0) {
+    if (cursosAsignados.includes('todos')) return true;
+    const cursoPaciente = getCursoVidaFromPatient(patient);
+    return cursosAsignados.includes(cursoPaciente);
+  }
+
   const userEmail = (doctorUser.email || '').toLowerCase().trim();
   const assignedEmail = (getAssignedDoctorEmailForPatient(patient) || '').toLowerCase().trim();
 

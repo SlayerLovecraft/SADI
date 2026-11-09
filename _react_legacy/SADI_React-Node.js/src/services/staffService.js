@@ -8,6 +8,13 @@ const mapSupabaseToFrontend = (doctor) => ({
   nombre: doctor.doctor_name || '',
   email: doctor.doctor_email || '',
   especialidad: doctor.doctor_specialty || '',
+  rol: doctor.rol || (doctor.doctor_specialty?.toLowerCase().includes('enferm') ? 'Enfermera' : 'Médico'),
+  cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
+  solo_lectura: doctor.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
+  puede_lanzar_llamadas: Boolean(doctor.puede_lanzar_llamadas),
+  puede_enviar_mensajes: Boolean(doctor.puede_enviar_mensajes),
+  puede_crear_campanas: Boolean(doctor.puede_crear_campanas),
+  puede_editar_pacientes: Boolean(doctor.puede_editar_pacientes),
   hospitalId: doctor.hospital_id || null,
   is_active: doctor.is_active,
   created_at: doctor.created_at,
@@ -33,7 +40,7 @@ export const staffService = {
       const makeQuery = () => {
         let query = supabase
           .from('staff')
-          .select('doctor_id, doctor_name, doctor_email, doctor_specialty, hospital_id, is_active, created_at, updated_at')
+          .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
           .order('created_at', { ascending: false });
 
         if (role !== 'super_admin') {
@@ -216,6 +223,13 @@ export const staffService = {
         doctor_email: String(doctor?.email || '').trim().toLowerCase(),
         doctor_password: String(doctor?.password || ''),
         doctor_specialty: String(doctor?.especialidad || '').trim().toLowerCase(),
+        rol: String(doctor?.rol || 'Enfermera'),
+        cursos_vida_asignados: Array.isArray(doctor?.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
+        solo_lectura: doctor?.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
+        puede_lanzar_llamadas: Boolean(doctor?.puede_lanzar_llamadas),
+        puede_enviar_mensajes: Boolean(doctor?.puede_enviar_mensajes),
+        puede_crear_campanas: Boolean(doctor?.puede_crear_campanas),
+        puede_editar_pacientes: Boolean(doctor?.puede_editar_pacientes),
         hospital_id: insertHospitalId,
         is_active: doctor?.is_active ?? true,
       };
@@ -227,7 +241,7 @@ export const staffService = {
       const { data, error } = await supabase
         .from('staff')
         .insert([payload])
-        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, hospital_id, is_active, created_at, updated_at')
+        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
         .single();
 
       if (error) return { success: false, error: error.message };
@@ -250,6 +264,13 @@ export const staffService = {
       if (changes?.especialidad) payload.doctor_specialty = String(changes.especialidad).trim().toLowerCase();
       if (changes?.password) payload.doctor_password = String(changes.password);
       if (changes?.is_active !== undefined) payload.is_active = Boolean(changes.is_active);
+      if (changes?.rol) payload.rol = String(changes.rol);
+      if (changes?.cursos_vida_asignados) payload.cursos_vida_asignados = Array.isArray(changes.cursos_vida_asignados) ? changes.cursos_vida_asignados : ['todos'];
+      if (changes?.solo_lectura !== undefined) payload.solo_lectura = Boolean(changes.solo_lectura);
+      if (changes?.puede_lanzar_llamadas !== undefined) payload.puede_lanzar_llamadas = Boolean(changes.puede_lanzar_llamadas);
+      if (changes?.puede_enviar_mensajes !== undefined) payload.puede_enviar_mensajes = Boolean(changes.puede_enviar_mensajes);
+      if (changes?.puede_crear_campanas !== undefined) payload.puede_crear_campanas = Boolean(changes.puede_crear_campanas);
+      if (changes?.puede_editar_pacientes !== undefined) payload.puede_editar_pacientes = Boolean(changes.puede_editar_pacientes);
       payload.updated_at = new Date().toISOString();
 
       let query = supabase.from('staff').update(payload).eq('doctor_id', id);
@@ -259,7 +280,7 @@ export const staffService = {
       }
 
       const { data, error } = await query
-        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, hospital_id, is_active, created_at, updated_at')
+        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
         .single();
 
       if (error) return { success: false, error: error.message };

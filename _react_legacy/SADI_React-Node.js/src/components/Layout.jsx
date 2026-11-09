@@ -30,15 +30,21 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const navigation = [
-    { name: 'Dashboard Hospital', path: '/dashboard', icon: LayoutDashboard },
+  const isStaffRole = user?.role === 'doctor';
+
+  const allNavigation = [
+    { name: isStaffRole ? 'Dashboard Clínico' : 'Dashboard Hospital', path: isStaffRole ? '/doctor/dashboard' : '/dashboard', icon: LayoutDashboard },
     { name: 'Demanda Res. 3280', path: '/demanda-resolucion', icon: Shield },
     { name: 'Cronograma IVR 3280', path: '/ivr-schedule', icon: Calendar },
-    { name: 'Pacientes', path: '/patients', icon: Users },
-    { name: 'Doctores', path: '/doctors', icon: UserCheck },
+    { name: 'Pacientes', path: isStaffRole ? '/doctor/patients' : '/patients', icon: Users },
+    { name: 'Personal', path: '/staff', icon: UserCheck, hospitalOnly: true },
     { name: 'Campañas', path: '/campaigns', icon: Send },
     { name: 'Reportes Hospital', path: '/reports', icon: BarChart3 }
   ];
+
+  const navigation = isStaffRole 
+    ? allNavigation.filter(item => !item.hospitalOnly) 
+    : allNavigation;
 
   function MessageSquareIcon(props) {
     return (
