@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { staffService } from '@/services/staffService';
 import { patientService } from '@/services/patientService';
-import PatientTelemetryTable from '@/components/PatientTelemetryTable';
+import StaffPatientInteractionsTable from '@/components/StaffPatientInteractionsTable';
 import {
   Dialog,
   DialogContent,
@@ -469,7 +469,7 @@ export default function DoctorsPage() {
           </div>
         </div>
 
-        {/* Tabla de Personal en Lista (tal como en la solicitud) */}
+        {/* Tabla de Personal en Lista (tal como en la solicitud: Nombre, Grupos de Vida Asignados, Grupos de Riesgo Asignados) */}
         <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
@@ -478,15 +478,13 @@ export default function DoctorsPage() {
                   <th className="p-4 whitespace-nowrap">Nombre</th>
                   <th className="p-4 whitespace-nowrap">Grupos de Vida Asignados</th>
                   <th className="p-4 whitespace-nowrap">Grupos de Riesgo Asignados</th>
-                  <th className="p-4 whitespace-nowrap">Rol & Especialidad</th>
-                  <th className="p-4 text-center whitespace-nowrap">Permisos de Interacción</th>
                   <th className="p-4 text-right whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-gray-400">
+                    <td colSpan={4} className="text-center py-12 text-gray-400">
                       <div className="flex flex-col items-center gap-2">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                         <span className="text-xs font-semibold">Cargando personal institucional...</span>
@@ -495,7 +493,7 @@ export default function DoctorsPage() {
                   </tr>
                 ) : filteredStaff.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-10 text-gray-400">
+                    <td colSpan={4} className="text-center py-10 text-gray-400">
                       No se encontró personal con los filtros indicados.
                     </td>
                   </tr>
@@ -510,7 +508,7 @@ export default function DoctorsPage() {
                     return (
                       <tr key={staff.id} className="hover:bg-blue-50/40 transition-colors">
                         
-                        {/* 1. Nombre (Clickeable -> Despliega lista de pacientes) */}
+                        {/* 1. Nombre (Clickeable -> Despliega lista de llamadas y transcripciones de sus pacientes) */}
                         <td className="p-4 whitespace-nowrap">
                           <button
                             onClick={() => {
@@ -518,7 +516,7 @@ export default function DoctorsPage() {
                               setPatientSearchTerm('');
                             }}
                             className="text-left group flex items-start gap-2.5 transition-transform active:scale-98"
-                            title="Haz clic para ver los pacientes asignados a este profesional"
+                            title="Haz clic para ver los pacientes, grabaciones de audio y transcripciones lanzadas por este profesional"
                           >
                             <div className="w-9 h-9 rounded-2xl bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center font-black text-sm shrink-0 transition-colors shadow-xs">
                               {staff.nombre ? staff.nombre.charAt(0).toUpperCase() : 'P'}
@@ -528,8 +526,17 @@ export default function DoctorsPage() {
                                 <span>{staff.nombre}</span>
                                 <Eye className="w-3.5 h-3.5 text-blue-500 opacity-60 group-hover:opacity-100" />
                               </div>
-                              <div className="text-[11px] text-gray-500 font-mono mt-0.5">
-                                {staff.email}
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className={`px-2 py-0.2 rounded-full text-[9px] font-black inline-flex items-center gap-1 ${
+                                  isNurse
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {staff.rol || 'Enfermera'}
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-mono">
+                                  {staff.email}
+                                </span>
                               </div>
                             </div>
                           </button>
@@ -575,55 +582,7 @@ export default function DoctorsPage() {
                           )}
                         </td>
 
-                        {/* 4. Rol & Especialidad */}
-                        <td className="p-4">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black inline-flex items-center gap-1 ${
-                            isNurse
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-purple-100 text-purple-800 border border-purple-300'
-                          }`}>
-                            <Award className="w-3 h-3" />
-                            {staff.rol || 'Enfermera'}
-                          </span>
-                          <p className="text-[11px] text-gray-600 font-medium mt-1 truncate max-w-[200px]" title={staff.especialidad}>
-                            {staff.especialidad}
-                          </p>
-                        </td>
-
-                        {/* 5. Permisos de Interacción */}
-                        <td className="p-4 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                            {staff.solo_lectura ? (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5" /> Solo Lectura
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
-                                <Unlock className="w-2.5 h-2.5" /> Interactivo
-                              </span>
-                            )}
-
-                            {staff.puede_lanzar_llamadas && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1">
-                                <PhoneCall className="w-2.5 h-2.5" /> Llamadas
-                              </span>
-                            )}
-
-                            {staff.puede_enviar_mensajes && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-green-50 text-green-700 border border-green-200 flex items-center gap-1">
-                                <MessageSquare className="w-2.5 h-2.5" /> Mensajes
-                              </span>
-                            )}
-
-                            {staff.puede_crear_campanas && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1">
-                                <Send className="w-2.5 h-2.5" /> Campañas
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* 6. Acciones */}
+                        {/* 4. Acciones */}
                         <td className="p-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
                             
@@ -674,7 +633,7 @@ export default function DoctorsPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* MODAL PRINCIPAL: PACIENTES ASIGNADOS AL PERSONAL SELECCIONADO */}
+      {/* MODAL PRINCIPAL: PACIENTES, LLAMADAS, AUDIOS Y TRANSCRIPCIONES */}
       {/* ========================================================================= */}
       <Dialog open={!!viewingPatientsStaff} onOpenChange={() => setViewingPatientsStaff(null)}>
         <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto bg-slate-50 p-6 rounded-3xl">
@@ -686,9 +645,9 @@ export default function DoctorsPage() {
                 </div>
                 <div>
                   <DialogTitle className="text-lg font-black text-gray-900 flex items-center gap-2">
-                    Pacientes Asignados a {viewingPatientsStaff?.nombre}
+                    Llamadas e Interacciones de {viewingPatientsStaff?.nombre}
                     <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold border border-blue-200">
-                      {assignedPatients.length} pacientes
+                      {assignedPatients.length} pacientes asignados
                     </span>
                   </DialogTitle>
                   <DialogDescription className="text-xs text-gray-600 mt-0.5">
@@ -696,32 +655,21 @@ export default function DoctorsPage() {
                   </DialogDescription>
                 </div>
               </div>
-
-              {/* Buscador Rápido de Pacientes */}
-              <div className="relative w-full md:w-64">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Filtrar por nombre o CC..."
-                  value={patientSearchTerm}
-                  onChange={(e) => setPatientSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-gray-200 bg-white font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
             </div>
           </DialogHeader>
 
-          {/* TABLA COMPLETA DE PACIENTES ASIGNADOS (CON DISPOSITIVO, CURVA, VALORES CRÍTICOS Y CANALES) */}
+          {/* TABLA DE PACIENTES: CICLOS DE VIDA, MENSAJES, LLAMADAS, GRABACIONES DE AUDIO Y TRANSCRIPCIONES */}
           <div className="mt-4">
-            <PatientTelemetryTable
-              patients={filteredAssignedPatients}
-              emptyMessage={`No hay pacientes asignados bajo los Cursos de Vida y Riesgos de ${viewingPatientsStaff?.nombre}.`}
+            <StaffPatientInteractionsTable
+              patients={assignedPatients}
+              staff={viewingPatientsStaff}
+              emptyMessage={`No hay pacientes asignados bajo los Cursos de Vida o Riesgos de ${viewingPatientsStaff?.nombre}.`}
             />
           </div>
 
           <div className="flex justify-end pt-3 border-t border-gray-200 mt-4">
             <Button variant="outline" onClick={() => setViewingPatientsStaff(null)} className="text-xs font-bold">
-              Cerrar Vista de Pacientes
+              Cerrar Vista
             </Button>
           </div>
         </DialogContent>
