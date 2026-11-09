@@ -98,9 +98,25 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
+                <Route 
+                  path="/telemonitoreo" 
+                  element={
+                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
+                      <TelemonitoringDashboardPage />
+                    </ProtectedRoute>
+                  } 
+                />
 
                 <Route 
                   path="/rias-3280" 
+                  element={
+                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
+                      <Rias3280ManagementPage />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/demanda-resolucion" 
                   element={
                     <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
                       <Rias3280ManagementPage />
