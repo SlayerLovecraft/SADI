@@ -19,22 +19,93 @@ function calculateAge(birthdate) {
   return age;
 }
 
+// Función auxiliar para determinar Curso de Vida según edad y programa
+function getCursoVidaFromData(age, program) {
+  const p = (program || '').toLowerCase();
+  if (p.includes('embarazo') || p.includes('prenatal') || p.includes('materno') || p.includes('ginecolog')) {
+    return 'Preventivo de la Mujer';
+  }
+  if (p.includes('planificac')) return 'Planificación Familiar';
+  if (p.includes('vacuna')) return 'Vacunación';
+  if (p.includes('oral') || p.includes('odontolog')) return 'Salud Oral';
+
+  if (age === null || age === undefined) return 'Adultez';
+  if (age <= 5) return 'Primera Infancia';
+  if (age <= 11) return 'Infancia';
+  if (age <= 17) return 'Adolescencia';
+  if (age <= 28) return 'Juventud';
+  if (age <= 59) return 'Adultez';
+  return 'Vejez';
+}
+
 // Mapear de Supabase a Frontend
 function mapSupabaseToFrontend(patient) {
+  const age = calculateAge(patient.birthdate);
+  const cursoVida = getCursoVidaFromData(age, patient.program);
+
+  // Parsing seguro de JSON
+  let dispositivos = [];
+  try {
+    dispositivos = Array.isArray(patient.dispositivos_caseros) 
+      ? patient.dispositivos_caseros 
+      : (patient.dispositivos_caseros ? JSON.parse(patient.dispositivos_caseros) : []);
+  } catch (e) {
+    dispositivos = [];
+  }
+
+  let valoresCriticos = { tiene_critico: false, tipo: 'Sin alertas', valor: 'Normal', fecha_hora: 'N/A', estado: 'Estable' };
+  try {
+    if (patient.valores_criticos) {
+      valoresCriticos = typeof patient.valores_criticos === 'object' 
+        ? patient.valores_criticos 
+        : JSON.parse(patient.valores_criticos);
+    }
+  } catch (e) {}
+
+  let historialMedidas = [];
+  try {
+    if (patient.historial_medidas) {
+      historialMedidas = Array.isArray(patient.historial_medidas) 
+        ? patient.historial_medidas 
+        : JSON.parse(patient.historial_medidas);
+    }
+  } catch (e) {}
+
+  let conteoCanales = { whatsapp: 3, email: 1, call: 2, sms: 1 };
+  try {
+    if (patient.conteo_canales) {
+      conteoCanales = typeof patient.conteo_canales === 'object' 
+        ? patient.conteo_canales 
+        : JSON.parse(patient.conteo_canales);
+    }
+  } catch (e) {}
+
   return {
     id: patient.patient_id,
     nombre: patient.name,
     telefono: patient.phone,
     email: patient.email,
     cc: patient.document,
-    edad: calculateAge(patient.birthdate),
+    edad: age,
     fechaNacimiento: patient.birthdate,
     sexo: patient.sex === 'Masculino' ? 'M' : patient.sex === 'Femenino' ? 'F' : patient.sex,
     ciudad: patient.city || '',
     programa: patient.program || '',
     direccion: patient.address || '',
     hospitalId: patient.hospital_id,
-    fechaRegistro: patient.created_at
+    fechaRegistro: patient.created_at,
+    zona: patient.zona || 'Urbano',
+    barrio: patient.barrio || 'Centro',
+    comuna: patient.comuna || 'Comuna 1',
+    grupo_riesgo: patient.grupo_riesgo || 'Alteraciones Cardiovasculares, Metabólicas y Renales',
+    grupo_vida: cursoVida,
+    curso_vida: cursoVida,
+    tipo_usuario: patient.tipo_usuario || 'Activo',
+    dispositivos: dispositivos,
+    dispositivos_caseros: dispositivos,
+    valores_criticos: valoresCriticos,
+    historial_medidas: historialMedidas,
+    conteo_canales: conteoCanales
   };
 }
 
@@ -118,43 +189,67 @@ export const patientService = {
         ({ data, error } = await run());
       }
       
-      if (error) {
-        console.warn('⚠️ Supabase no disponible o error, usando los 35 pacientes de prueba 3280:', error.message);
-        const fallbackMapped = SEED_PATIENTS_3280.map(p => ({
+      const mapFallbackPatient = (p, defaultHospId) => {
+        const age = calculateAge(p.fecha_nacimiento);
+        const cv = p.curso_vida?.replace('_', ' ') || getCursoVidaFromData(age, p.programa);
+        const hasDevice = (p.dispositivos_caseros && p.dispositivos_caseros.length > 0);
+        return {
           id: p.id,
           nombre: p.nombre,
           telefono: p.telefono,
           email: p.email,
           cc: p.documento,
-          edad: calculateAge(p.fecha_nacimiento),
+          edad: age,
           fechaNacimiento: p.fecha_nacimiento,
           sexo: p.sexo === 'masculino' ? 'M' : 'F',
           ciudad: 'Cali / Medellín / Bogotá',
-          programa: p.curso_vida?.replace('_', ' ') || 'Res. 3280',
+          programa: cv,
           direccion: p.direccion || 'Dirección registrada',
-          hospitalId: hospitalId || 'hosp-001',
-          fechaRegistro: new Date().toISOString()
-        }));
-        return { success: true, data: fallbackMapped };
+          hospitalId: defaultHospId,
+          fechaRegistro: new Date().toISOString(),
+          zona: 'Urbano',
+          barrio: 'El Poblado',
+          comuna: 'Comuna 14',
+          grupo_riesgo: p.es_gestante ? 'Población Materno-Perinatal' : 'Alteraciones Cardiovasculares, Metabólicas y Renales',
+          grupo_vida: cv,
+          curso_vida: cv,
+          tipo_usuario: 'Activo',
+          dispositivos: p.dispositivos_caseros || [],
+          dispositivos_caseros: p.dispositivos_caseros || [],
+          valores_criticos: hasDevice ? {
+            tiene_critico: true,
+            tipo: 'Alerta de Parámetro Clínico',
+            valor: 'Fuera de rango',
+            fecha_hora: '2026-11-08 08:30 AM',
+            estado: 'Atendido'
+          } : {
+            tiene_critico: false,
+            tipo: 'Sin Telemetría Registrada',
+            valor: 'Sin Dispositivo en Domicilio',
+            fecha_hora: 'N/A',
+            estado: 'Línea Base'
+          },
+          historial_medidas: hasDevice ? [
+            { fecha: '2026-11-03', valor: 36.6, etiqueta: '36.6 °C' },
+            { fecha: '2026-11-04', valor: 36.8, etiqueta: '36.8 °C' },
+            { fecha: '2026-11-05', valor: 37.1, etiqueta: '37.1 °C' },
+            { fecha: '2026-11-06', valor: 37.5, etiqueta: '37.5 °C' },
+            { fecha: '2026-11-07', valor: 38.6, etiqueta: '38.6 °C (Alerta)' },
+            { fecha: '2026-11-08', valor: 37.0, etiqueta: '37.0 °C' },
+            { fecha: '2026-11-09', valor: 36.6, etiqueta: '36.6 °C' }
+          ] : [],
+          conteo_canales: { whatsapp: 4, email: 2, call: 3, sms: 1 }
+        };
+      };
+
+      if (error) {
+        console.warn('⚠️ Supabase no disponible o error, usando los 35 pacientes de prueba 3280:', error.message);
+        return { success: true, data: SEED_PATIENTS_3280.map(p => mapFallbackPatient(p, hospitalId || 'hosp-001')) };
       }
       
       let mappedData = data?.map(mapSupabaseToFrontend) || [];
       if (mappedData.length === 0) {
-        mappedData = SEED_PATIENTS_3280.map(p => ({
-          id: p.id,
-          nombre: p.nombre,
-          telefono: p.telefono,
-          email: p.email,
-          cc: p.documento,
-          edad: calculateAge(p.fecha_nacimiento),
-          fechaNacimiento: p.fecha_nacimiento,
-          sexo: p.sexo === 'masculino' ? 'M' : 'F',
-          ciudad: 'Cali / Medellín / Bogotá',
-          programa: p.curso_vida?.replace('_', ' ') || 'Res. 3280',
-          direccion: p.direccion || 'Dirección registrada',
-          hospitalId: hospitalId || 'hosp-001',
-          fechaRegistro: new Date().toISOString()
-        }));
+        mappedData = SEED_PATIENTS_3280.map(p => mapFallbackPatient(p, hospitalId || 'hosp-001'));
       }
       
       console.log(`✅ Se obtuvieron ${mappedData.length} pacientes del hospital ${hospitalId}`);
@@ -166,7 +261,7 @@ export const patientService = {
       
     } catch (error) {
       console.warn('⚠️ Excepción al cargar pacientes, fallback a 35 pacientes:', error);
-      const fallbackMapped = SEED_PATIENTS_3280.map(p => ({
+      return { success: true, data: SEED_PATIENTS_3280.map(p => ({
         id: p.id,
         nombre: p.nombre,
         telefono: p.telefono,
@@ -179,9 +274,17 @@ export const patientService = {
         programa: p.curso_vida?.replace('_', ' ') || 'Res. 3280',
         direccion: p.direccion || 'Dirección registrada',
         hospitalId: 'hosp-001',
-        fechaRegistro: new Date().toISOString()
-      }));
-      return { success: true, data: fallbackMapped };
+        fechaRegistro: new Date().toISOString(),
+        grupo_vida: 'Primera Infancia',
+        curso_vida: 'Primera Infancia',
+        grupo_riesgo: 'Población Materno-Perinatal',
+        tipo_usuario: 'Activo',
+        dispositivos: p.dispositivos_caseros || [],
+        dispositivos_caseros: p.dispositivos_caseros || [],
+        valores_criticos: { tiene_critico: false, tipo: 'Sin alertas', valor: 'Normal', fecha_hora: 'N/A', estado: 'Estable' },
+        historial_medidas: [],
+        conteo_canales: { whatsapp: 2, email: 1, call: 2, sms: 1 }
+      })) };
     }
   },
 

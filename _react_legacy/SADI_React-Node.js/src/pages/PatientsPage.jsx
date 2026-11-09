@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils';
+import PatientTelemetryTable from '@/components/PatientTelemetryTable';
 import { supabase } from '@/lib/supabase'
 import {
   Dialog,
@@ -956,81 +957,17 @@ const PatientsPage = () => {
             )}
           </div>
 
-          {filteredPatients.length === 0 ? (
-            <div className="text-center py-12">
-              <User className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">
-                {searchTerm ? 'No se encontraron pacientes' : 'No hay pacientes registrados'}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredPatients.map((patient, index) => (
-                <motion.div
-                  key={patient.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3 flex-1">
-                      <div className="bg-blue-100 p-2 rounded-full">
-                        <User className="h-6 w-6 text-blue-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 truncate">{patient.nombre}</p>
-                        <p className="text-xs text-gray-400">CC: {patient.cc || patient.cedula || 'N/A'}</p>
-                        <div className="mt-2 space-y-1">
-                          <div className="flex items-center text-sm text-gray-500">
-                            <Phone className="h-3 w-3 mr-1" />
-                            {patient.telefono}
-                          </div>
-                          <div className="flex items-center text-sm text-gray-500">
-                            <MapPin className="h-3 w-3 mr-1" />
-                            {patient.ciudad || 'N/A'}
-                          </div>
-                          {patient.email && (
-                            <div className="flex items-center text-xs text-gray-500">
-                              <Mail className="h-3 w-3 mr-1" />
-                              {patient.email}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-1 ml-2">
-                      <div className="flex justify-end">
-                        <input
-                          type="checkbox"
-                          checked={selectedIdSet.has(patient.id)}
-                          onChange={() => togglePatientSelection(patient.id)}
-                          className="h-4 w-4"
-                        />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEditDialog(patient)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <Edit className="h-4 w-4 text-blue-600" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setPatientToDelete(patient)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
+          <div className="mt-4">
+            <PatientTelemetryTable
+              patients={filteredPatients}
+              selectable={true}
+              selectedPatientIds={selectedPatientIds}
+              onToggleSelect={togglePatientSelection}
+              onEditPatient={openEditDialog}
+              onDeletePatient={setPatientToDelete}
+              emptyMessage={searchTerm ? 'No se encontraron pacientes que coincidan con la búsqueda.' : 'No hay pacientes registrados en este hospital.'}
+            />
+          </div>
         </div>
       </div>
 

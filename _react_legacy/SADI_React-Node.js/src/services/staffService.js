@@ -10,6 +10,7 @@ const mapSupabaseToFrontend = (doctor) => ({
   especialidad: doctor.doctor_specialty || '',
   rol: doctor.rol || (doctor.doctor_specialty?.toLowerCase().includes('enferm') ? 'Enfermera' : 'Médico'),
   cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
+  grupos_riesgo_asignados: Array.isArray(doctor.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : ['todos'],
   solo_lectura: doctor.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
   puede_lanzar_llamadas: Boolean(doctor.puede_lanzar_llamadas),
   puede_enviar_mensajes: Boolean(doctor.puede_enviar_mensajes),
@@ -40,7 +41,7 @@ export const staffService = {
       const makeQuery = () => {
         let query = supabase
           .from('staff')
-          .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+          .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
           .order('created_at', { ascending: false });
 
         if (role !== 'super_admin') {
@@ -64,35 +65,51 @@ export const staffService = {
       }
 
       if (error || !data || data.length === 0) {
-        return { 
-          success: true, 
+        return {
+          success: true,
           data: SEED_DOCTORS_3280.map(d => ({
             id: d.id,
             doctor_id: d.id,
             nombre: d.name,
             email: d.email,
             especialidad: d.specialty,
+            rol: d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico',
+            cursos_vida_asignados: ['todos'],
+            grupos_riesgo_asignados: ['todos'],
+            solo_lectura: true,
+            puede_lanzar_llamadas: true,
+            puede_enviar_mensajes: true,
+            puede_crear_campanas: false,
+            puede_editar_pacientes: false,
             hospitalId: hospitalId || 'hosp-001',
             is_active: true,
             created_at: new Date().toISOString()
-          })) 
+          }))
         };
       }
 
       return { success: true, data: (data || []).map(mapSupabaseToFrontend) };
     } catch (error) {
-      return { 
-        success: true, 
+      return {
+        success: true,
         data: SEED_DOCTORS_3280.map(d => ({
           id: d.id,
           doctor_id: d.id,
           nombre: d.name,
           email: d.email,
           especialidad: d.specialty,
+          rol: d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico',
+          cursos_vida_asignados: ['todos'],
+          grupos_riesgo_asignados: ['todos'],
+          solo_lectura: true,
+          puede_lanzar_llamadas: true,
+          puede_enviar_mensajes: true,
+          puede_crear_campanas: false,
+          puede_editar_pacientes: false,
           hospitalId: 'hosp-001',
           is_active: true,
           created_at: new Date().toISOString()
-        })) 
+        }))
       };
     }
   },
@@ -225,6 +242,7 @@ export const staffService = {
         doctor_specialty: String(doctor?.especialidad || '').trim().toLowerCase(),
         rol: String(doctor?.rol || 'Enfermera'),
         cursos_vida_asignados: Array.isArray(doctor?.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
+        grupos_riesgo_asignados: Array.isArray(doctor?.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : ['todos'],
         solo_lectura: doctor?.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
         puede_lanzar_llamadas: Boolean(doctor?.puede_lanzar_llamadas),
         puede_enviar_mensajes: Boolean(doctor?.puede_enviar_mensajes),
@@ -241,7 +259,7 @@ export const staffService = {
       const { data, error } = await supabase
         .from('staff')
         .insert([payload])
-        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
         .single();
 
       if (error) return { success: false, error: error.message };
@@ -266,6 +284,7 @@ export const staffService = {
       if (changes?.is_active !== undefined) payload.is_active = Boolean(changes.is_active);
       if (changes?.rol) payload.rol = String(changes.rol);
       if (changes?.cursos_vida_asignados) payload.cursos_vida_asignados = Array.isArray(changes.cursos_vida_asignados) ? changes.cursos_vida_asignados : ['todos'];
+      if (changes?.grupos_riesgo_asignados) payload.grupos_riesgo_asignados = Array.isArray(changes.grupos_riesgo_asignados) ? changes.grupos_riesgo_asignados : ['todos'];
       if (changes?.solo_lectura !== undefined) payload.solo_lectura = Boolean(changes.solo_lectura);
       if (changes?.puede_lanzar_llamadas !== undefined) payload.puede_lanzar_llamadas = Boolean(changes.puede_lanzar_llamadas);
       if (changes?.puede_enviar_mensajes !== undefined) payload.puede_enviar_mensajes = Boolean(changes.puede_enviar_mensajes);
@@ -280,7 +299,7 @@ export const staffService = {
       }
 
       const { data, error } = await query
-        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
         .single();
 
       if (error) return { success: false, error: error.message };
@@ -304,7 +323,7 @@ export const staffService = {
 
       const runDelete = () => query;
       const { error } = await withTimeout(runDelete(), 15000, 'Tiempo de espera agotado al eliminar doctor');
-      
+
       if (error) return { success: false, error: error.message };
       return { success: true };
     } catch (error) {
