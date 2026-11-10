@@ -269,47 +269,63 @@ export default function StaffPatientInteractionsTable({
 
                     {/* 4. Llamadas Realizadas */}
                     <td className="p-3.5 text-center whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black bg-blue-50 text-blue-800 border border-blue-200">
-                        <Phone className="w-3.5 h-3.5 text-blue-600" />
-                        <span>{conteo.call || 2} Llamadas</span>
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold ${
+                        (conteo.call || 0) > 0
+                          ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                          : 'bg-slate-50 text-slate-500 border border-slate-200'
+                      }`}>
+                        <Phone className={`w-3.5 h-3.5 ${(conteo.call || 0) > 0 ? 'text-blue-600' : 'text-slate-400'}`} />
+                        <span>{conteo.call || 0} Llamadas</span>
                       </span>
                     </td>
 
                     {/* 5. Grabaciones de Audio (Llamada del Agente lanzada por la Enfermera) */}
                     <td className="p-3.5 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => handleToggleAudio(patient)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-xs ${
-                          isPlayingThis
-                            ? 'bg-red-600 text-white animate-pulse shadow-md shadow-red-200'
-                            : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-md'
-                        }`}
-                        title="Escuchar audio de la llamada del Agente IA lanzada por esta enfermera"
-                      >
-                        {isPlayingThis ? (
-                          <>
-                            <Pause className="w-3.5 h-3.5" />
-                            <span>Pausar Audio</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-3.5 h-3.5" />
-                            <span>Reproducir Audio</span>
-                          </>
-                        )}
-                      </button>
+                      {(conteo.call || 0) > 0 ? (
+                        <button
+                          onClick={() => handleToggleAudio(patient)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-xs ${
+                            isPlayingThis
+                              ? 'bg-red-600 text-white animate-pulse shadow-md shadow-red-200'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-md'
+                          }`}
+                          title="Escuchar audio de la llamada del Agente IA lanzada por esta enfermera"
+                        >
+                          {isPlayingThis ? (
+                            <>
+                              <Pause className="w-3.5 h-3.5" />
+                              <span>Pausar Audio</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3.5 h-3.5" />
+                              <span>Reproducir Audio</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/60 inline-flex items-center gap-1">
+                          Sin audios
+                        </span>
+                      )}
                     </td>
 
                     {/* 6. Transcripciones */}
                     <td className="p-3.5 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => setSelectedTranscript({ patient, data: transcriptData })}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-xs hover:shadow-md"
-                        title="Ver transcripción detallada de la llamada"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-blue-400" />
-                        <span>Ver Transcripción</span>
-                      </button>
+                      {(conteo.call || 0) > 0 ? (
+                        <button
+                          onClick={() => setSelectedTranscript({ patient, data: transcriptData })}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-xs hover:shadow-md"
+                          title="Ver transcripción detallada de la llamada"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Ver Transcripción</span>
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/60 inline-flex items-center gap-1">
+                          Sin transcripción
+                        </span>
+                      )}
                     </td>
 
                   </tr>

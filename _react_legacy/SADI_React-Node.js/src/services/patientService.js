@@ -251,6 +251,54 @@ export const patientService = {
       if (mappedData.length === 0) {
         mappedData = SEED_PATIENTS_3280.map(p => mapFallbackPatient(p, hospitalId || 'hosp-001'));
       }
+
+      // Enriquecer en tiempo real con signos vitales registrados por pacientes desde su panel
+      try {
+        const { data: vitals } = await supabase
+          .from('signos_vitales')
+          .select('*')
+          .order('fecha', { ascending: true });
+        
+        if (vitals && vitals.length > 0) {
+          const vitalsByPatient = {};
+          vitals.forEach(v => {
+            if (!v.paciente_id) return;
+            if (!vitalsByPatient[v.paciente_id]) vitalsByPatient[v.paciente_id] = [];
+            const fStr = new Date(v.fecha).toISOString().replace('T', ' ').substring(0, 16);
+            const temp = parseFloat(v.temperatura) || 36.5;
+            const pa = (v.presion_sistolica && v.presion_diastolica) ? ` · PA: ${v.presion_sistolica}/${v.presion_diastolica}` : '';
+            const glu = v.glucometria ? ` · Gluc: ${v.glucometria} mg/dL` : '';
+            const fc = v.ritmo_cardiaco ? ` · FC: ${v.ritmo_cardiaco} lpm` : '';
+            const peso = v.peso ? ` · Peso: ${v.peso} kg` : '';
+            vitalsByPatient[v.paciente_id].push({
+              fecha: fStr,
+              valor: temp,
+              etiqueta: `${temp} °C${pa}${glu}${fc}${peso}`
+            });
+          });
+
+          mappedData = mappedData.map(p => {
+            const extraVitals = vitalsByPatient[p.id] || vitalsByPatient[p.patient_id];
+            if (extraVitals && extraVitals.length > 0) {
+              const lastVital = extraVitals[extraVitals.length - 1];
+              return {
+                ...p,
+                historial_medidas: extraVitals,
+                valores_criticos: {
+                  tiene_critico: false,
+                  tipo: 'Signos Vitales Registrados por Paciente',
+                  valor: lastVital.etiqueta,
+                  estado: 'Normal / Estable',
+                  fecha_hora: lastVital.fecha
+                }
+              };
+            }
+            return p;
+          });
+        }
+      } catch (errVitals) {
+        console.warn('⚠️ No se pudieron consultar signos vitales:', errVitals);
+      }
       
       console.log(`✅ Se obtuvieron ${mappedData.length} pacientes del hospital ${hospitalId}`);
       

@@ -39,6 +39,67 @@ export const MAX_PATIENTS_PER_BATCH = 32;
 const STORAGE_KEY_SCHEDULE = 'sadi_ivr_daily_schedule';
 const STORAGE_KEY_CONFIG = 'sadi_ivr_config';
 
+/**
+ * Genera el guion personalizado para el agente de llamadas de la Resolución 3280
+ * adaptado según el curso de vida y el hito clínico obligatorio.
+ */
+export const generateCallScript3280 = (patient) => {
+  const cVida = (patient.cursoVida || '').toLowerCase();
+  const firstName = (patient.nombre || patient.name || 'Paciente').split(' ')[0];
+  const hito = patient.accion3280 || patient.programa3280 || 'valoración integral de salud';
+  const hospital = 'Hospital Central SADI';
+
+  if (cVida.includes('primera') || cVida.includes('infancia')) {
+    return {
+      motivo: 'Control de Crecimiento, Desarrollo y Vacunación PAI',
+      saludo: `Hola, le hablamos del ${hospital}. Nos comunicamos con el acudiente de ${firstName}.`,
+      mensaje: `Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), le corresponde su cita de: ${hito}.`,
+      instruccion: 'Para confirmar su asistencia a la cita programada presione 1. Para reagendar una nueva fecha presione 2.',
+      textoCompleto: `Hola, le hablamos del ${hospital}. Nos comunicamos con el acudiente de ${firstName}. Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), le corresponde su cita de: ${hito}. Para confirmar su asistencia presione 1, para reagendar presione 2.`
+    };
+  } else if (cVida.includes('adolescencia')) {
+    return {
+      motivo: 'Atención Integral del Adolescente y Salud Visual',
+      saludo: `Hola ${firstName}, te saludamos del ${hospital}.`,
+      mensaje: `Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}.`,
+      instruccion: 'Para confirmar tu asistencia presiona 1. Para reagendar presiona 2.',
+      textoCompleto: `Hola ${firstName}, te saludamos del ${hospital}. Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}. Para confirmar tu asistencia presiona 1, para reagendar presiona 2.`
+    };
+  } else if (cVida.includes('juventud')) {
+    return {
+      motivo: 'Salud Integral de la Juventud y Tamizaje Preventivo',
+      saludo: `Hola ${firstName}, te saludamos del ${hospital}.`,
+      mensaje: `Por la Ruta de Salud de la Juventud (Resolución 3280), te corresponde tu cita de: ${hito}.`,
+      instruccion: 'Para confirmar tu cita presiona 1. Para reagendar presiona 2.',
+      textoCompleto: `Hola ${firstName}, te saludamos del ${hospital}. Por la Ruta de Salud de la Juventud (Resolución 3280), te corresponde tu cita de: ${hito}. Para confirmar tu cita presiona 1, para reagendar presiona 2.`
+    };
+  } else if (cVida.includes('adultez')) {
+    return {
+      motivo: 'Tamizaje de Riesgo Cardiovascular y Prevención Oncológica',
+      saludo: `Estimado(a) ${firstName}, le saludamos del ${hospital}.`,
+      mensaje: `Nos comunicamos para su control preventivo obligatorio bajo Resolución 3280: ${hito}.`,
+      instruccion: 'Para confirmar su asistencia presione 1. Para solicitar reagendamiento presione 2.',
+      textoCompleto: `Estimado(a) ${firstName}, le saludamos del ${hospital}. Nos comunicamos para su control preventivo obligatorio bajo Resolución 3280: ${hito}. Para confirmar su asistencia presione 1, para solicitar reagendamiento presione 2.`
+    };
+  } else if (cVida.includes('vejez')) {
+    return {
+      motivo: 'Valoración Geriátrica Integral del Adulto Mayor',
+      saludo: `Apreciado(a) ${firstName}, le saludamos con especial atención del ${hospital}.`,
+      mensaje: `Le recordamos su control médico preventivo de la Ruta de la Vejez: ${hito}.`,
+      instruccion: 'Para confirmar su cita presione 1. Para reagendar presiona 2.',
+      textoCompleto: `Apreciado(a) ${firstName}, le saludamos con especial atención del ${hospital}. Le recordamos su control médico preventivo de la Ruta de la Vejez: ${hito}. Para confirmar su cita presione 1, para reagendar presione 2.`
+    };
+  } else {
+    return {
+      motivo: 'Ruta Materno-Perinatal y Control Prenatal',
+      saludo: `Hola ${firstName}, le saludamos del ${hospital}.`,
+      mensaje: `Nos comunicamos para confirmar su cita prioritaria de la Ruta Materno-Perinatal: ${hito}.`,
+      instruccion: 'Para confirmar su cita presione 1. Para reagendar presiona 2.',
+      textoCompleto: `Hola ${firstName}, le saludamos del ${hospital}. Nos comunicamos para confirmar su cita prioritaria de la Ruta Materno-Perinatal: ${hito}. Para confirmar su cita presione 1, para reagendar presione 2.`
+    };
+  }
+};
+
 export const ivrScheduleService = {
   /**
    * Obtiene la configuración del motor IVR
@@ -109,15 +170,43 @@ export const ivrScheduleService = {
       patients = await telemonitoringService.getPatients();
     }
 
-    // Construir la agenda de llamadas del día distribuyendo en tandas de 32
-    const todayStr = new Date().toISOString().split('T')[0];
-    const scheduleItems = [];
+    // Distribución oficial de la Resolución 3280 a lo largo del mes
+    // Regla de Oro Res. 3280: Los pacientes NO se llaman todos el mismo día, sino que
+    // se distribuyen ordenadamente por días hábiles según sus hitos de control de ruta.
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth() + 1;
+    const todayStr = today.toISOString().split('T')[0];
 
-    // Distribuir los pacientes en las tandas
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const workdays = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(year, month - 1, d);
+      if (date.getDay() !== 0) { // Lunes a sábado
+        workdays.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+      }
+    }
+
+    // Filtrar los pacientes que corresponden a la cohorte de la fecha de hoy
+    let scheduledForToday = patients.filter((p, idx) => {
+      const assignedDate = workdays[idx % workdays.length];
+      return assignedDate === todayStr;
+    });
+
+    // Si hoy es domingo o fecha especial, asegurar una cohorte diaria de 2 a 3 pacientes
+    if (scheduledForToday.length === 0) {
+      const dayIdx = (today.getDate() - 1) % workdays.length;
+      scheduledForToday = patients.slice(dayIdx * 2, (dayIdx * 2) + 3);
+      if (scheduledForToday.length === 0) {
+        scheduledForToday = patients.slice(0, 3);
+      }
+    }
+
+    const scheduleItems = [];
     let currentSlotIndex = 0;
     let slotCount = 0;
 
-    patients.forEach((p, idx) => {
+    scheduledForToday.forEach((p, idx) => {
       const curso = getCursoVida3280(p.birthdate || p.fecha_nacimiento);
       const appts = getRequiredRIASAppointments(
         p.birthdate || p.fecha_nacimiento,
@@ -132,6 +221,12 @@ export const ivrScheduleService = {
       };
 
       const slot = IVR_TIME_SLOTS[currentSlotIndex] || IVR_TIME_SLOTS[0];
+      const callScript = generateCallScript3280({
+        nombre: p.name || p.nombre,
+        cursoVida: curso.label,
+        accion3280: targetAppt.accion,
+        programa3280: targetAppt.nombre
+      });
 
       // Estados posibles: 'programada', 'confirmada', 'reagendada', 'no_contesta', 'en_reintento', 'caso_aislado_humano'
       scheduleItems.push({
@@ -147,6 +242,7 @@ export const ivrScheduleService = {
         edad: curso.edad,
         programa3280: targetAppt.nombre,
         accion3280: targetAppt.accion,
+        script: callScript,
         hospitalId: p.hospital_id || hospitalId,
         slotId: slot.id,
         slotHora: slot.hora,

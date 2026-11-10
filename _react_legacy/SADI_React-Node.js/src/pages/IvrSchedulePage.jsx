@@ -112,7 +112,10 @@ export default function IvrSchedulePage() {
   const loadDailySchedule = async (force = false) => {
     setLoadingDaily(true);
     try {
-      const data = await ivrScheduleService.getDailySchedule(null, force);
+      // Si en caché local había quedado el lote completo de 56 pacientes, forzamos recálculo según la distribución real 3280
+      const cached = localStorage.getItem('sadi_ivr_daily_schedule');
+      const shouldForce = force || (cached && JSON.parse(cached)?.totalPacientes > 32);
+      const data = await ivrScheduleService.getDailySchedule(null, shouldForce);
       setScheduleData(data);
     } catch (e) {
       console.error('Error cargando cronograma diario:', e);
@@ -161,7 +164,9 @@ export default function IvrSchedulePage() {
       const res = await vapiIntegrationService.triggerLiveCall(item.telefono, {
         nombre: item.nombre,
         cedula: item.documento,
-        programa: item.programaPrincipal,
+        programa3280: item.programa3280 || item.programaPrincipal,
+        hitoClinico: item.accion3280,
+        cursoVida: item.cursoVida,
         direccion: item.direccion || 'Caldas'
       });
       if (res.ok) {
@@ -573,8 +578,14 @@ export default function IvrSchedulePage() {
                           </td>
                           <td className="p-3 font-mono text-gray-700">{patient.telefono}</td>
                           <td className="p-3">
-                            <div className="font-semibold text-gray-900">{patient.programa}</div>
-                            <div className="text-[10px] text-gray-500">{patient.cursoVida}</div>
+                            <div className="font-semibold text-gray-900">{patient.programa3280 || patient.programa}</div>
+                            <div className="text-[10px] text-blue-700 font-bold mt-0.5">{patient.accion3280 || patient.cursoVida}</div>
+                            {patient.script && (
+                              <div className="text-[10px] text-gray-600 mt-1 italic bg-blue-50/70 p-1.5 rounded-lg border border-blue-100 max-w-md">
+                                <span className="font-bold text-blue-900 block not-italic">Motivo: {patient.script.motivo}</span>
+                                "{patient.script.mensaje}"
+                              </div>
+                            )}
                           </td>
                           <td className="p-3">
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
