@@ -221,24 +221,29 @@ const Layout = ({ children }) => {
         )}
       </AnimatePresence>
 
+      {/* BOTÓN BURGER FLOTANTE FIJO TODO EL TIEMPO EN CUALQUIER LADO DE LA PANTALLA */}
+      {!sidebarOpen && (
+        <div className="fixed left-3.5 top-2.5 z-40">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setSidebarOpen(true)}
+            className="rounded-xl border-blue-200 bg-white/95 hover:bg-blue-50 text-blue-700 shadow-md shadow-blue-500/10 backdrop-blur-md shrink-0 h-9 w-9 transition-all hover:scale-105 active:scale-95"
+            aria-label="Abrir Menú de Navegación"
+            title="Abrir Menú SADI (Fijo)"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </div>
+      )}
+
       {/* CONTENEDOR PRINCIPAL - 100% ANCHO DE PANTALLA */}
       <main className="w-full min-h-screen min-w-0 flex flex-col">
-        {/* Cabecera superior compacta con botón burger siempre visible */}
+        {/* Cabecera superior compacta */}
         <header className="sticky top-0 z-30 border-b border-gray-200/80 bg-white/95 backdrop-blur-md shadow-xs">
-          <div className="flex items-center justify-between px-3 sm:px-5 py-2.5">
-            {/* Botón Burger + Título */}
+          <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 pl-14 sm:pl-16">
+            {/* Título de la sección */}
             <div className="flex items-center gap-3 min-w-0">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setSidebarOpen(true)}
-                className="rounded-xl border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 shadow-xs shrink-0 h-9 w-9"
-                aria-label="Abrir Menú de Navegación"
-                title="Menú de Navegación"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 hidden sm:inline-block">
