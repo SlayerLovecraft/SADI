@@ -416,27 +416,33 @@ export default function DoctorsPage() {
 
       <div className="space-y-6">
 
-        {/* Cabecera Principal */}
-        <div className="bg-white rounded-3xl p-6 border border-gray-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Cabecera Principal Homogénea SADI */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase tracking-widest">
-              <UserCheck className="h-4 w-4" />
-              Recurso Humano Clínico & Demanda Inducida
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-md shadow-blue-500/20">
+                <UserCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  Gestión de Personal y Enfermeras
+                </h1>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Recurso humano clínico y demanda inducida •{' '}
+                  <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    {staffList.length} profesionales vinculados (1 Enfermera Jefe)
+                  </span>
+                </p>
+              </div>
             </div>
-            <h1 className="text-2xl font-black text-gray-900 mt-1">
-              Gestión de Personal y Enfermeras
-            </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              Haz clic en el nombre de cualquier profesional para desplegar su lista de pacientes asignados, dispositivos, telemetría y valores críticos.
-            </p>
           </div>
 
           <Button
             onClick={() => setShowAddDialog(true)}
-            className="rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-4 gap-2 shadow-md shrink-0"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md shadow-blue-600/20 flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
-            Agregar Personal / Enfermera
+            <span>Agregar Personal / Enfermera</span>
           </Button>
         </div>
 
@@ -527,10 +533,14 @@ export default function DoctorsPage() {
                                 <Eye className="w-3.5 h-3.5 text-blue-500 opacity-60 group-hover:opacity-100" />
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <span className={`px-2 py-0.2 rounded-full text-[9px] font-black inline-flex items-center gap-1 ${
-                                  isNurse
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-purple-100 text-purple-800'
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black inline-flex items-center gap-1 ${
+                                  staff.rol === 'Enfermera Jefe'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                    : staff.rol === 'Enfermera'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : staff.rol === 'Médico General'
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                    : 'bg-purple-100 text-purple-800 border border-purple-200'
                                 }`}>
                                   {staff.rol || 'Enfermera'}
                                 </span>

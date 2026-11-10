@@ -2,13 +2,31 @@ import { supabase } from '@/lib/supabase';
 import { isSupabaseAuthError, withTimeout } from '@/lib/utils';
 import { SEED_DOCTORS_3280 } from './telemonitoringService';
 
+const normalizeRol = (rol, specialty = '', name = '') => {
+  const r = (rol || '').trim();
+  const n = (name || '').toLowerCase();
+  const s = (specialty || '').toLowerCase();
+
+  if (r === 'Enfermera Jefe' || n.includes('jefe sandra') || s.includes('jefe')) {
+    // Solo Jefe Sandra Milena Duque Ríos es Enfermera Jefe
+    if (n.includes('sandra') || r === 'Enfermera Jefe' && !n.includes('claudia')) return 'Enfermera Jefe';
+  }
+  if (r === 'Enfermera' || r === 'Enfermera Asistencial' || n.includes('enf.') || s.includes('enferm')) {
+    return 'Enfermera';
+  }
+  if (r === 'Especialista' || r === 'Médico Especialista' || s.includes('especial') || s.includes('pediatr') || s.includes('interna') || s.includes('oncolog')) {
+    return 'Especialista';
+  }
+  return 'Médico General';
+};
+
 const mapSupabaseToFrontend = (doctor) => ({
   id: doctor.doctor_id,
   doctor_id: doctor.doctor_id,
   nombre: doctor.doctor_name || '',
   email: doctor.doctor_email || '',
   especialidad: doctor.doctor_specialty || '',
-  rol: doctor.rol || (doctor.doctor_specialty?.toLowerCase().includes('enferm') ? 'Enfermera' : 'Médico'),
+  rol: normalizeRol(doctor.rol, doctor.doctor_specialty, doctor.doctor_name),
   cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
   grupos_riesgo_asignados: Array.isArray(doctor.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : ['todos'],
   solo_lectura: doctor.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
@@ -42,6 +60,7 @@ export const staffService = {
         let query = supabase
           .from('staff')
           .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+          .not('doctor_name', 'is', null)
           .order('created_at', { ascending: false });
 
         if (role !== 'super_admin') {
@@ -73,7 +92,7 @@ export const staffService = {
             nombre: d.name,
             email: d.email,
             especialidad: d.specialty,
-            rol: d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico',
+            rol: d.rol || (d.name.toLowerCase().includes('jefe') ? 'Enfermera Jefe' : d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General'),
             cursos_vida_asignados: ['todos'],
             grupos_riesgo_asignados: ['todos'],
             solo_lectura: true,
@@ -98,7 +117,7 @@ export const staffService = {
           nombre: d.name,
           email: d.email,
           especialidad: d.specialty,
-          rol: d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico',
+          rol: d.rol || (d.name.toLowerCase().includes('jefe') ? 'Enfermera Jefe' : d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General'),
           cursos_vida_asignados: ['todos'],
           grupos_riesgo_asignados: ['todos'],
           solo_lectura: true,

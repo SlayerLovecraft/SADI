@@ -7,7 +7,7 @@ import Layout from '@/components/Layout';
 import CSVUploadDialog from '@/components/CSVUploadDialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, User, Phone, MapPin, Edit, Trash2, Mail } from 'lucide-react';
+import { Search, Plus, User, Users, Phone, MapPin, Edit, Trash2, Mail } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -507,16 +507,27 @@ const PatientsPage = () => {
       </Helmet>
 
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        {/* Cabecera Principal Homogénea SADI */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Pacientes</h1>
-            <p className="text-gray-500 mt-1">
-              {user.role === 'super_admin' 
-                ? `Base de datos global (${patients.length} pacientes)` 
-                : `Pacientes de tu hospital (${patients.length})`}
-            </p>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-md shadow-blue-500/20">
+                <Users className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  Pacientes
+                </h1>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Censo oficial y telemonitoreo clínico de pacientes registrados en el hospital •{' '}
+                  <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    {patients.length} pacientes vinculados
+                  </span>
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(user.role === 'hospital_admin' || user.role === 'operator') && (
               <CSVUploadDialog 
                 hospitalId={user.hospitalId}
@@ -526,9 +537,9 @@ const PatientsPage = () => {
             
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
               <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Paciente
+                <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md shadow-blue-600/20 flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  <span>Agregar Paciente</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -791,170 +802,67 @@ const PatientsPage = () => {
           </div>
         </div>
 
-        {/* Resto del código de la lista de pacientes permanece igual */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <div className="mb-6">
+        {/* Contenedor Principal de Pacientes y Telemetría */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div className="mb-6 space-y-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Buscar por nombre, teléfono, ciudad o CC..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 bg-slate-50/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
             </div>
-            <div className="mt-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
               <div className="flex items-center gap-3">
                 <input
                   ref={selectAllRef}
                   type="checkbox"
                   checked={allFilteredSelected}
                   onChange={toggleSelectAllFiltered}
-                  className="h-4 w-4"
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
-                <span className="text-sm text-gray-700">
+                <span className="text-sm font-medium text-slate-700">
                   Seleccionar todo (vista)
                 </span>
                 {selectedCount > 0 && (
-                  <span className="text-sm text-gray-500">
+                  <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md border border-blue-200">
                     Seleccionados: {selectedCount}
                   </span>
                 )}
                 {selectedCount > 0 && (
-                  <Button variant="ghost" size="sm" onClick={clearSelection}>
+                  <Button variant="ghost" size="sm" onClick={clearSelection} className="text-xs text-slate-500 hover:text-slate-800">
                     Limpiar
                   </Button>
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={async () => {
                     await ensureDoctorsLoaded();
                     setShowBulkAssignDialog(true);
                   }}
                   disabled={selectedCount === 0 || bulkProcessing}
+                  className="text-xs border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
                 >
                   Asignar doctor
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => setShowBulkDeleteDialog(true)}
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-red-600 hover:bg-red-700 text-white text-xs font-medium shadow-sm"
                   disabled={selectedCount === 0 || bulkProcessing}
                 >
                   Eliminar seleccionados
                 </Button>
               </div>
             </div>
-
-            {(user.role === 'hospital_admin' || user.role === 'operator') && (
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  if (!user?.hospitalId) {
-                    toast({
-                      title: "Hospital no identificado",
-                      description: "Inicia sesión nuevamente para continuar.",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  setSyntheticLoading(true);
-                  try {
-                    const programs = [
-                      'HTA - Hipertensión Arterial',
-                      'Asma y Alergias',
-                      'Embarazo control prenatal',
-                      'Imagenología - Radiología',
-                      'Neuroseguimiento',
-                      'Pediatría integral',
-                      'Trauma y Ortopedia',
-                      'Ginecología',
-                      'Oncología',
-                      'Dermatología'
-                    ];
-                    const cities = ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Cartagena', 'Bucaramanga', 'Manizales', 'Pereira', 'Santa Marta', 'Cúcuta'];
-                    const streets = ['Calle', 'Carrera', 'Avenida', 'Transversal', 'Diagonal'];
-                    const lastNames = ['García', 'Rodríguez', 'Martínez', 'López', 'González', 'Hernández', 'Pérez', 'Sánchez', 'Ramírez', 'Torres', 'Flores', 'Rivera'];
-                    const firstNamesM = ['Juan', 'Carlos', 'Andrés', 'Luis', 'Jorge', 'Miguel', 'Sebastián', 'Diego', 'Daniel', 'Camilo'];
-                    const firstNamesF = ['María', 'Laura', 'Ana', 'Paola', 'Natalia', 'Carolina', 'Andrea', 'Sofía', 'Valentina', 'Daniela'];
-
-                    const N = 5000;
-                    const patientsToCreate = Array.from({ length: N }, (_, i) => {
-                      const sex = i % 2 === 0 ? 'M' : 'F';
-                      const first = sex === 'M' ? firstNamesM[i % firstNamesM.length] : firstNamesF[i % firstNamesF.length];
-                      const last = `${lastNames[i % lastNames.length]} ${lastNames[(i + 3) % lastNames.length]}`;
-                      const nombre = `${first} ${last}`;
-                      const doc = String(100000000 + i);
-                      const email = `paciente${String(i + 1).padStart(4, '0')}@sadi.com.co`;
-                      const phone = `300${String(1000000 + (i % 900000)).padStart(7, '0')}`;
-
-                      const year = 1970 + (i % 40);
-                      const month = (i % 12) + 1;
-                      const day = ((i % 28) + 1);
-                      const fechaNacimiento = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-                      const ciudad = cities[i % cities.length];
-                      const direccion = `${streets[i % streets.length]} ${1 + (i % 99)} #${(i % 50) + 1}-${(i % 20) + 1}`;
-                      const programa = programs[i % programs.length];
-
-                      return {
-                        nombre,
-                        email,
-                        cc: doc,
-                        telefono: phone,
-                        fechaNacimiento,
-                        sexo: sex,
-                        direccion,
-                        ciudad,
-                        programa
-                      };
-                    });
-
-                    toast({
-                      title: "Generando pacientes",
-                      description: `Creando ${N} registros para tu hospital...`,
-                    });
-
-                    const result = await patientService.createBulk(patientsToCreate, {
-                      batchSize: 50,
-                      onProgress: (processed, total) => {
-                        // Optional: could update a local progress state
-                      }
-                    });
-
-                    if (!result.success) {
-                      toast({
-                        title: "Error creando pacientes",
-                        description: result.error || "No se pudo generar la data",
-                        variant: "destructive",
-                      });
-                      return;
-                    }
-
-                    toast({
-                      title: "✅ Pacientes creados",
-                      description: `Se insertaron ${result.successCount} pacientes y se asignaron sus doctores automáticamente.`,
-                    });
-
-                    await loadPatients();
-                  } catch (err) {
-                    toast({
-                      title: "Error",
-                      description: err?.message || "Fallo al generar pacientes",
-                      variant: "destructive",
-                    });
-                  } finally {
-                    setSyntheticLoading(false);
-                  }
-                }}
-                disabled={syntheticLoading}
-              >
-                {syntheticLoading ? 'Generando...' : 'Generar 5000 pacientes'}
-              </Button>
-            )}
           </div>
 
           <div className="mt-4">
