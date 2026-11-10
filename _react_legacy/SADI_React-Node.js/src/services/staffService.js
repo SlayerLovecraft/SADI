@@ -83,27 +83,54 @@ export const staffService = {
         ({ data, error } = await run());
       }
 
+      const mapFallbackDoctor = (d, defaultHospId) => {
+        const isJefe = (d.name || '').toLowerCase().includes('sandra') || (d.rol === 'Enfermera Jefe');
+        return {
+          id: d.id,
+          doctor_id: d.id,
+          nombre: d.name,
+          email: d.email,
+          especialidad: d.specialty,
+          rol: isJefe ? 'Enfermera Jefe' : (d.rol || (d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General')),
+          cursos_vida_asignados: isJefe ? ['todos'] : (d.cursos_vida_asignados || (
+            d.name.includes('Luciana') ? ['primera_infancia'] :
+            d.name.includes('Claudia') ? ['infancia'] :
+            d.name.includes('Loaiza') ? ['adolescencia', 'juventud'] :
+            d.name.includes('Valeria') ? ['vacunacion', 'salud_oral', 'preventivo_mujer'] :
+            d.name.includes('Carlos') ? ['adultez'] :
+            d.name.includes('Maritza') ? ['vejez'] :
+            d.name.includes('Paola') ? ['primera_infancia', 'infancia'] :
+            d.name.includes('Rincón') ? ['adultez', 'vejez'] :
+            d.name.includes('Alejandro') ? ['juventud', 'adultez'] :
+            ['adolescencia', 'vejez']
+          )),
+          grupos_riesgo_asignados: isJefe ? ['todos'] : (d.grupos_riesgo_asignados || (
+            d.name.includes('Luciana') ? ['nutricional'] :
+            d.name.includes('Claudia') ? ['materno_perinatal'] :
+            d.name.includes('Loaiza') ? ['mental'] :
+            d.name.includes('Valeria') ? ['salud_oral'] :
+            d.name.includes('Carlos') ? ['cardiovascular'] :
+            d.name.includes('Maritza') ? ['respiratorio', 'cardiovascular'] :
+            d.name.includes('Paola') ? ['nutricional', 'huerfanas'] :
+            d.name.includes('Rincón') ? ['cardiovascular', 'cancer'] :
+            d.name.includes('Alejandro') ? ['infecciosas', 'mental'] :
+            ['musculoesqueletico']
+          )),
+          solo_lectura: true,
+          puede_lanzar_llamadas: true,
+          puede_enviar_mensajes: true,
+          puede_crear_campanas: isJefe,
+          puede_editar_pacientes: isJefe,
+          hospitalId: defaultHospId,
+          is_active: true,
+          created_at: new Date().toISOString()
+        };
+      };
+
       if (error || !data || data.length === 0) {
         return {
           success: true,
-          data: SEED_DOCTORS_3280.map(d => ({
-            id: d.id,
-            doctor_id: d.id,
-            nombre: d.name,
-            email: d.email,
-            especialidad: d.specialty,
-            rol: d.rol || (d.name.toLowerCase().includes('jefe') ? 'Enfermera Jefe' : d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General'),
-            cursos_vida_asignados: ['todos'],
-            grupos_riesgo_asignados: ['todos'],
-            solo_lectura: true,
-            puede_lanzar_llamadas: true,
-            puede_enviar_mensajes: true,
-            puede_crear_campanas: false,
-            puede_editar_pacientes: false,
-            hospitalId: hospitalId || 'hosp-001',
-            is_active: true,
-            created_at: new Date().toISOString()
-          }))
+          data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8'))
         };
       }
 
@@ -111,24 +138,7 @@ export const staffService = {
     } catch (error) {
       return {
         success: true,
-        data: SEED_DOCTORS_3280.map(d => ({
-          id: d.id,
-          doctor_id: d.id,
-          nombre: d.name,
-          email: d.email,
-          especialidad: d.specialty,
-          rol: d.rol || (d.name.toLowerCase().includes('jefe') ? 'Enfermera Jefe' : d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General'),
-          cursos_vida_asignados: ['todos'],
-          grupos_riesgo_asignados: ['todos'],
-          solo_lectura: true,
-          puede_lanzar_llamadas: true,
-          puede_enviar_mensajes: true,
-          puede_crear_campanas: false,
-          puede_editar_pacientes: false,
-          hospitalId: 'hosp-001',
-          is_active: true,
-          created_at: new Date().toISOString()
-        }))
+        data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8'))
       };
     }
   },

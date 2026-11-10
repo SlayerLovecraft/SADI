@@ -257,9 +257,21 @@ export default function IvrSchedulePage() {
     setConfig(updated);
     toast({
       title: updated.isLiveEnabled ? "🟢 Motor IVR EN VIVO Activado" : "🟡 Motor IVR en Modo Standby Seguro",
-      description: updated.isLiveEnabled 
+      description: updated.isLiveEnabled
         ? "El sistema comenzará a lanzar llamadas por tandas a la hora programada."
         : "El sistema no realizará llamadas reales salientes hasta que se reactive."
+    });
+  };
+
+  const handleToggleRetryUntilAnswered = () => {
+    const updated = { ...config, retryUntilAnswered: !config.retryUntilAnswered };
+    ivrScheduleService.saveConfig(updated);
+    setConfig(updated);
+    toast({
+      title: updated.retryUntilAnswered ? "🔄 Reintentar hasta que conteste: ACTIVADO" : "⏸️ Reintento limitado",
+      description: updated.retryUntilAnswered
+        ? "Las llamadas no contestadas pasarán automáticamente a la tanda siguiente a lo largo de las 24 tandas del día (08:30 AM a 08:00 PM)."
+        : "Los reintentos se detendrán según el límite configurado."
     });
   };
 
@@ -480,11 +492,32 @@ export default function IvrSchedulePage() {
               </div>
             </div>
 
-            {/* CARRUSEL DE HORARIOS DE TANDAS */}
+            {/* CARRUSEL DE HORARIOS DE TANDAS (24 INTERVALOS DE 30 MIN) */}
             <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold text-gray-700">Seleccionar Tanda Operativa (17 Intervalos de 30 min):</span>
-                <span className="text-[11px] text-blue-600 font-semibold">Tanda seleccionada: {selectedSlot.hora}</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-800">
+                    Seleccionar Tanda Operativa (24 Intervalos de 30 min • 08:30 AM a 08:00 PM):
+                  </span>
+                  <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                    Tanda seleccionada: {selectedSlot.hora}
+                  </span>
+                </div>
+
+                {/* BOTÓN / SWITCH DE REINTENTAR HASTA QUE CONTESTE */}
+                <button
+                  type="button"
+                  onClick={handleToggleRetryUntilAnswered}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
+                    config.retryUntilAnswered
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+                  }`}
+                  title="Si está activo, las llamadas no contestadas o con buzón se reasignan a la tanda siguiente hasta que el paciente conteste."
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${config.retryUntilAnswered ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
+                  <span>{config.retryUntilAnswered ? '✓ Reintentar hasta que conteste (Por tandas)' : 'Reintento limitado'}</span>
+                </button>
               </div>
 
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
@@ -677,23 +710,70 @@ export default function IvrSchedulePage() {
         )}
 
         {/* ========================================================================= */}
-        {/* PESTAÑA 4: CONFIGURACIÓN */}
+        {/* PESTAÑA 4: CONFIGURACIÓN & PARÁMETROS */}
         {/* ========================================================================= */}
         {activeTab === 'config' && (
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-4">
-            <h3 className="text-lg font-black text-gray-900">Configuración del Motor de Automatización IVR</h3>
-            <p className="text-xs text-gray-500">
-              Ajustes de intervalos de tandas (10:00 AM a 06:00 PM), límite de 32 llamadas por franja y reintentos automáticos.
-            </p>
-            <div className="grid grid-cols-2 gap-4 text-xs pt-2">
-              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
-                <span className="font-bold text-gray-900 block mb-1">Capacidad Máxima por Tanda:</span>
-                <span className="text-gray-600">32 pacientes cada 30 minutos (17 tandas diarias = 544 llamadas/día).</span>
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-6">
+            <div>
+              <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-blue-600" />
+                Configuración del Motor de Automatización IVR & Campañas
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Ajustes de intervalos de tandas (08:30 AM a 08:00 PM), política de reintentos por tandas sucesivas y control de aforo hospitalario.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
+                <span className="font-bold text-blue-950 block mb-1">Capacidad Instalada Hospitalaria:</span>
+                <span className="text-blue-800 leading-relaxed block">
+                  <strong>24 Tandas de 30 minutos</strong> (08:30 AM a 08:00 PM). Capacidad de hasta <strong>768 llamadas/día</strong> en el Gateway GSM de 32 canales.
+                </span>
               </div>
-              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
-                <span className="font-bold text-gray-900 block mb-1">Gateway de Salida:</span>
-                <span className="text-gray-600">Troncal GSM Puerto 22 conectada vía Vapi/Twilio.</span>
+
+              <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-emerald-950">Política de Reintentos:</span>
+                  <button
+                    type="button"
+                    onClick={handleToggleRetryUntilAnswered}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${
+                      config.retryUntilAnswered ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    {config.retryUntilAnswered ? 'ACTIVO' : 'LIMITADO'}
+                  </button>
+                </div>
+                <span className="text-emerald-800 leading-relaxed block">
+                  {config.retryUntilAnswered 
+                    ? 'Reintentar hasta que conteste: El motor reasigna las llamadas no contestadas a la siguiente tanda disponible durante el día.'
+                    : 'Reintentos fijados a un límite manual de llamadas por paciente.'}
+                </span>
               </div>
+
+              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200">
+                <span className="font-bold text-indigo-950 block mb-1">Gateway GSM 32 Canales:</span>
+                <span className="text-indigo-800 leading-relaxed block">
+                  OpenVox GSM conectado vía SIP/Vapi. Detección automática de buzón (Anti-voicemail) y captura DTMF teclas 1 y 2.
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div>
+                <span className="font-bold text-gray-900 block">Modo de Operación del Motor:</span>
+                <span className="text-gray-500">
+                  {config.isLiveEnabled ? 'Las tandas programadas se emiten automáticamente al Gateway GSM.' : 'Modo Standby Seguro activo para validación clínica previa.'}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleToggleEngine}
+                className={config.isLiveEnabled ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}
+              >
+                {config.isLiveEnabled ? 'Pasar a Standby Seguro' : 'Activar Modo En Vivo'}
+              </Button>
             </div>
           </div>
         )}

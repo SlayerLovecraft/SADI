@@ -366,29 +366,47 @@ export default function DoctorsPage() {
   // Pacientes asignados al profesional seleccionado
   const assignedPatients = useMemo(() => {
     if (!viewingPatientsStaff || !allPatients.length) return [];
-    const staffCursos = viewingPatientsStaff.cursos_vida_asignados || ['todos'];
-    const staffRiesgos = viewingPatientsStaff.grupos_riesgo_asignados || ['todos'];
+    
+    // REGLA INSTITUCIONAL: La Enfermera Jefe (Jefe Sandra Milena Duque Ríos) tiene acceso y supervisión de TODOS los 56 pacientes
+    const isEnfermeraJefe = 
+      viewingPatientsStaff.rol === 'Enfermera Jefe' || 
+      (viewingPatientsStaff.nombre || '').toLowerCase().includes('sandra milena duque') ||
+      (viewingPatientsStaff.especialidad || '').toLowerCase().includes('coordinaci');
 
-    const isAllCursos = staffCursos.includes('todos');
-    const isAllRiesgos = staffRiesgos.includes('todos');
-
-    if (isAllCursos && isAllRiesgos) {
+    if (isEnfermeraJefe) {
       return allPatients;
     }
 
+    const staffCursos = (viewingPatientsStaff.cursos_vida_asignados || []).filter(c => c !== 'todos');
+    const staffRiesgos = (viewingPatientsStaff.grupos_riesgo_asignados || []).filter(r => r !== 'todos');
+
+    // Si no tiene cursos específicos configurados, no devolver todos por defecto si no es la Jefe
+    if (staffCursos.length === 0 && staffRiesgos.length === 0) {
+      return [];
+    }
+
     return allPatients.filter(p => {
+      // 1. Asignación directa si existe vínculo por ID o nombre
+      if (p.doctor_id && (p.doctor_id === viewingPatientsStaff.id || p.doctor_id === viewingPatientsStaff.doctor_id)) {
+        return true;
+      }
+      if (p.doctor_nombre && (p.doctor_nombre.toLowerCase() === (viewingPatientsStaff.nombre || '').toLowerCase())) {
+        return true;
+      }
+
       const pCurso = (p.grupo_vida || p.curso_vida || '').toLowerCase();
       const pRiesgo = (p.grupo_riesgo || '').toLowerCase();
+      const pPrograma = (p.programa || '').toLowerCase();
 
       // Coincidencia con Cursos de Vida
-      const matchCurso = isAllCursos || staffCursos.some(cId => {
+      const matchCurso = staffCursos.some(cId => {
         const opt = CURSOS_VIDA_OPTIONS.find(o => o.id === cId);
         const cName = (opt ? opt.nombre : cId).toLowerCase();
-        return pCurso.includes(cName) || cName.includes(pCurso) || pCurso.replace(/\s+/g, '_') === cId;
+        return pCurso.includes(cName) || cName.includes(pCurso) || pCurso.replace(/\s+/g, '_') === cId || pPrograma.includes(cId);
       });
 
       // Coincidencia con Grupos de Riesgo
-      const matchRiesgo = isAllRiesgos || staffRiesgos.some(rId => {
+      const matchRiesgo = staffRiesgos.some(rId => {
         const opt = GRUPOS_RIESGO_OPTIONS.find(o => o.id === rId);
         const rName = (opt ? opt.nombre : rId).toLowerCase();
         return pRiesgo.includes(rName) || rName.includes(pRiesgo) || pRiesgo.replace(/\s+/g, '_').includes(rId);
@@ -656,8 +674,14 @@ export default function DoctorsPage() {
                 <div>
                   <DialogTitle className="text-lg font-black text-gray-900 flex items-center gap-2">
                     Llamadas e Interacciones de {viewingPatientsStaff?.nombre}
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold border border-blue-200">
-                      {assignedPatients.length} pacientes asignados
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
+                      viewingPatientsStaff?.rol === 'Enfermera Jefe'
+                        ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-xs'
+                        : 'bg-blue-100 text-blue-800 border-blue-200'
+                    }`}>
+                      {viewingPatientsStaff?.rol === 'Enfermera Jefe'
+                        ? '56 pacientes asignados (Supervisión Total Institucional)'
+                        : `${assignedPatients.length} pacientes asignados`}
                     </span>
                   </DialogTitle>
                   <DialogDescription className="text-xs text-gray-600 mt-0.5">

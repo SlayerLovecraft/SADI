@@ -11,11 +11,11 @@ function calculateAge(birthdate) {
   const birth = new Date(birthdate);
   let age = today.getFullYear() - birth.getFullYear();
   const monthDiff = today.getMonth() - birth.getMonth();
-  
+
   if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
     age--;
   }
-  
+
   return age;
 }
 
@@ -46,8 +46,8 @@ function mapSupabaseToFrontend(patient) {
   // Parsing seguro de JSON
   let dispositivos = [];
   try {
-    dispositivos = Array.isArray(patient.dispositivos_caseros) 
-      ? patient.dispositivos_caseros 
+    dispositivos = Array.isArray(patient.dispositivos_caseros)
+      ? patient.dispositivos_caseros
       : (patient.dispositivos_caseros ? JSON.parse(patient.dispositivos_caseros) : []);
   } catch (e) {
     dispositivos = [];
@@ -56,29 +56,29 @@ function mapSupabaseToFrontend(patient) {
   let valoresCriticos = { tiene_critico: false, tipo: 'Sin alertas', valor: 'Normal', fecha_hora: 'N/A', estado: 'Estable' };
   try {
     if (patient.valores_criticos) {
-      valoresCriticos = typeof patient.valores_criticos === 'object' 
-        ? patient.valores_criticos 
+      valoresCriticos = typeof patient.valores_criticos === 'object'
+        ? patient.valores_criticos
         : JSON.parse(patient.valores_criticos);
     }
-  } catch (e) {}
+  } catch (e) { }
 
   let historialMedidas = [];
   try {
     if (patient.historial_medidas) {
-      historialMedidas = Array.isArray(patient.historial_medidas) 
-        ? patient.historial_medidas 
+      historialMedidas = Array.isArray(patient.historial_medidas)
+        ? patient.historial_medidas
         : JSON.parse(patient.historial_medidas);
     }
-  } catch (e) {}
+  } catch (e) { }
 
   let conteoCanales = { whatsapp: 3, email: 1, call: 2, sms: 1 };
   try {
     if (patient.conteo_canales) {
-      conteoCanales = typeof patient.conteo_canales === 'object' 
-        ? patient.conteo_canales 
+      conteoCanales = typeof patient.conteo_canales === 'object'
+        ? patient.conteo_canales
         : JSON.parse(patient.conteo_canales);
     }
-  } catch (e) {}
+  } catch (e) { }
 
   return {
     id: patient.patient_id,
@@ -151,15 +151,15 @@ export const patientService = {
   async getAll(filters = {}) {
     try {
       console.log('🔍 Obteniendo pacientes del hospital...');
-      
+
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
         console.error('❌ No se pudo obtener hospitalId');
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: 'No se pudo identificar el hospital del usuario',
-          data: [] 
+          data: []
         };
       }
 
@@ -169,15 +169,15 @@ export const patientService = {
           .select('*')
           .eq('hospital_id', hospitalId)
           .order('created_at', { ascending: false });
-        
+
         if (filters.programa) {
           query = query.eq('program', filters.programa);
         }
-        
+
         if (filters.ciudad) {
           query = query.eq('city', filters.ciudad);
         }
-        
+
         return query;
       };
 
@@ -188,7 +188,7 @@ export const patientService = {
         await supabase.auth.refreshSession().catch(() => null);
         ({ data, error } = await run());
       }
-      
+
       const mapFallbackPatient = (p, defaultHospId) => {
         const age = calculateAge(p.fecha_nacimiento);
         const cv = p.curso_vida?.replace('_', ' ') || getCursoVidaFromData(age, p.programa);
@@ -246,7 +246,7 @@ export const patientService = {
         console.warn('⚠️ Supabase no disponible o error, usando los 35 pacientes de prueba 3280:', error.message);
         return { success: true, data: SEED_PATIENTS_3280.map(p => mapFallbackPatient(p, hospitalId || 'hosp-001')) };
       }
-      
+
       let mappedData = data?.map(mapSupabaseToFrontend) || [];
       if (mappedData.length === 0) {
         mappedData = SEED_PATIENTS_3280.map(p => mapFallbackPatient(p, hospitalId || 'hosp-001'));
@@ -258,7 +258,7 @@ export const patientService = {
           .from('signos_vitales')
           .select('*')
           .order('fecha', { ascending: true });
-        
+
         if (vitals && vitals.length > 0) {
           const vitalsByPatient = {};
           vitals.forEach(v => {
@@ -299,40 +299,42 @@ export const patientService = {
       } catch (errVitals) {
         console.warn('⚠️ No se pudieron consultar signos vitales:', errVitals);
       }
-      
+
       console.log(`✅ Se obtuvieron ${mappedData.length} pacientes del hospital ${hospitalId}`);
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         data: mappedData
       };
-      
+
     } catch (error) {
       console.warn('⚠️ Excepción al cargar pacientes, fallback a 35 pacientes:', error);
-      return { success: true, data: SEED_PATIENTS_3280.map(p => ({
-        id: p.id,
-        nombre: p.nombre,
-        telefono: p.telefono,
-        email: p.email,
-        cc: p.documento,
-        edad: calculateAge(p.fecha_nacimiento),
-        fechaNacimiento: p.fecha_nacimiento,
-        sexo: p.sexo === 'masculino' ? 'M' : 'F',
-        ciudad: 'Cali / Medellín / Bogotá',
-        programa: p.curso_vida?.replace('_', ' ') || 'Res. 3280',
-        direccion: p.direccion || 'Dirección registrada',
-        hospitalId: 'hosp-001',
-        fechaRegistro: new Date().toISOString(),
-        grupo_vida: 'Primera Infancia',
-        curso_vida: 'Primera Infancia',
-        grupo_riesgo: 'Población Materno-Perinatal',
-        tipo_usuario: 'Activo',
-        dispositivos: p.dispositivos_caseros || [],
-        dispositivos_caseros: p.dispositivos_caseros || [],
-        valores_criticos: { tiene_critico: false, tipo: 'Sin alertas', valor: 'Normal', fecha_hora: 'N/A', estado: 'Estable' },
-        historial_medidas: [],
-        conteo_canales: { whatsapp: 2, email: 1, call: 2, sms: 1 }
-      })) };
+      return {
+        success: true, data: SEED_PATIENTS_3280.map(p => ({
+          id: p.id,
+          nombre: p.nombre,
+          telefono: p.telefono,
+          email: p.email,
+          cc: p.documento,
+          edad: calculateAge(p.fecha_nacimiento),
+          fechaNacimiento: p.fecha_nacimiento,
+          sexo: p.sexo === 'masculino' ? 'M' : 'F',
+          ciudad: 'Cali / Medellín / Bogotá',
+          programa: p.curso_vida?.replace('_', ' ') || 'Res. 3280',
+          direccion: p.direccion || 'Dirección registrada',
+          hospitalId: 'hosp-001',
+          fechaRegistro: new Date().toISOString(),
+          grupo_vida: 'Primera Infancia',
+          curso_vida: 'Primera Infancia',
+          grupo_riesgo: 'Población Materno-Perinatal',
+          tipo_usuario: 'Activo',
+          dispositivos: p.dispositivos_caseros || [],
+          dispositivos_caseros: p.dispositivos_caseros || [],
+          valores_criticos: { tiene_critico: false, tipo: 'Sin alertas', valor: 'Normal', fecha_hora: 'N/A', estado: 'Estable' },
+          historial_medidas: [],
+          conteo_canales: { whatsapp: 2, email: 1, call: 2, sms: 1 }
+        }))
+      };
     }
   },
 
@@ -342,7 +344,7 @@ export const patientService = {
   async getById(id) {
     try {
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
         return { success: false, error: 'Usuario no identificado' };
       }
@@ -359,12 +361,12 @@ export const patientService = {
       );
 
       const { data, error } = await run();
-      
+
       if (error) {
         console.error('❌ Error obteniendo paciente:', error);
         return { success: false, error: error.message };
       }
-      
+
       return {
         success: true,
         data: mapSupabaseToFrontend(data)
@@ -381,7 +383,7 @@ export const patientService = {
   async update(id, updates) {
     try {
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
         return { success: false, error: 'Usuario no identificado' };
       }
@@ -389,7 +391,7 @@ export const patientService = {
       console.log('📝 Actualizando paciente:', id);
 
       const supabaseUpdates = mapFrontendToSupabase({ ...updates, hospitalId });
-      
+
       // Eliminar campos que no deben actualizarse o que son undefined
       delete supabaseUpdates.created_at;
       delete supabaseUpdates.hospital_id; // No permitir cambiar hospital
@@ -431,7 +433,7 @@ export const patientService = {
   async delete(id) {
     try {
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
         return { success: false, error: 'Usuario no identificado' };
       }
@@ -469,21 +471,21 @@ export const patientService = {
   async create(patient) {
     try {
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
-        return { 
-          success: false, 
-          error: 'No se pudo identificar el hospital. Por favor inicie sesión nuevamente.' 
+        return {
+          success: false,
+          error: 'No se pudo identificar el hospital. Por favor inicie sesión nuevamente.'
         };
       }
 
       console.log('➕ Creando paciente para hospital_id:', hospitalId);
-      
+
       const supabasePatient = {
         ...mapFrontendToSupabase(patient),
         hospital_id: hospitalId
       };
-      
+
       const run = async () => withTimeout(
         supabase
           .from('patients')
@@ -493,16 +495,16 @@ export const patientService = {
         10000,
         'Tiempo de espera agotado al crear paciente'
       );
-      
+
       const { data, error } = await run();
-      
+
       if (error) {
         console.error('❌ Error creando paciente:', error);
         return { success: false, error: error.message };
       }
-      
+
       console.log('✅ Paciente creado exitosamente');
-      
+
       return {
         success: true,
         data: mapSupabaseToFrontend(data)
@@ -519,10 +521,10 @@ export const patientService = {
   async createBulk(patients, options = {}) {
     try {
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: 'No se pudo identificar el hospital',
           successCount: 0,
           data: [],
@@ -641,7 +643,7 @@ export const patientService = {
       if (results.failed.length > 0) {
         // Intentar asignar doctores a los exitosos, aunque haya fallos en otros
         if (results.data.length > 0) {
-           await patientService.assignDoctorsByProgram(results.data);
+          await patientService.assignDoctorsByProgram(results.data);
         }
 
         return {
@@ -655,7 +657,7 @@ export const patientService = {
 
       // Asignar doctores a todos los creados
       if (results.data.length > 0) {
-         await patientService.assignDoctorsByProgram(results.data);
+        await patientService.assignDoctorsByProgram(results.data);
       }
 
       return {
@@ -667,8 +669,8 @@ export const patientService = {
 
     } catch (error) {
       console.error('❌ Error en createBulk:', error);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message,
         successCount: 0,
         data: [],
@@ -683,7 +685,7 @@ export const patientService = {
   async assignDoctorsByProgram(patients) {
     try {
       if (!patients || patients.length === 0) return { success: true, count: 0 };
-      
+
       console.log(`🤖 Iniciando asignación automática para ${patients.length} pacientes...`);
       const hospitalId = getCurrentHospitalId();
 
@@ -716,13 +718,13 @@ export const patientService = {
       patients.forEach((p) => {
         const spec = programToSpecialty(p.programa || '');
         const doctorIds = bySpecialty.get(spec) || [];
-        
+
         // Si no hay especialista, intentar asignar a médico general si existe, o cualquiera
         const finalDoctorIds = doctorIds.length > 0 ? doctorIds : (bySpecialty.get('general') || []);
-        
+
         const chosen = pickDoctorIdForPatient(p.id, finalDoctorIds);
         if (!chosen) return;
-        
+
         const list = groups.get(chosen) || [];
         list.push(String(p.id));
         groups.set(chosen, list);
@@ -786,7 +788,7 @@ export const patientService = {
   async search(query) {
     try {
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
         return { success: false, error: 'Usuario no identificado', data: [] };
       }
@@ -802,16 +804,16 @@ export const patientService = {
       );
 
       const { data, error } = await run();
-      
+
       if (error) {
         console.error('❌ Error buscando pacientes:', error);
         return { success: false, error: error.message, data: [] };
       }
-      
+
       const mappedData = data?.map(mapSupabaseToFrontend) || [];
-      
+
       console.log(`🔍 Búsqueda retornó ${mappedData.length} resultados`);
-      
+
       return {
         success: true,
         data: mappedData
@@ -828,7 +830,7 @@ export const patientService = {
   async getStats() {
     try {
       const hospitalId = getCurrentHospitalId();
-      
+
       if (!hospitalId) {
         return { success: false, error: 'Usuario no identificado' };
       }
@@ -843,32 +845,32 @@ export const patientService = {
       );
 
       const { data, error } = await run();
-      
+
       if (error) {
         console.error('❌ Error obteniendo estadísticas:', error);
         return { success: false, error: error.message };
       }
-      
+
       const stats = {
         total: data.length,
         porPrograma: {},
         porCiudad: {},
         porSexo: { M: 0, F: 0 }
       };
-      
+
       data.forEach(patient => {
         if (patient.program) {
           stats.porPrograma[patient.program] = (stats.porPrograma[patient.program] || 0) + 1;
         }
-        
+
         if (patient.city) {
           stats.porCiudad[patient.city] = (stats.porCiudad[patient.city] || 0) + 1;
         }
-        
+
         if (patient.sex === 'Masculino') stats.porSexo.M++;
         if (patient.sex === 'Femenino') stats.porSexo.F++;
       });
-      
+
       return {
         success: true,
         data: stats

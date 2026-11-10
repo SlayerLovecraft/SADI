@@ -1,11 +1,11 @@
 // ==============================================================================
 // IVR SCHEDULE SERVICE - MOTOR AUTOMÁTICO DE TANDAS SADI 3280
 // Programación de llamadas salientes automáticas por tandas de 32 pacientes cada 30 minutos
-// Horario operativo: 10:00 AM a 06:00 PM
+// Horario operativo: 08:30 AM a 08:00 PM (24 Intervalos de 30 minutos)
 // Reglas:
 // 1. Asignación automática por programa de Resolución 3280 y hospital.
-// 2. Si no contesta en una tanda, se reasigna a la tanda siguiente.
-// 3. Si no contesta en ninguna tanda del día, se envía a "Casos Aislados / Gestión Humana".
+// 2. Opción "Reintentar hasta que conteste": si no contesta, se reasigna a la tanda siguiente por tandas sucesivas.
+// 3. Si no contesta en ninguna tanda de la jornada, se envía a "Casos Aislados / Gestión Humana".
 // 4. Modo de emisión: Standby (seguro) o Automático Activo.
 // ==============================================================================
 
@@ -13,25 +13,32 @@ import { supabase } from '@/lib/supabase';
 import { telemonitoringService } from './telemonitoringService';
 import { getCursoVida3280, getRequiredRIASAppointments } from './rias3280Engine';
 
-// Slots oficiales de tandas (cada 30 min entre 10:00 AM y 06:00 PM)
+// Slots oficiales de tandas: 24 intervalos de 30 min desde las 08:30 AM hasta las 08:00 PM
 export const IVR_TIME_SLOTS = [
-  { id: 't1',  hora: '10:00 AM', label: 'Tanda 1 (10:00 AM)', horaNum: 10.0 },
-  { id: 't2',  hora: '10:30 AM', label: 'Tanda 2 (10:30 AM)', horaNum: 10.5 },
-  { id: 't3',  hora: '11:00 AM', label: 'Tanda 3 (11:00 AM)', horaNum: 11.0 },
-  { id: 't4',  hora: '11:30 AM', label: 'Tanda 4 (11:30 AM)', horaNum: 11.5 },
-  { id: 't5',  hora: '12:00 M',  label: 'Tanda 5 (12:00 M)',  horaNum: 12.0 },
-  { id: 't6',  hora: '12:30 PM', label: 'Tanda 6 (12:30 PM)', horaNum: 12.5 },
-  { id: 't7',  hora: '01:00 PM', label: 'Tanda 7 (01:00 PM)', horaNum: 13.0 },
-  { id: 't8',  hora: '01:30 PM', label: 'Tanda 8 (01:30 PM)', horaNum: 13.5 },
-  { id: 't9',  hora: '02:00 PM', label: 'Tanda 9 (02:00 PM)', horaNum: 14.0 },
-  { id: 't10', hora: '02:30 PM', label: 'Tanda 10 (02:30 PM)', horaNum: 14.5 },
-  { id: 't11', hora: '03:00 PM', label: 'Tanda 11 (03:00 PM)', horaNum: 15.0 },
-  { id: 't12', hora: '03:30 PM', label: 'Tanda 12 (03:30 PM)', horaNum: 15.5 },
-  { id: 't13', hora: '04:00 PM', label: 'Tanda 13 (04:00 PM)', horaNum: 16.0 },
-  { id: 't14', hora: '04:30 PM', label: 'Tanda 14 (04:30 PM)', horaNum: 16.5 },
-  { id: 't15', hora: '05:00 PM', label: 'Tanda 15 (05:00 PM)', horaNum: 17.0 },
-  { id: 't16', hora: '05:30 PM', label: 'Tanda 16 (05:30 PM)', horaNum: 17.5 },
-  { id: 't17', hora: '06:00 PM', label: 'Tanda 17 (06:00 PM)', horaNum: 18.0 }
+  { id: 't1',  hora: '08:30 AM', label: 'Tanda 1 (08:30 AM)', horaNum: 8.5 },
+  { id: 't2',  hora: '09:00 AM', label: 'Tanda 2 (09:00 AM)', horaNum: 9.0 },
+  { id: 't3',  hora: '09:30 AM', label: 'Tanda 3 (09:30 AM)', horaNum: 9.5 },
+  { id: 't4',  hora: '10:00 AM', label: 'Tanda 4 (10:00 AM)', horaNum: 10.0 },
+  { id: 't5',  hora: '10:30 AM', label: 'Tanda 5 (10:30 AM)', horaNum: 10.5 },
+  { id: 't6',  hora: '11:00 AM', label: 'Tanda 6 (11:00 AM)', horaNum: 11.0 },
+  { id: 't7',  hora: '11:30 AM', label: 'Tanda 7 (11:30 AM)', horaNum: 11.5 },
+  { id: 't8',  hora: '12:00 M',  label: 'Tanda 8 (12:00 M)',  horaNum: 12.0 },
+  { id: 't9',  hora: '12:30 PM', label: 'Tanda 9 (12:30 PM)', horaNum: 12.5 },
+  { id: 't10', hora: '01:00 PM', label: 'Tanda 10 (01:00 PM)', horaNum: 13.0 },
+  { id: 't11', hora: '01:30 PM', label: 'Tanda 11 (01:30 PM)', horaNum: 13.5 },
+  { id: 't12', hora: '02:00 PM', label: 'Tanda 12 (02:00 PM)', horaNum: 14.0 },
+  { id: 't13', hora: '02:30 PM', label: 'Tanda 13 (02:30 PM)', horaNum: 14.5 },
+  { id: 't14', hora: '03:00 PM', label: 'Tanda 14 (03:00 PM)', horaNum: 15.0 },
+  { id: 't15', hora: '03:30 PM', label: 'Tanda 15 (03:30 PM)', horaNum: 15.5 },
+  { id: 't16', hora: '04:00 PM', label: 'Tanda 16 (04:00 PM)', horaNum: 16.0 },
+  { id: 't17', hora: '04:30 PM', label: 'Tanda 17 (04:30 PM)', horaNum: 16.5 },
+  { id: 't18', hora: '05:00 PM', label: 'Tanda 18 (05:00 PM)', horaNum: 17.0 },
+  { id: 't19', hora: '05:30 PM', label: 'Tanda 19 (05:30 PM)', horaNum: 17.5 },
+  { id: 't20', hora: '06:00 PM', label: 'Tanda 20 (06:00 PM)', horaNum: 18.0 },
+  { id: 't21', hora: '06:30 PM', label: 'Tanda 21 (06:30 PM)', horaNum: 18.5 },
+  { id: 't22', hora: '07:00 PM', label: 'Tanda 22 (07:00 PM)', horaNum: 19.0 },
+  { id: 't23', hora: '07:30 PM', label: 'Tanda 23 (07:30 PM)', horaNum: 19.5 },
+  { id: 't24', hora: '08:00 PM', label: 'Tanda 24 (08:00 PM)', horaNum: 20.0 }
 ];
 
 export const MAX_PATIENTS_PER_BATCH = 32;
@@ -108,9 +115,10 @@ export const ivrScheduleService = {
     const defaultCfg = {
       isLiveEnabled: false, // Por defecto en Standby seguro
       batchSize: 32,
-      maxRetriesPerDay: 3,
-      startSlot: '10:00 AM',
-      endSlot: '06:00 PM',
+      maxRetriesPerDay: 24, // Cubre las 24 tandas del día
+      retryUntilAnswered: true, // "Reintentar hasta que conteste": reintento automático por tandas sucesivas
+      startSlot: '08:30 AM',
+      endSlot: '08:00 PM',
       voiceId: 'pFZP5JQG7iQjIQuC4Bku',
       antiVoicemail: true,
       dtmfConfirmation: true
@@ -343,20 +351,23 @@ export const ivrScheduleService = {
             resultado: `Intento ${item.intentos} fallido: ${causaFallo}`
           });
 
-          if (nextSlot && item.intentos < 3) {
-            // REASIGNAR AUTOMÁTICAMENTE A LA TANDA SIGUIENTE
+          const cfg = this.getConfig();
+          const shouldRetry = cfg.retryUntilAnswered ? Boolean(nextSlot) : (Boolean(nextSlot) && item.intentos < (cfg.maxRetriesPerDay || 3));
+
+          if (shouldRetry) {
+            // REASIGNAR AUTOMÁTICAMENTE A LA TANDA SIGUIENTE (POLÍTICA: REINTENTAR HASTA QUE CONTESTE)
             item.estado = 'en_reintento';
             item.slotId = nextSlot.id;
             item.slotHora = nextSlot.hora;
             item.slotIndex = slotIdx + 1;
-            item.ultimaInteraccion = `${nowStr} - ${causaFallo}. Reasignado a tanda ${nextSlot.hora}`;
+            item.ultimaInteraccion = `${nowStr} - ${causaFallo}. Reasignado a tanda ${nextSlot.hora} (Reintento sucesivo por tanda)`;
             reassignedCount++;
           } else {
-            // NO CONTESTÓ EN NINGUNA TANDA -> CASO AISLADO / GESTIÓN HUMANA
+            // NO CONTESTÓ EN NINGUNA DE LAS 24 TANDAS DE LA JORNADA -> CASO AISLADO / GESTIÓN HUMANA
             item.estado = 'caso_aislado_humano';
             item.gestionHumana.requerida = true;
             item.gestionHumana.atendido = false;
-            item.ultimaInteraccion = `${nowStr} - Agotó intentos del día sin contestar. Derivado a Gestión Humana`;
+            item.ultimaInteraccion = `${nowStr} - Agotó todas las tandas operativas sin contestar. Derivado a Gestión Humana`;
             failedToHumanCount++;
           }
         }

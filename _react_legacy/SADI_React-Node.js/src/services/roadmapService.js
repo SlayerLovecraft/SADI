@@ -260,7 +260,7 @@ export const roadmapService = {
       }
     }
 
-    const availableSlots = IVR_TIME_SLOTS; // 17 slots (10:00 AM a 06:00 PM)
+    const availableSlots = IVR_TIME_SLOTS; // 24 slots (08:30 AM a 08:00 PM)
 
     // Contador de pacientes por día para asignación de franjas horarias
     const dayCounters = {};
