@@ -30,6 +30,7 @@ const CampaignsPage = lazy(() => import('@/pages/CampaignsPage'));
 const CampaignDetailsPage = lazy(() => import('@/pages/CampaignDetailsPage'));
 const InteractionsPage = lazy(() => import('@/pages/InteractionsPage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
+const BillingPage = lazy(() => import('@/pages/BillingPage'));
 
 // Doctor Portal Pages (Lazy-loaded)
 const DoctorDashboardPage = lazy(() => import('@/pages/doctor/DoctorDashboardPage'));
@@ -202,6 +203,19 @@ function App() {
                       <ReportsPage />
                     </ProtectedRoute>
                   } 
+                />
+
+                <Route 
+                  path="/billing" 
+                  element={
+                    <ProtectedRoute roles={['super_admin', 'hospital_admin', 'doctor']}>
+                      <BillingPage />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/facturacion" 
+                  element={<Navigate to="/billing" replace />}
                 />
 
                 {/* ============================================ */}

@@ -17,6 +17,7 @@ import {
   Radio,
   FileText,
   BarChart3,
+  Receipt,
   Bot
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -39,6 +40,7 @@ const Layout = ({ children }) => {
     { name: 'Pacientes', path: isStaffRole ? '/doctor/patients' : '/patients', icon: Users },
     { name: 'Personal', path: '/staff', icon: UserCheck, hospitalOnly: true },
     { name: 'Campañas', path: '/campaigns', icon: Send },
+    { name: 'Facturación y RIPS', path: '/billing', icon: Receipt },
     { name: 'Reportes Hospital', path: '/reports', icon: BarChart3 }
   ];
 
