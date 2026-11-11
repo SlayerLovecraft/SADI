@@ -272,7 +272,7 @@ export const authService = {
               rol: doctor.rol || 'Enfermera',
               nombre: doctor.doctor_name || 'Enf. Asistencial SADI',
               doctor_specialty: doctor.doctor_specialty || 'Atención Primaria y Demanda 3280',
-              cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
+              cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : [],
               solo_lectura: doctor.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
               puede_lanzar_llamadas: Boolean(doctor.puede_lanzar_llamadas),
               puede_enviar_mensajes: Boolean(doctor.puede_enviar_mensajes),

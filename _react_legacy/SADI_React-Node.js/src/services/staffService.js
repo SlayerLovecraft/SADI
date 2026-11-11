@@ -27,8 +27,8 @@ const mapSupabaseToFrontend = (doctor) => ({
   email: doctor.doctor_email || '',
   especialidad: doctor.doctor_specialty || '',
   rol: normalizeRol(doctor.rol, doctor.doctor_specialty, doctor.doctor_name),
-  cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
-  grupos_riesgo_asignados: Array.isArray(doctor.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : ['todos'],
+  cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : [],
+  grupos_riesgo_asignados: Array.isArray(doctor.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : [],
   solo_lectura: doctor.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
   puede_lanzar_llamadas: Boolean(doctor.puede_lanzar_llamadas),
   puede_enviar_mensajes: Boolean(doctor.puede_enviar_mensajes),
@@ -92,30 +92,8 @@ export const staffService = {
           email: d.email,
           especialidad: d.specialty,
           rol: isJefe ? 'Enfermera Jefe' : (d.rol || (d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General')),
-          cursos_vida_asignados: isJefe ? ['todos'] : (d.cursos_vida_asignados || (
-            d.name.includes('Luciana') ? ['primera_infancia'] :
-            d.name.includes('Claudia') ? ['infancia'] :
-            d.name.includes('Loaiza') ? ['adolescencia', 'juventud'] :
-            d.name.includes('Valeria') ? ['vacunacion', 'salud_oral', 'preventivo_mujer'] :
-            d.name.includes('Carlos') ? ['adultez'] :
-            d.name.includes('Maritza') ? ['vejez'] :
-            d.name.includes('Paola') ? ['primera_infancia', 'infancia'] :
-            d.name.includes('Rincón') ? ['adultez', 'vejez'] :
-            d.name.includes('Alejandro') ? ['juventud', 'adultez'] :
-            ['adolescencia', 'vejez']
-          )),
-          grupos_riesgo_asignados: isJefe ? ['todos'] : (d.grupos_riesgo_asignados || (
-            d.name.includes('Luciana') ? ['nutricional'] :
-            d.name.includes('Claudia') ? ['materno_perinatal'] :
-            d.name.includes('Loaiza') ? ['mental'] :
-            d.name.includes('Valeria') ? ['salud_oral'] :
-            d.name.includes('Carlos') ? ['cardiovascular'] :
-            d.name.includes('Maritza') ? ['respiratorio', 'cardiovascular'] :
-            d.name.includes('Paola') ? ['nutricional', 'huerfanas'] :
-            d.name.includes('Rincón') ? ['cardiovascular', 'cancer'] :
-            d.name.includes('Alejandro') ? ['infecciosas', 'mental'] :
-            ['musculoesqueletico']
-          )),
+          cursos_vida_asignados: isJefe ? ['todos'] : (Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : []),
+          grupos_riesgo_asignados: [],
           solo_lectura: true,
           puede_lanzar_llamadas: true,
           puede_enviar_mensajes: true,
@@ -128,6 +106,17 @@ export const staffService = {
       };
 
       if (error || !data || data.length === 0) {
+        try {
+          const { data: allStaff, error: allErr } = await supabase
+            .from('staff')
+            .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+            .not('doctor_name', 'is', null)
+            .order('created_at', { ascending: false });
+          if (!allErr && allStaff && allStaff.length > 0) {
+            return { success: true, data: allStaff.map(mapSupabaseToFrontend) };
+          }
+        } catch (_) {}
+
         return {
           success: true,
           data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8'))
@@ -270,8 +259,8 @@ export const staffService = {
         doctor_password: String(doctor?.password || ''),
         doctor_specialty: String(doctor?.especialidad || '').trim().toLowerCase(),
         rol: String(doctor?.rol || 'Enfermera'),
-        cursos_vida_asignados: Array.isArray(doctor?.cursos_vida_asignados) ? doctor.cursos_vida_asignados : ['todos'],
-        grupos_riesgo_asignados: Array.isArray(doctor?.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : ['todos'],
+        cursos_vida_asignados: Array.isArray(doctor?.cursos_vida_asignados) ? doctor.cursos_vida_asignados : [],
+        grupos_riesgo_asignados: Array.isArray(doctor?.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : [],
         solo_lectura: doctor?.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
         puede_lanzar_llamadas: Boolean(doctor?.puede_lanzar_llamadas),
         puede_enviar_mensajes: Boolean(doctor?.puede_enviar_mensajes),
@@ -312,8 +301,8 @@ export const staffService = {
       if (changes?.password) payload.doctor_password = String(changes.password);
       if (changes?.is_active !== undefined) payload.is_active = Boolean(changes.is_active);
       if (changes?.rol) payload.rol = String(changes.rol);
-      if (changes?.cursos_vida_asignados) payload.cursos_vida_asignados = Array.isArray(changes.cursos_vida_asignados) ? changes.cursos_vida_asignados : ['todos'];
-      if (changes?.grupos_riesgo_asignados) payload.grupos_riesgo_asignados = Array.isArray(changes.grupos_riesgo_asignados) ? changes.grupos_riesgo_asignados : ['todos'];
+      if (changes?.cursos_vida_asignados !== undefined) payload.cursos_vida_asignados = Array.isArray(changes.cursos_vida_asignados) ? changes.cursos_vida_asignados : [];
+      if (changes?.grupos_riesgo_asignados !== undefined) payload.grupos_riesgo_asignados = Array.isArray(changes.grupos_riesgo_asignados) ? changes.grupos_riesgo_asignados : [];
       if (changes?.solo_lectura !== undefined) payload.solo_lectura = Boolean(changes.solo_lectura);
       if (changes?.puede_lanzar_llamadas !== undefined) payload.puede_lanzar_llamadas = Boolean(changes.puede_lanzar_llamadas);
       if (changes?.puede_enviar_mensajes !== undefined) payload.puede_enviar_mensajes = Boolean(changes.puede_enviar_mensajes);
@@ -321,13 +310,11 @@ export const staffService = {
       if (changes?.puede_editar_pacientes !== undefined) payload.puede_editar_pacientes = Boolean(changes.puede_editar_pacientes);
       payload.updated_at = new Date().toISOString();
 
-      let query = supabase.from('staff').update(payload).eq('doctor_id', id);
-      if (role !== 'super_admin') {
-        if (!hospitalId) return { success: false, error: 'No se pudo identificar el hospital del usuario' };
-        query = query.eq('hospital_id', hospitalId);
-      }
-
-      const { data, error } = await query
+      // doctor_id es la clave primaria UUID única del registro
+      const { data, error } = await supabase
+        .from('staff')
+        .update(payload)
+        .eq('doctor_id', id)
         .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
         .single();
 

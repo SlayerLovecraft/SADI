@@ -190,39 +190,43 @@ export const getAssignedDoctorEmailForPatient = (patient) => {
 };
 
 /**
- * Valida si un paciente pertenece de forma ÚNICA y EXCLUSIVA a un doctor.
- * Retorna true solo si el doctor coincide con el médico asignado.
+ * Valida si un paciente pertenece a un doctor/enfermero según los Cursos de Vida asignados.
+ * REGLA ESTRICTA SADI 3280:
+ * - Si no tiene cursos de vida asignados (array vacío []): NO tiene ningún paciente asignado (0 pacientes).
+ * - Si tiene 'todos': Acceso universal a todos los pacientes de todos los cursos.
+ * - Si tiene cursos específicos: Acceso a todos los pacientes de esos cursos (cualquier grupo de riesgo).
  */
 export const isPatientAssignedToDoctor = (patient, doctorUser) => {
   if (!patient || !doctorUser) return false;
 
-  // 1. Si el usuario de Personal / Enfermería tiene Cursos de Vida asignados explícitamente por el Hospital
-  const cursosAsignados = doctorUser.cursos_vida_asignados;
-  if (Array.isArray(cursosAsignados) && cursosAsignados.length > 0) {
-    if (cursosAsignados.includes('todos')) return true;
-    const cursoPaciente = getCursoVidaFromPatient(patient);
-    return cursosAsignados.includes(cursoPaciente);
+  const rawCursos = doctorUser.cursos_vida_asignados;
+  const cursos = Array.isArray(rawCursos) ? rawCursos : [];
+
+  // Si no tiene cursos asignados, CERO pacientes
+  if (cursos.length === 0) {
+    return false;
   }
 
-  const userEmail = (doctorUser.email || '').toLowerCase().trim();
-  const assignedEmail = (getAssignedDoctorEmailForPatient(patient) || '').toLowerCase().trim();
+  // Si tiene asignación universal 'todos', acceso a todos
+  if (cursos.includes('todos')) {
+    return true;
+  }
 
-  if (!assignedEmail) return false;
-
-  // Cuentas staff asociadas
-  if (userEmail.startsWith('doctor1@')) return assignedEmail === 'paola.gil@sadi.med.co';
-  if (userEmail.startsWith('doctor2@')) return assignedEmail === 'juan.bermudez@sadi.med.co';
-  if (userEmail.startsWith('doctor3@')) return assignedEmail === 'sandra.castano@sadi.med.co';
-  if (userEmail.startsWith('doctor4@')) return assignedEmail === 'fernando.rincon@sadi.med.co';
-  if (userEmail.startsWith('doctor5@')) return assignedEmail === 'beatriz.arango@sadi.med.co';
-  if (userEmail.startsWith('doctor6@')) return assignedEmail === 'mauricio.villa@sadi.med.co';
-  if (userEmail.startsWith('doctor7@')) return assignedEmail === 'natalia.ocampo@sadi.med.co';
-  if (userEmail.startsWith('doctor8@')) return assignedEmail === 'carlos.salazar@sadi.med.co';
-  if (userEmail.startsWith('doctor9@') || userEmail.startsWith('doctor_gen1@')) return assignedEmail === 'alejandro.morales@sadi.med.co';
-  if (userEmail.startsWith('doctor10@') || userEmail.startsWith('doctor_gen2@')) return assignedEmail === 'valentina.gomez@sadi.med.co';
-  if (userEmail.startsWith('doctor11@') || userEmail.startsWith('doctor_gen3@')) return assignedEmail === 'daniel.vargas@sadi.med.co';
-
-  return userEmail === assignedEmail;
+  const cursoPaciente = getCursoVidaFromPatient(patient);
+  return cursos.some(cId => {
+    if (cId === cursoPaciente) return true;
+    if (cId === 'primera_infancia' && (cursoPaciente === 'primera_infancia' || cursoPaciente === 'A')) return true;
+    if (cId === 'infancia' && (cursoPaciente === 'infancia' || cursoPaciente === 'B')) return true;
+    if (cId === 'adolescencia' && (cursoPaciente === 'adolescencia' || cursoPaciente === 'C')) return true;
+    if (cId === 'juventud' && (cursoPaciente === 'juventud' || cursoPaciente === 'D')) return true;
+    if (cId === 'adultez' && (cursoPaciente === 'adultez' || cursoPaciente === 'E')) return true;
+    if (cId === 'vejez' && (cursoPaciente === 'vejez' || cursoPaciente === 'F')) return true;
+    if ((cId === 'materno_perinatal' || cId === 'preventivo_mujer') && (cursoPaciente === 'materno_perinatal' || cursoPaciente === 'preventivo_mujer' || cursoPaciente === 'G')) return true;
+    if (cId === 'planificacion_familiar' && (cursoPaciente === 'planificacion_familiar' || cursoPaciente === 'H')) return true;
+    if ((cId === 'vacunacion' || cId === 'vacunacion_pai') && (cursoPaciente === 'vacunacion' || cursoPaciente === 'vacunacion_pai' || cursoPaciente === 'I')) return true;
+    if (cId === 'salud_oral' && (cursoPaciente === 'salud_oral' || cursoPaciente === 'J')) return true;
+    return false;
+  });
 };
 
 export const isPatientUniquelyAssignedToDoctor = (patient, doctor) => {

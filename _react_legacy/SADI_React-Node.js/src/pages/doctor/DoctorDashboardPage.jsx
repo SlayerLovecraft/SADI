@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
+import { 
+  getDoctorLifeCourseTheme, 
+  formatCursosVidaLabel, 
+  CURSO_VIDA_CONFIG 
+} from '@/services/cursoVidaConfig';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 
 const DoctorDashboardPage = () => {
@@ -24,7 +29,7 @@ const DoctorDashboardPage = () => {
       setLoading(true);
       setError(null);
 
-      // 1. Obtener perfil del doctor
+      // 1. Obtener perfil del doctor desde Supabase / Servicio
       const doctors = await telemonitoringService.getDoctors();
       const currentDoc = doctors.find(d => 
         (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
@@ -36,7 +41,8 @@ const DoctorDashboardPage = () => {
         name: user?.nombre || 'Dr. Especialista SADI',
         email: user?.email,
         specialty: user?.doctor_specialty || 'Medicina Especializada',
-        area_3280: user?.doctor_specialty || 'Área Clínica Asignada',
+        area_3280: 'Sin Asignación',
+        cursos_vida_asignados: user?.cursos_vida_asignados || [],
         telefono: '+57 300 000 0000',
         registro_medico: 'RM-SADI-3280'
       };
@@ -49,7 +55,7 @@ const DoctorDashboardPage = () => {
 
       // 3. Alertas de estos pacientes
       const allAlerts = await telemonitoringService.getAlerts();
-      const myAlerts = (allAlerts || []).filter(a => finalPatients.some(p => p.patient_id === a.patient_id || p.id === a.patient_id));
+      const myAlerts = (allAlerts || []).filter(a => myPatients.some(p => p.patient_id === a.patient_id || p.id === a.patient_id));
       setAlertsCount(myAlerts.length);
 
     } catch (e) {
@@ -67,6 +73,18 @@ const DoctorDashboardPage = () => {
     return assignedPatients.filter(p => p.dispositivos_caseros && p.dispositivos_caseros.length > 0).length;
   }, [assignedPatients]);
 
+  const theme = useMemo(() => {
+    return getDoctorLifeCourseTheme(doctorProfile?.cursos_vida_asignados);
+  }, [doctorProfile?.cursos_vida_asignados]);
+
+  const cursosLabel = useMemo(() => {
+    return formatCursosVidaLabel(doctorProfile?.cursos_vida_asignados);
+  }, [doctorProfile?.cursos_vida_asignados]);
+
+  const isSinAsignacion = useMemo(() => {
+    return !doctorProfile?.cursos_vida_asignados || doctorProfile.cursos_vida_asignados.length === 0;
+  }, [doctorProfile?.cursos_vida_asignados]);
+
   return (
     <Layout>
       <Helmet>
@@ -74,25 +92,28 @@ const DoctorDashboardPage = () => {
       </Helmet>
 
       <div className="space-y-6">
-        {/* Banner de Bienvenida y Perfil Clínico */}
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 rounded-3xl p-6 md:p-8 text-white shadow-lg relative overflow-hidden">
+        {/* Banner de Bienvenida y Perfil Clínico con Color Psicológico del Curso de Vida */}
+        <div className={`bg-gradient-to-r ${theme.gradient} rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden transition-all duration-300 border ${theme.bannerBorder || 'border-white/10'}`}>
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-blue-100 mb-3 border border-white/20">
-                <ShieldCheck className="h-4 w-4 text-emerald-400" />
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/15 backdrop-blur-md rounded-full text-xs font-semibold text-white/90 mb-3 border border-white/20">
+                <ShieldCheck className="h-4 w-4 text-emerald-300" />
                 <span>Portal Médico Especializado • Resolución 3280</span>
-                <span className="bg-emerald-500/30 text-emerald-200 px-2 py-0.2 rounded-full text-[10px]">
-                  🔒 Restringido
+                <span className="bg-black/25 text-white px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                  {isSinAsignacion ? '⚪ Sin Asignación' : `● ${cursosLabel}`}
                 </span>
               </div>
-              <h1 className="text-2xl md:text-3xl font-black">
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight">
                 {doctorProfile?.name || user?.nombre}
               </h1>
-              <p className="text-blue-100 text-sm mt-1 max-w-xl">
-                {doctorProfile?.specialty || user?.doctor_specialty} • {doctorProfile?.area_3280 || 'Atención Primaria en Salud'}
+              <p className="text-white/90 text-sm mt-1 max-w-xl font-medium">
+                {doctorProfile?.specialty || user?.doctor_specialty || 'Atención Primaria y Demanda 3280'} •{' '}
+                <span className="font-extrabold underline decoration-white/40">
+                  {isSinAsignacion ? 'Sin Asignación' : cursosLabel}
+                </span>
               </p>
               {doctorProfile?.registro_medico && (
-                <p className="text-xs text-blue-200 mt-0.5">
+                <p className="text-xs text-white/80 mt-1">
                   Registro Médico: <span className="font-semibold text-white">{doctorProfile.registro_medico}</span>
                 </p>
               )}
@@ -104,7 +125,7 @@ const DoctorDashboardPage = () => {
                 size="sm"
                 onClick={loadData}
                 disabled={loading}
-                className="bg-white/10 hover:bg-white/20 text-white border-white/30 rounded-xl text-xs"
+                className="bg-white/15 hover:bg-white/25 text-white border-white/30 rounded-xl text-xs backdrop-blur-md"
               >
                 <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
                 Actualizar Datos
@@ -113,13 +134,29 @@ const DoctorDashboardPage = () => {
           </div>
         </div>
 
+        {/* Notificación informativa si el doctor está Sin Asignación */}
+        {isSinAsignacion && (
+          <div className="bg-slate-50 border border-slate-300 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+            <AlertTriangle className="h-5 w-5 text-slate-600 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-slate-900 text-sm">Estado Actual: Sin Curso de Vida Asignado</h4>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Actualmente tu usuario no tiene asignado ningún Curso de Vida en la plataforma (0 pacientes).
+                Una vez la administración asigne tu Curso de Vida en el módulo de personal, este panel adoptará automáticamente su color oficial y se habilitará el acceso a tu población asignada.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Tarjetas KPI Médicas */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mis Pacientes</p>
               <p className="text-2xl font-black text-gray-900 mt-1">{assignedPatients.length}</p>
-              <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">Bajo su custodia</p>
+              <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">
+                {assignedPatients.length === 0 ? '0 bajo custodia' : 'Bajo su custodia'}
+              </p>
             </div>
             <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
               <Users className="h-6 w-6" />
@@ -172,7 +209,7 @@ const DoctorDashboardPage = () => {
               </div>
               <div>
                 <h3 className="font-bold text-gray-900 text-sm">Mis Pacientes</h3>
-                <p className="text-xs text-gray-500">Cursos de vida 3280</p>
+                <p className="text-xs text-gray-500">{assignedPatients.length} pacientes</p>
               </div>
             </div>
             <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
@@ -247,40 +284,52 @@ const DoctorDashboardPage = () => {
             </Link>
           </div>
 
-          <div className="divide-y divide-gray-100">
-            {assignedPatients.slice(0, 6).map((patient) => (
-              <div key={patient.id || patient.patient_id} className="py-3.5 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-700 font-bold flex items-center justify-center shrink-0">
-                    {(patient.nombre || patient.name || 'P')[0]}
+          {assignedPatients.length === 0 ? (
+            <div className="py-12 text-center text-slate-400">
+              <Users className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-bold text-slate-700">No hay pacientes asignados bajo su custodia</p>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                {isSinAsignacion 
+                  ? 'Su cuenta se encuentra actualmente en estado "Sin Asignación". Espere a que la coordinación le asigne un Curso de Vida.'
+                  : 'No se encontraron pacientes para su Curso de Vida asignado en este momento.'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {assignedPatients.slice(0, 6).map((patient) => (
+                <div key={patient.id || patient.patient_id} className="py-3.5 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-700 font-bold flex items-center justify-center shrink-0">
+                      {(patient.nombre || patient.name || 'P')[0]}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-gray-900 text-sm truncate">
+                        {patient.nombre || patient.name}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {patient.tipo_documento || 'CC'}: {patient.documento || patient.document} • {patient.telefono || 'Sin teléfono'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-bold text-gray-900 text-sm truncate">
-                      {patient.nombre || patient.name}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {patient.tipo_documento || 'CC'}: {patient.documento || patient.document} • {patient.telefono || 'Sin teléfono'}
-                    </p>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    to="/doctor/clinical-records"
-                    className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs rounded-lg transition-colors"
-                  >
-                    Expediente
-                  </Link>
-                  <Link
-                    to="/doctor/telemonitoring"
-                    className="px-3 py-1.5 bg-gray-50 text-gray-700 hover:bg-gray-100 font-semibold text-xs rounded-lg transition-colors"
-                  >
-                    Signos
-                  </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link
+                      to="/doctor/clinical-records"
+                      className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold text-xs rounded-lg transition-colors"
+                    >
+                      Expediente
+                    </Link>
+                    <Link
+                      to="/doctor/telemonitoring"
+                      className="px-3 py-1.5 bg-gray-50 text-gray-700 hover:bg-gray-100 font-semibold text-xs rounded-lg transition-colors"
+                    >
+                      Signos
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </Layout>

@@ -21,7 +21,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'sandra.duque@sadi.med.co',
     specialty: 'Coordinación Demanda Inducida RIAMP & Materno-Perinatal',
     rol: 'Enfermera Jefe',
-    area_3280: 'Coordinación Integral RIAMP & Rutas 3280',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 314 556 7890',
     registro_medico: 'ENF-CAL-10293',
     is_active: true
@@ -33,7 +33,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'luciana.ospina@sadi.med.co',
     specialty: 'Demanda Inducida y Telemetría Primera Infancia',
     rol: 'Enfermera',
-    area_3280: 'Primera Infancia e Infancia (0 a 11 años)',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 311 445 5601',
     registro_medico: 'ENF-ANT-89234',
     is_active: true
@@ -45,7 +45,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'carlos.martinez@sadi.med.co',
     specialty: 'Telemonitoreo de Riesgo Cardiovascular y Metabólico',
     rol: 'Enfermera',
-    area_3280: 'Adultez y Vejez (Riesgo Crónico)',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 301 223 3404',
     registro_medico: 'ENF-BOG-12908',
     is_active: true
@@ -57,7 +57,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'valeria.restrepo@sadi.med.co',
     specialty: 'Inmunización PAI & Rutas de Vacunación',
     rol: 'Enfermera',
-    area_3280: 'Vacunación y Salud Oral',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 317 665 5407',
     registro_medico: 'ENF-ANT-19402',
     is_active: true
@@ -69,7 +69,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'claudia.morales@sadi.med.co',
     specialty: 'Atención Asistencial • Primera Infancia e Infancia',
     rol: 'Enfermera',
-    area_3280: 'Primera Infancia e Infancia',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 312 889 9106',
     registro_medico: 'ENF-ANT-34891',
     is_active: true
@@ -81,7 +81,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'maritza.restrepo@sadi.med.co',
     specialty: 'Atención Asistencial • Adultez y Vejez (Riesgo Crónico)',
     rol: 'Enfermera',
-    area_3280: 'Adultez y Vejez',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 320 334 4505',
     registro_medico: 'ENF-CAL-67123',
     is_active: true
@@ -93,7 +93,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'andres.loaiza@sadi.med.co',
     specialty: 'Atención Comunitaria • Adolescencia y Juventud',
     rol: 'Enfermera',
-    area_3280: 'Adolescencia y Juventud',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 313 778 8902',
     registro_medico: 'ENF-CUN-45120',
     is_active: true
@@ -105,7 +105,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'paola.gil@sadi.med.co',
     specialty: 'Pediatría y Puericultura Especializada',
     rol: 'Especialista',
-    area_3280: 'Pediatría Especializada Res. 3280',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 311 445 5601',
     registro_medico: 'RM-ANT-89234',
     is_active: true
@@ -117,7 +117,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'fernando.rincon@sadi.med.co',
     specialty: 'Medicina Interna y Cardiología Preventiva',
     rol: 'Especialista',
-    area_3280: 'Medicina Interna y Riesgo Cardiovascular',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 301 223 3404',
     registro_medico: 'RM-BOG-12908',
     is_active: true
@@ -129,7 +129,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'alejandro.morales@sadi.med.co',
     specialty: 'Medicina General & Coordinación Demanda Res. 3280',
     rol: 'Médico General',
-    area_3280: 'Atención Médica General y Triaje Integral',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 310 882 1001',
     registro_medico: 'RM-MED-10492',
     is_active: true
@@ -141,7 +141,7 @@ export const SEED_DOCTORS_3280 = [
     email: 'doctor001@sadi.com.co',
     specialty: 'Medicina General y Consulta Externa',
     rol: 'Médico General',
-    area_3280: 'Medicina General y Admisión Primaria',
+    area_3280: 'Sin Asignación', cursos_vida_asignados: [],
     telefono: '+57 318 443 3208',
     registro_medico: 'RM-BOG-98214',
     is_active: true
@@ -1116,7 +1116,31 @@ export const telemonitoringService = {
   async getDoctors() {
     try {
       const { data, error } = await supabase.from('staff').select('*');
-      if (!error && data && data.length > 0) return data;
+      if (!error && data && data.length > 0) {
+        return data.map(d => ({
+          id: d.doctor_id,
+          doctor_id: d.doctor_id,
+          name: d.doctor_name || '',
+          nombre: d.doctor_name || '',
+          email: d.doctor_email || '',
+          specialty: d.doctor_specialty || '',
+          especialidad: d.doctor_specialty || '',
+          rol: d.rol || 'Enfermera',
+          area_3280: Array.isArray(d.cursos_vida_asignados) && d.cursos_vida_asignados.length > 0 
+            ? d.cursos_vida_asignados.join(', ')
+            : 'Sin Asignación',
+          cursos_vida_asignados: Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : [],
+          grupos_riesgo_asignados: Array.isArray(d.grupos_riesgo_asignados) ? d.grupos_riesgo_asignados : [],
+          solo_lectura: d.solo_lectura !== undefined ? Boolean(d.solo_lectura) : true,
+          puede_lanzar_llamadas: Boolean(d.puede_lanzar_llamadas),
+          puede_enviar_mensajes: Boolean(d.puede_enviar_mensajes),
+          puede_crear_campanas: Boolean(d.puede_crear_campanas),
+          puede_editar_pacientes: Boolean(d.puede_editar_pacientes),
+          hospital_id: d.hospital_id,
+          registro_medico: d.registro_medico || 'RM-SADI-3280',
+          is_active: d.is_active
+        }));
+      }
     } catch (e) {
       // fallback
     }

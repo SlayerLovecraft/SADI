@@ -31,36 +31,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-
-// Catálogo ampliado de los 10 Cursos de Vida (A a J) de la Resolución 3280
-const CURSOS_VIDA_OPTIONS = [
-  { id: 'todos', letra: '★', nombre: 'Todos los Cursos de Vida', edad: 'Acceso Total' },
-  { id: 'primera_infancia', letra: 'A', nombre: 'Primera Infancia', edad: '7 días a 5 años' },
-  { id: 'infancia', letra: 'B', nombre: 'Infancia', edad: '6 a 11 años' },
-  { id: 'adolescencia', letra: 'C', nombre: 'Adolescencia', edad: '12 a 17 años' },
-  { id: 'juventud', letra: 'D', nombre: 'Juventud', edad: '18 a 28 años' },
-  { id: 'adultez', letra: 'E', nombre: 'Adultez', edad: '29 a 59 años' },
-  { id: 'vejez', letra: 'F', nombre: 'Vejez', edad: '60 años o más' },
-  { id: 'preventivo_mujer', letra: 'G', nombre: 'Preventivo de la Mujer', edad: 'Ruta RIAMP & Ca Cuello/Mama' },
-  { id: 'planificacion_familiar', letra: 'H', nombre: 'Planificación Familiar', edad: 'Salud Reproductiva' },
-  { id: 'vacunacion', letra: 'I', nombre: 'Vacunación', edad: 'Esquema PAI Permanente' },
-  { id: 'salud_oral', letra: 'J', nombre: 'Salud Oral', edad: 'Fluorización & Control Bucal' }
-];
-
-// Catálogo de los 10 Grupos de Riesgo Priorizados
-const GRUPOS_RIESGO_OPTIONS = [
-  { id: 'todos', letra: '★', nombre: 'Todos los Grupos de Riesgo' },
-  { id: 'materno_perinatal', letra: '1', nombre: 'Población Materno-Perinatal' },
-  { id: 'cardiovascular', letra: '2', nombre: 'Alteraciones Cardiovasculares, Metabólicas y Renales' },
-  { id: 'respiratorio', letra: '3', nombre: 'Enfermedades Respiratorias Crónicas' },
-  { id: 'cancer', letra: '4', nombre: 'Cáncer y Neoplasias' },
-  { id: 'mental', letra: '5', nombre: 'Trastornos de Salud Mental y Consumo' },
-  { id: 'infecciosas', letra: '6', nombre: 'Enfermedades Infecciosas Crónicas (VIH, TB)' },
-  { id: 'huerfanas', letra: '7', nombre: 'Enfermedades Huérfanas y Raras' },
-  { id: 'nutricional', letra: '8', nombre: 'Trastornos Nutricionales y Obesidad' },
-  { id: 'musculoesqueletico', letra: '9', nombre: 'Trastornos Músculo-Esqueléticos' },
-  { id: 'salud_oral', letra: '10', nombre: 'Salud Oral y Condiciones Orofaciales' }
-];
+import { 
+  CURSO_VIDA_CONFIG, 
+  CURSOS_VIDA_LIST, 
+  getDoctorLifeCourseTheme, 
+  formatCursosVidaLabel 
+} from '@/services/cursoVidaConfig';
+import { 
+  getCursoVidaFromPatient, 
+  isPatientAssignedToDoctor 
+} from './doctor/doctorUtils';
 
 const ROLES_PERSONAL = [
   { value: 'Enfermera', label: 'Enfermera Asistencial (Demanda Inducida)' },
@@ -90,15 +70,14 @@ export default function DoctorsPage() {
   const [viewingPatientsStaff, setViewingPatientsStaff] = useState(null);
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
 
-  // Formulario Nuevo Personal
+  // Formulario Nuevo Personal (Sin asignación inicial)
   const [newStaff, setNewStaff] = useState({
     nombre: '',
     email: '',
     password: 'sadi' + Math.floor(1000 + Math.random() * 9000),
     rol: 'Enfermera',
     especialidad: 'Atención Primaria y Demanda Inducida 3280',
-    cursos_vida_asignados: ['primera_infancia'],
-    grupos_riesgo_asignados: ['materno_perinatal'],
+    cursos_vida_asignados: [], // Sin Asignación por defecto
     solo_lectura: true,
     puede_lanzar_llamadas: false,
     puede_enviar_mensajes: false,
@@ -115,10 +94,9 @@ export default function DoctorsPage() {
     password: ''
   });
 
-  // Formulario "Mejorar Permisos & Cursos de Vida / Riesgos"
+  // Formulario "Mejorar Permisos & Cursos de Vida" (Sin Asignación inicial)
   const [permissionsForm, setPermissionsForm] = useState({
-    cursos_vida_asignados: ['todos'],
-    grupos_riesgo_asignados: ['todos'],
+    cursos_vida_asignados: [],
     solo_lectura: true,
     puede_lanzar_llamadas: false,
     puede_enviar_mensajes: false,
@@ -169,8 +147,8 @@ export default function DoctorsPage() {
         password: newStaff.password || 'sadi2026',
         especialidad: newStaff.especialidad,
         rol: newStaff.rol,
-        cursos_vida_asignados: newStaff.cursos_vida_asignados,
-        grupos_riesgo_asignados: newStaff.grupos_riesgo_asignados,
+        cursos_vida_asignados: newStaff.cursos_vida_asignados || [],
+        grupos_riesgo_asignados: [],
         solo_lectura: newStaff.solo_lectura,
         puede_lanzar_llamadas: newStaff.puede_lanzar_llamadas,
         puede_enviar_mensajes: newStaff.puede_enviar_mensajes,
@@ -188,8 +166,7 @@ export default function DoctorsPage() {
           password: 'sadi' + Math.floor(1000 + Math.random() * 9000),
           rol: 'Enfermera',
           especialidad: 'Atención Primaria y Demanda Inducida 3280',
-          cursos_vida_asignados: ['primera_infancia'],
-          grupos_riesgo_asignados: ['materno_perinatal'],
+          cursos_vida_asignados: [],
           solo_lectura: true,
           puede_lanzar_llamadas: false,
           puede_enviar_mensajes: false,
@@ -250,12 +227,13 @@ export default function DoctorsPage() {
     }
   };
 
-  // Abrir Modal "Mejorar Permisos & Cursos de Vida / Riesgos"
+  // Abrir Modal "Mejorar Permisos & Cursos de Vida"
   const openPermissionsModal = (staff) => {
     setSelectedStaff(staff);
+    const raw = staff.cursos_vida_asignados;
+    const cursos = Array.isArray(raw) ? raw : [];
     setPermissionsForm({
-      cursos_vida_asignados: staff.cursos_vida_asignados || ['todos'],
-      grupos_riesgo_asignados: staff.grupos_riesgo_asignados || ['todos'],
+      cursos_vida_asignados: cursos,
       solo_lectura: staff.solo_lectura !== undefined ? staff.solo_lectura : true,
       puede_lanzar_llamadas: staff.puede_lanzar_llamadas || false,
       puede_enviar_mensajes: staff.puede_enviar_mensajes || false,
@@ -271,7 +249,7 @@ export default function DoctorsPage() {
     try {
       const res = await staffService.update(selectedStaff.id, {
         cursos_vida_asignados: permissionsForm.cursos_vida_asignados,
-        grupos_riesgo_asignados: permissionsForm.grupos_riesgo_asignados,
+        grupos_riesgo_asignados: [],
         solo_lectura: permissionsForm.solo_lectura,
         puede_lanzar_llamadas: permissionsForm.puede_lanzar_llamadas,
         puede_enviar_mensajes: permissionsForm.puede_enviar_mensajes,
@@ -282,7 +260,7 @@ export default function DoctorsPage() {
       if (res.success) {
         toast({
           title: "🛡️ Permisos y Asignaciones actualizados",
-          description: `Se han guardado las restricciones de acceso y grupos asignados para ${selectedStaff.nombre}.`
+          description: `Se han configurado las restricciones de Cursos de Vida para ${selectedStaff.nombre}.`
         });
         setShowPermissionsDialog(false);
         setSelectedStaff(null);
@@ -316,14 +294,13 @@ export default function DoctorsPage() {
 
   // Toggle de Cursos de Vida en el formulario
   const toggleCursoVida = (cursoId, formState, setFormState) => {
-    let current = [...formState.cursos_vida_asignados];
+    let current = Array.isArray(formState.cursos_vida_asignados) ? [...formState.cursos_vida_asignados] : [];
     if (cursoId === 'todos') {
-      current = ['todos'];
+      current = current.includes('todos') ? [] : ['todos'];
     } else {
       current = current.filter(c => c !== 'todos');
       if (current.includes(cursoId)) {
         current = current.filter(c => c !== cursoId);
-        if (current.length === 0) current = ['todos'];
       } else {
         current.push(cursoId);
       }
@@ -331,21 +308,12 @@ export default function DoctorsPage() {
     setFormState({ ...formState, cursos_vida_asignados: current });
   };
 
-  // Toggle de Grupos de Riesgo en el formulario
-  const toggleGrupoRiesgo = (riesgoId, formState, setFormState) => {
-    let current = [...(formState.grupos_riesgo_asignados || ['todos'])];
-    if (riesgoId === 'todos') {
-      current = ['todos'];
-    } else {
-      current = current.filter(r => r !== 'todos');
-      if (current.includes(riesgoId)) {
-        current = current.filter(r => r !== riesgoId);
-        if (current.length === 0) current = ['todos'];
-      } else {
-        current.push(riesgoId);
-      }
-    }
-    setFormState({ ...formState, grupos_riesgo_asignados: current });
+  const clearCursosVida = (formState, setFormState) => {
+    setFormState({ ...formState, cursos_vida_asignados: [] });
+  };
+
+  const setAllCursosVida = (formState, setFormState) => {
+    setFormState({ ...formState, cursos_vida_asignados: ['todos'] });
   };
 
   // Filtros de tabla de personal
@@ -363,57 +331,22 @@ export default function DoctorsPage() {
     });
   }, [staffList, searchTerm, roleFilter]);
 
-  // Pacientes asignados al profesional seleccionado
+  // Cálculo estricto de pacientes asignados a un miembro de personal
+  // REGLA CLÍNICA SADI: Si no tiene Cursos de Vida asignados ([]), tiene CERO pacientes (0).
+  // Si tiene cursos asignados, tiene acceso a todos los pacientes de esos cursos, sin importar el grupo de riesgo.
+  const getStaffAssignedPatients = (staff, patientsList = allPatients) => {
+    if (!staff || !patientsList.length) return [];
+    const cursos = Array.isArray(staff.cursos_vida_asignados) ? staff.cursos_vida_asignados : [];
+
+    if (cursos.length === 0) return [];
+    if (cursos.includes('todos')) return patientsList;
+
+    return patientsList.filter(p => isPatientAssignedToDoctor(p, staff));
+  };
+
+  // Pacientes asignados al profesional seleccionado en el modal
   const assignedPatients = useMemo(() => {
-    if (!viewingPatientsStaff || !allPatients.length) return [];
-    
-    // REGLA INSTITUCIONAL: La Enfermera Jefe (Jefe Sandra Milena Duque Ríos) tiene acceso y supervisión de TODOS los 56 pacientes
-    const isEnfermeraJefe = 
-      viewingPatientsStaff.rol === 'Enfermera Jefe' || 
-      (viewingPatientsStaff.nombre || '').toLowerCase().includes('sandra milena duque') ||
-      (viewingPatientsStaff.especialidad || '').toLowerCase().includes('coordinaci');
-
-    if (isEnfermeraJefe) {
-      return allPatients;
-    }
-
-    const staffCursos = (viewingPatientsStaff.cursos_vida_asignados || []).filter(c => c !== 'todos');
-    const staffRiesgos = (viewingPatientsStaff.grupos_riesgo_asignados || []).filter(r => r !== 'todos');
-
-    // Si no tiene cursos específicos configurados, no devolver todos por defecto si no es la Jefe
-    if (staffCursos.length === 0 && staffRiesgos.length === 0) {
-      return [];
-    }
-
-    return allPatients.filter(p => {
-      // 1. Asignación directa si existe vínculo por ID o nombre
-      if (p.doctor_id && (p.doctor_id === viewingPatientsStaff.id || p.doctor_id === viewingPatientsStaff.doctor_id)) {
-        return true;
-      }
-      if (p.doctor_nombre && (p.doctor_nombre.toLowerCase() === (viewingPatientsStaff.nombre || '').toLowerCase())) {
-        return true;
-      }
-
-      const pCurso = (p.grupo_vida || p.curso_vida || '').toLowerCase();
-      const pRiesgo = (p.grupo_riesgo || '').toLowerCase();
-      const pPrograma = (p.programa || '').toLowerCase();
-
-      // Coincidencia con Cursos de Vida
-      const matchCurso = staffCursos.some(cId => {
-        const opt = CURSOS_VIDA_OPTIONS.find(o => o.id === cId);
-        const cName = (opt ? opt.nombre : cId).toLowerCase();
-        return pCurso.includes(cName) || cName.includes(pCurso) || pCurso.replace(/\s+/g, '_') === cId || pPrograma.includes(cId);
-      });
-
-      // Coincidencia con Grupos de Riesgo
-      const matchRiesgo = staffRiesgos.some(rId => {
-        const opt = GRUPOS_RIESGO_OPTIONS.find(o => o.id === rId);
-        const rName = (opt ? opt.nombre : rId).toLowerCase();
-        return pRiesgo.includes(rName) || rName.includes(pRiesgo) || pRiesgo.replace(/\s+/g, '_').includes(rId);
-      });
-
-      return matchCurso || matchRiesgo;
-    });
+    return getStaffAssignedPatients(viewingPatientsStaff, allPatients);
   }, [viewingPatientsStaff, allPatients]);
 
   const filteredAssignedPatients = useMemo(() => {
@@ -493,15 +426,15 @@ export default function DoctorsPage() {
           </div>
         </div>
 
-        {/* Tabla de Personal en Lista (tal como en la solicitud: Nombre, Grupos de Vida Asignados, Grupos de Riesgo Asignados) */}
+        {/* Tabla de Personal en Lista: Nombre, Cursos de Vida Asignados y Alcance Clínico */}
         <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-900 text-white font-bold text-[11px] tracking-wider uppercase">
                 <tr>
-                  <th className="p-4 whitespace-nowrap">Nombre</th>
-                  <th className="p-4 whitespace-nowrap">Grupos de Vida Asignados</th>
-                  <th className="p-4 whitespace-nowrap">Grupos de Riesgo Asignados</th>
+                  <th className="p-4 whitespace-nowrap">Nombre / Profesional</th>
+                  <th className="p-4 whitespace-nowrap">Cursos de Vida Asignados (Res. 3280)</th>
+                  <th className="p-4 whitespace-nowrap">Alcance Clínico</th>
                   <th className="p-4 text-right whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
@@ -523,11 +456,10 @@ export default function DoctorsPage() {
                   </tr>
                 ) : (
                   filteredStaff.map((staff) => {
-                    const isNurse = (staff.rol || '').toLowerCase().includes('enferm');
-                    const cursos = staff.cursos_vida_asignados || ['todos'];
+                    const cursos = Array.isArray(staff.cursos_vida_asignados) ? staff.cursos_vida_asignados : [];
+                    const isSinAsignacion = cursos.length === 0;
                     const isAllCursos = cursos.includes('todos');
-                    const riesgos = staff.grupos_riesgo_asignados || ['todos'];
-                    const isAllRiesgos = riesgos.includes('todos');
+                    const staffPatients = getStaffAssignedPatients(staff, allPatients);
 
                     return (
                       <tr key={staff.id} className="hover:bg-blue-50/40 transition-colors">
@@ -540,7 +472,7 @@ export default function DoctorsPage() {
                               setPatientSearchTerm('');
                             }}
                             className="text-left group flex items-start gap-2.5 transition-transform active:scale-98"
-                            title="Haz clic para ver los pacientes, grabaciones de audio y transcripciones lanzadas por este profesional"
+                            title="Haz clic para ver los pacientes y llamadas de este profesional"
                           >
                             <div className="w-9 h-9 rounded-2xl bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center font-black text-sm shrink-0 transition-colors shadow-xs">
                               {staff.nombre ? staff.nombre.charAt(0).toUpperCase() : 'P'}
@@ -570,19 +502,34 @@ export default function DoctorsPage() {
                           </button>
                         </td>
 
-                        {/* 2. Grupos de Vida Asignados */}
-                        <td className="p-4 max-w-xs">
-                          {isAllCursos ? (
-                            <span className="bg-cyan-50 text-cyan-800 px-2.5 py-1 rounded-xl text-[10px] font-bold border border-cyan-200">
-                              ★ Todos los Cursos de Vida (A - J)
+                        {/* 2. Cursos de Vida Asignados */}
+                        <td className="p-4 max-w-sm">
+                          {isSinAsignacion ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                              <span>Sin Asignación</span>
+                            </span>
+                          ) : isAllCursos ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black bg-blue-50 text-blue-900 border border-blue-300">
+                              <span>★</span>
+                              <span>Todos los Cursos de Vida (A - J)</span>
                             </span>
                           ) : (
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap gap-1.5">
                               {cursos.map(cId => {
-                                const opt = CURSOS_VIDA_OPTIONS.find(o => o.id === cId);
+                                const cfg = CURSO_VIDA_CONFIG[cId];
                                 return (
-                                  <span key={cId} className="bg-cyan-50 text-cyan-900 px-2 py-0.5 rounded-lg text-[10px] font-bold border border-cyan-200">
-                                    {opt ? `${opt.letra}. ${opt.nombre}` : cId}
+                                  <span
+                                    key={cId}
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-black border shadow-xs inline-flex items-center gap-1.5 ${
+                                      cfg ? cfg.badge : 'bg-gray-100 text-gray-800 border-gray-200'
+                                    }`}
+                                  >
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-full"
+                                      style={{ backgroundColor: cfg?.colorHex || '#64748B' }}
+                                    />
+                                    <span>{cfg ? `${cfg.letra}. ${cfg.nombre}` : cId}</span>
                                   </span>
                                 );
                               })}
@@ -590,22 +537,22 @@ export default function DoctorsPage() {
                           )}
                         </td>
 
-                        {/* 3. Grupos de Riesgo Asignados */}
-                        <td className="p-4 max-w-xs">
-                          {isAllRiesgos ? (
-                            <span className="bg-amber-50 text-amber-800 px-2.5 py-1 rounded-xl text-[10px] font-bold border border-amber-200">
-                              ★ Todos los Grupos de Riesgo (1 - 10)
-                            </span>
+                        {/* 3. Alcance Clínico */}
+                        <td className="p-4 whitespace-nowrap">
+                          {isSinAsignacion ? (
+                            <div className="flex items-center gap-2 text-slate-400">
+                              <span className="w-2 h-2 rounded-full bg-slate-300"></span>
+                              <span className="font-semibold text-xs text-slate-500">0 pacientes (Sin Asignación)</span>
+                            </div>
                           ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {riesgos.map(rId => {
-                                const opt = GRUPOS_RIESGO_OPTIONS.find(o => o.id === rId);
-                                return (
-                                  <span key={rId} className="bg-amber-50 text-amber-900 px-2 py-0.5 rounded-lg text-[10px] font-bold border border-amber-200" title={opt ? opt.nombre : rId}>
-                                    {opt ? `${opt.letra}. ${opt.nombre}` : rId}
-                                  </span>
-                                );
-                              })}
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                <span className="font-black text-slate-900 text-xs">{staffPatients.length} pacientes</span>
+                              </div>
+                              <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 inline-block mt-0.5">
+                                Universal a Grupos de Riesgo
+                              </span>
                             </div>
                           )}
                         </td>
@@ -619,7 +566,7 @@ export default function DoctorsPage() {
                               size="sm"
                               onClick={() => openPermissionsModal(staff)}
                               className="h-8 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1 shadow-xs"
-                              title="Mejorar permisos, cursos de vida y grupos de riesgo"
+                              title="Configurar Cursos de Vida y Permisos"
                             >
                               <Shield className="w-3.5 h-3.5 text-amber-400" />
                               <span>Permisos</span>
@@ -779,68 +726,50 @@ export default function DoctorsPage() {
 
             {/* Asignación de Cursos de Vida */}
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
-              <Label className="font-black text-slate-800 flex items-center gap-1.5">
-                <Baby className="w-4 h-4 text-emerald-600" />
-                Asignar Cursos de Vida (La enfermera solo verá a estos pacientes):
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="font-black text-slate-800 flex items-center gap-1.5 text-xs">
+                  <Baby className="w-4 h-4 text-blue-600" />
+                  Asignar Cursos de Vida (Res. 3280):
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => clearCursosVida(newStaff, setNewStaff)}
+                  className="text-[10px] text-slate-500 hover:text-slate-800 font-bold underline"
+                >
+                  Limpiar / Sin Asignación
+                </button>
+              </div>
 
               <div className="grid grid-cols-2 gap-2 pt-1">
-                {CURSOS_VIDA_OPTIONS.map(c => {
+                {CURSOS_VIDA_LIST.filter(c => c.id !== 'todos' && c.id !== 'sin_asignacion').map(c => {
                   const isChecked = newStaff.cursos_vida_asignados.includes(c.id);
                   return (
-                    <label
+                    <div
                       key={c.id}
                       onClick={() => toggleCursoVida(c.id, newStaff, setNewStaff)}
-                      className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
+                      className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all select-none ${
                         isChecked 
                           ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold' 
                           : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                       }`}
                     >
+                      <span
+                        className="w-5 h-5 rounded-md text-white font-black text-[10px] flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: c.colorHex }}
+                      >
+                        {c.letra}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-bold block text-[11px] truncate">{c.nombre}</span>
+                        <span className="text-[10px] text-gray-400 block truncate">{c.rango}</span>
+                      </div>
                       <input
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => {}}
                         className="rounded text-blue-600 pointer-events-none"
                       />
-                      <div>
-                        <span className="font-bold block text-[11px]">{c.letra}. {c.nombre}</span>
-                        <span className="text-[10px] text-gray-400">{c.edad}</span>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Asignación de Grupos de Riesgo */}
-            <div className="bg-amber-50/50 p-3.5 rounded-2xl border border-amber-200 space-y-2">
-              <Label className="font-black text-amber-900 flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4 text-amber-600" />
-                Asignar Grupos de Riesgo Priorizados:
-              </Label>
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {GRUPOS_RIESGO_OPTIONS.map(r => {
-                  const isChecked = (newStaff.grupos_riesgo_asignados || []).includes(r.id);
-                  return (
-                    <label
-                      key={r.id}
-                      onClick={() => toggleGrupoRiesgo(r.id, newStaff, setNewStaff)}
-                      className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                        isChecked 
-                          ? 'bg-amber-100/70 border-amber-400 text-amber-950 font-bold' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => {}}
-                        className="rounded text-amber-600 pointer-events-none"
-                      />
-                      <span className="font-bold text-[11px] truncate">{r.letra}. {r.nombre}</span>
-                    </label>
+                    </div>
                   );
                 })}
               </div>
@@ -922,7 +851,7 @@ export default function DoctorsPage() {
       </Dialog>
 
       {/* ========================================================================= */}
-      {/* MODAL 3: MEJORAR PERMISOS & ASIGNACIÓN DE CURSOS DE VIDA / RIESGOS */}
+      {/* MODAL 3: MEJORAR PERMISOS & ASIGNACIÓN DE CURSOS DE VIDA */}
       {/* ========================================================================= */}
       <Dialog open={showPermissionsDialog} onOpenChange={setShowPermissionsDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -932,76 +861,95 @@ export default function DoctorsPage() {
               Mejorar Permisos & Asignaciones: {selectedStaff?.nombre}
             </DialogTitle>
             <DialogDescription>
-              Configura los Cursos de Vida y Grupos de Riesgo que este profesional podrá visualizar, y gestiona sus permisos asistenciales.
+              Configura los Cursos de Vida que este profesional podrá visualizar y gestionar (Resolución 3280 de 2018). Tendrá acceso universal a todos los grupos de riesgo dentro de los cursos asignados.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 pt-2 text-xs">
             
             {/* Cursos de Vida Asignados */}
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
-              <Label className="font-black text-slate-800 flex items-center gap-1.5">
-                <Baby className="w-4 h-4 text-emerald-600" />
-                Cursos de Vida Permitidos (Restricción de Pacientes):
-              </Label>
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-200/80">
+                <div>
+                  <Label className="font-black text-slate-900 flex items-center gap-2 text-xs">
+                    <Baby className="w-4 h-4 text-blue-600" />
+                    Cursos de Vida Permitidos (Restricción de Pacientes):
+                  </Label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Si no tiene cursos asignados, el profesional no tendrá pacientes bajo su cargo (0 pacientes).
+                  </p>
+                </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {CURSOS_VIDA_OPTIONS.map(c => {
+                {/* Acciones Rápidas */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAllCursosVida(permissionsForm, setPermissionsForm)}
+                    className="h-7 text-[10px] font-bold px-2.5 border-blue-300 text-blue-700 hover:bg-blue-50"
+                  >
+                    ★ Acceso Total (A - J)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => clearCursosVida(permissionsForm, setPermissionsForm)}
+                    className="h-7 text-[10px] font-bold px-2.5 border-slate-300 text-slate-600 hover:bg-slate-100"
+                  >
+                    ⚪ Dejar Sin Asignación (0 pac.)
+                  </Button>
+                </div>
+              </div>
+
+              {/* Estado actual de asignación */}
+              <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-600">Estado de Asignación:</span>
+                <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] ${
+                  permissionsForm.cursos_vida_asignados.length === 0
+                    ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                    : permissionsForm.cursos_vida_asignados.includes('todos')
+                    ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                    : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                }`}>
+                  {formatCursosVidaLabel(permissionsForm.cursos_vida_asignados)}
+                </span>
+              </div>
+
+              {/* Cuadrícula de Cursos de Vida */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {CURSOS_VIDA_LIST.filter(c => c.id !== 'todos' && c.id !== 'sin_asignacion').map(c => {
                   const isChecked = permissionsForm.cursos_vida_asignados.includes(c.id);
                   return (
-                    <label
+                    <div
                       key={c.id}
                       onClick={() => toggleCursoVida(c.id, permissionsForm, setPermissionsForm)}
-                      className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
+                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all select-none ${
                         isChecked 
-                          ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                          ? 'bg-white shadow-sm ring-2 ring-blue-500 border-transparent font-bold' 
+                          : 'bg-white/80 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'
                       }`}
                     >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => {}}
-                        className="rounded text-blue-600 pointer-events-none"
-                      />
-                      <div>
-                        <span className="font-bold block text-[11px]">{c.letra}. {c.nombre}</span>
-                        <span className="text-[10px] text-gray-400">{c.edad}</span>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span
+                          className="w-7 h-7 rounded-lg text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0"
+                          style={{ backgroundColor: c.colorHex }}
+                        >
+                          {c.letra}
+                        </span>
+                        <div className="min-w-0">
+                          <span className="font-bold block text-xs text-slate-900 truncate">{c.nombre}</span>
+                          <span className="text-[10px] text-slate-500 font-medium block truncate">{c.rango}</span>
+                        </div>
                       </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
 
-            {/* Grupos de Riesgo Asignados */}
-            <div className="bg-amber-50/50 p-3.5 rounded-2xl border border-amber-200 space-y-2">
-              <Label className="font-black text-amber-900 flex items-center gap-1.5">
-                <ShieldAlert className="w-4 h-4 text-amber-600" />
-                Grupos de Riesgo Asignados:
-              </Label>
-
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                {GRUPOS_RIESGO_OPTIONS.map(r => {
-                  const isChecked = (permissionsForm.grupos_riesgo_asignados || []).includes(r.id);
-                  return (
-                    <label
-                      key={r.id}
-                      onClick={() => toggleGrupoRiesgo(r.id, permissionsForm, setPermissionsForm)}
-                      className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all ${
-                        isChecked 
-                          ? 'bg-amber-100/70 border-amber-400 text-amber-950 font-bold' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => {}}
-                        className="rounded text-amber-600 pointer-events-none"
-                      />
-                      <span className="font-bold text-[11px] truncate">{r.letra}. {r.nombre}</span>
-                    </label>
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-2 ${
+                        isChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'
+                      }`}>
+                        {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -1070,7 +1018,7 @@ export default function DoctorsPage() {
                   <div>
                     <span className="font-bold block text-purple-900">Permitir Crear y Gestionar Campañas</span>
                     <span className="text-[10px] text-gray-500 font-normal">
-                      Habilita el botón de crear campañas masivas para los cursos de vida y riesgos que tiene asignados.
+                      Habilita el botón de crear campañas masivas para los cursos de vida que tiene asignados.
                     </span>
                   </div>
                 </label>

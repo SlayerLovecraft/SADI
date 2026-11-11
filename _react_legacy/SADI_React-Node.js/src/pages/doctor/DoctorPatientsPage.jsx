@@ -9,6 +9,7 @@ import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
+import { getDoctorLifeCourseTheme, formatCursosVidaLabel } from '@/services/cursoVidaConfig';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 
 const DoctorPatientsPage = () => {
@@ -19,6 +20,18 @@ const DoctorPatientsPage = () => {
   const [error, setError] = useState(null);
   const [patients, setPatients] = useState([]);
   const [doctorProfile, setDoctorProfile] = useState(null);
+
+  const theme = useMemo(() => {
+    return getDoctorLifeCourseTheme(doctorProfile?.cursos_vida_asignados);
+  }, [doctorProfile?.cursos_vida_asignados]);
+
+  const cursosLabel = useMemo(() => {
+    return formatCursosVidaLabel(doctorProfile?.cursos_vida_asignados);
+  }, [doctorProfile?.cursos_vida_asignados]);
+
+  const isSinAsignacion = useMemo(() => {
+    return !doctorProfile?.cursos_vida_asignados || doctorProfile.cursos_vida_asignados.length === 0;
+  }, [doctorProfile?.cursos_vida_asignados]);
 
   const loadPatients = useCallback(async () => {
     try {
@@ -96,16 +109,19 @@ const DoctorPatientsPage = () => {
             </p>
           </div>
 
-          <div className="bg-blue-50/80 border border-blue-200/60 rounded-2xl p-3 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-sm">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center gap-3">
+            <div 
+              className="h-10 w-10 rounded-xl text-white flex items-center justify-center font-bold shadow-sm"
+              style={{ backgroundColor: theme.colorHex || '#2563EB' }}
+            >
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Especialidad Asignada:</p>
-              <p className="font-extrabold text-gray-900 text-xs">
-                {doctorProfile?.specialty || user?.doctor_specialty}
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Curso de Vida Asignado:</p>
+              <p className="font-extrabold text-slate-900 text-xs">
+                {isSinAsignacion ? 'Sin Asignación' : cursosLabel}
               </p>
-              <p className="text-[10px] text-gray-500">
+              <p className="text-[10px] text-slate-500">
                 {patients.length} pacientes activos bajo custodia
               </p>
             </div>
@@ -141,7 +157,11 @@ const DoctorPatientsPage = () => {
           <div className="bg-white rounded-3xl p-12 text-center border border-gray-100">
             <User className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-base font-bold text-gray-800">No se encontraron pacientes asignados</p>
-            <p className="text-xs text-gray-500 mt-1">Pruebe ajustando el término de búsqueda.</p>
+            <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+              {isSinAsignacion 
+                ? 'Su usuario se encuentra en estado "Sin Asignación". No cuenta con pacientes bajo su cargo hasta que la administración le asigne un Curso de Vida.'
+                : 'No se encontraron pacientes registrados para su Curso de Vida o término de búsqueda.'}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
