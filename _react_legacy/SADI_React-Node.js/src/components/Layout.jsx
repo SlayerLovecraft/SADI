@@ -85,12 +85,12 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // Estado y sincronización de Dark Mode persistido en localStorage
+  // Estado y sincronización de Dark Mode persistido en localStorage (por defecto SIEMPRE en modo luz)
   const [darkMode, setDarkMode] = useState(() => {
     try {
       const saved = localStorage.getItem('sadi_theme');
-      if (saved) return saved === 'dark';
-      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (saved !== null) return saved === 'dark';
+      return false; // Por requerimiento explícito, por defecto SIEMPRE inicia en modo luz
     } catch (e) {
       return false;
     }

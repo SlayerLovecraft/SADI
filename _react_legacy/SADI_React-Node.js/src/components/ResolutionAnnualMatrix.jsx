@@ -710,26 +710,26 @@ export default function ResolutionAnnualMatrix({
       {/* 1. CALENDARIO: CURSOS DE VIDA (A a J) CON SEPARACIÓN VISUAL REFORZADA     */}
       {/* ========================================================================= */}
       {(activeTab === 'ambos' || activeTab === 'cursos_vida') && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-6">
-          <div className="p-6 border-b border-slate-200 bg-slate-50/70 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden space-y-6 transition-colors">
+          <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/90 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
                 1
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg flex items-center gap-2">
                   <span>Cronograma por Cursos de Vida (Resolución 3280 de 2018)</span>
-                  <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-md">
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900/50">
                     10 Rutas Integrales de Atención
                   </span>
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Líneas separadas claramente por programa etario con colores unificados y badges clínicos.
                 </p>
               </div>
             </div>
-            <div className="text-xs text-blue-900 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl flex items-center gap-2">
-              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+            <div className="text-xs text-blue-900 dark:text-blue-200 bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900 px-3 py-1.5 rounded-xl flex items-center gap-2">
+              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
               <span>Haz clic en cualquier celda para activar el <strong>Wizard con límite de aforo</strong>.</span>
             </div>
           </div>
@@ -752,9 +752,9 @@ export default function ResolutionAnnualMatrix({
                 <col className="w-[7%]" />
               </colgroup>
               <thead>
-                <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
-                  <th className="p-2 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300 overflow-hidden">
-                    <div className="truncate font-black text-slate-800">
+                <tr className="bg-slate-100 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-700 dark:text-slate-300 font-bold transition-colors">
+                  <th className="p-2 sticky left-0 bg-slate-100 dark:bg-slate-900 z-10 border-r-2 border-slate-300 dark:border-slate-800 overflow-hidden transition-colors">
+                    <div className="truncate font-black text-slate-800 dark:text-white">
                       Curso de Vida & Rango Etario
                     </div>
                   </th>
@@ -762,27 +762,27 @@ export default function ResolutionAnnualMatrix({
                     const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
                     const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
                     return (
-                      <th key={idx} className="p-1 text-center border-r border-slate-200 last:border-r-0 overflow-hidden">
-                        <div className="font-black text-slate-800 text-[11px] truncate">{abrev}</div>
-                        <div className="text-[8px] font-normal text-slate-500 capitalize truncate">{nombreMes}</div>
+                      <th key={idx} className="p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden transition-colors">
+                        <div className="font-black text-slate-800 dark:text-slate-200 text-[11px] truncate">{abrev}</div>
+                        <div className="text-[8px] font-normal text-slate-500 dark:text-slate-400 capitalize truncate">{nombreMes}</div>
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody className="divide-y-4 divide-slate-100 text-xs">
-                {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES */}
-                <tr className="bg-slate-950 text-white border-b-4 border-slate-300 group/roadmap">
-                  <td className="p-2 sticky left-0 bg-slate-950 z-10 border-r-2 border-slate-700 shadow-md overflow-hidden">
+                {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES (Blanco en Luz, Negro en Noche) */}
+                <tr className="bg-white dark:bg-slate-950 text-slate-800 dark:text-white border-b-4 border-slate-200 dark:border-slate-800 group/roadmap transition-colors">
+                  <td className="p-2 sticky left-0 bg-white dark:bg-slate-950 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden transition-colors">
                     <div className="flex items-center gap-1.5 overflow-hidden">
-                      <div className="w-6 h-6 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                      <div className="w-6 h-6 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800/60">
                         <Calendar className="w-3.5 h-3.5" />
                       </div>
                       <div className="min-w-0 flex-1 overflow-hidden">
-                        <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400 truncate">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 truncate">
                           Ruta Res. 3280
                         </div>
-                        <div className="text-[8px] text-slate-300 truncate">
+                        <div className="text-[8px] text-slate-500 dark:text-slate-400 truncate">
                           {totalYearlyCalls} llam. • 365d
                         </div>
                       </div>
@@ -796,13 +796,17 @@ export default function ResolutionAnnualMatrix({
                     return (
                       <td 
                         key={mIdx} 
-                        className={`p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top transition-opacity ${
-                          isPast ? 'opacity-30 filter grayscale-[60%]' : ''
+                        className={`p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden align-top transition-all ${
+                          isPast ? 'bg-slate-100/90 dark:bg-slate-900/60 filter grayscale contrast-[75%] opacity-70' : 'bg-white dark:bg-slate-950'
                         }`}
-                        title={isPast ? 'Periodo pasado cerrado en la Resolución 3280' : undefined}
+                        title={isPast ? 'Periodo pasado cerrado (Vencido) en la Resolución 3280' : undefined}
                       >
-                        {/* Mini Calendario Mensual Blanco */}
-                        <div className="w-full rounded-lg p-1 border border-slate-200 bg-white shadow-xs flex flex-col justify-between min-h-[58px]">
+                        {/* Mini Calendario Mensual (Blanco en activo, grisáceo vencido en pasado) */}
+                        <div className={`w-full rounded-lg p-1 border flex flex-col justify-between min-h-[58px] transition-colors ${
+                          isPast 
+                            ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 shadow-none' 
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
+                        }`}>
                           <div className="grid grid-cols-7 gap-[1px] w-full">
                             {days.map(d => {
                               const cvIds = Array.from(d.cursosVidaPresentes || []);
@@ -832,10 +836,10 @@ export default function ResolutionAnnualMatrix({
                                   style={bgStyle}
                                   className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
                                     isSun
-                                      ? 'bg-slate-100 text-slate-300 opacity-40 cursor-default'
+                                      ? 'bg-slate-100 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                       : hasCalls
                                         ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                        : 'bg-slate-50 text-slate-700 hover:bg-slate-200 hover:text-slate-900 border border-slate-100 cursor-pointer'
+                                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border border-slate-100 dark:border-slate-700/50 cursor-pointer'
                                   }`}
                                 >
                                   {d.dayOfMonth}
@@ -843,8 +847,8 @@ export default function ResolutionAnnualMatrix({
                               );
                             })}
                           </div>
-                          <div className="flex items-center justify-between text-[7.5px] text-slate-600 mt-1 pt-0.5 border-t border-slate-100 px-0.5">
-                            <span className={monthCalls > 0 ? "text-emerald-700 font-bold truncate" : "text-slate-400 truncate"}>
+                          <div className="flex items-center justify-between text-[7.5px] text-slate-600 dark:text-slate-400 mt-1 pt-0.5 border-t border-slate-100 dark:border-slate-800 px-0.5">
+                            <span className={monthCalls > 0 ? "text-emerald-700 dark:text-emerald-400 font-bold truncate" : "text-slate-400 truncate"}>
                               {monthCalls} llam.
                             </span>
                             <span className="text-[7px] text-slate-400">{days.length}d</span>
@@ -862,10 +866,10 @@ export default function ResolutionAnnualMatrix({
                   return (
                     <tr 
                       key={prog.id} 
-                      className="hover:bg-slate-50/80 transition-colors border-b-4 border-slate-100 group/row"
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-900/60 transition-colors border-b-4 border-slate-100 dark:border-slate-800 group/row"
                     >
                       {/* Columna Fija: Curso de Vida con Icono SVG en su color oficial */}
-                      <td className="p-2 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-sm overflow-hidden">
+                      <td className="p-2 sticky left-0 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                         <div className="flex items-center gap-2 overflow-hidden">
                           <div 
                             className="shrink-0 p-1.5 rounded-lg border flex items-center justify-center shadow-xs"
@@ -878,7 +882,7 @@ export default function ResolutionAnnualMatrix({
                             <IconComponent className="w-4 h-4" />
                           </div>
                           <div className="min-w-0 flex-1 overflow-hidden">
-                            <div className="font-black text-slate-900 text-xs flex items-center gap-1">
+                            <div className="font-black text-slate-900 dark:text-white text-xs flex items-center gap-1">
                               <span className="truncate">{prog.nombre}</span>
                               <span 
                                 className="text-[9px] font-black px-1 rounded text-white shrink-0"
@@ -887,7 +891,7 @@ export default function ResolutionAnnualMatrix({
                                 {prog.id}
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-500 font-semibold truncate mt-0.5">
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate mt-0.5">
                               {prog.edad}
                             </div>
                           </div>
@@ -919,17 +923,17 @@ export default function ResolutionAnnualMatrix({
                             <div 
                               className={`p-1 rounded-xl border text-[9px] transition-all flex flex-col justify-between min-h-[105px] overflow-hidden ${
                                 isPast
-                                  ? 'bg-slate-100/70 border-slate-200 text-slate-400 opacity-60'
+                                  ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 text-slate-500 filter grayscale contrast-[75%] opacity-70'
                                   : (count > 0 || cellCampaigns.length > 0)
-                                    ? 'border-blue-200 text-slate-900 group-hover:border-blue-500 group-hover:shadow-sm bg-white'
-                                    : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
+                                    ? 'border-blue-200 dark:border-slate-700 text-slate-900 dark:text-white group-hover:border-blue-500 group-hover:shadow-sm bg-white dark:bg-slate-900'
+                                    : 'bg-slate-50/50 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 text-slate-400 group-hover:border-slate-300'
                               }`}
                               style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: `${pal.colorHex}08` } : {}}
-                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : 'Haz clic fuera de los días para crear una nueva campaña en este mes'}
+                              title={isPast ? 'Periodo pasado cerrado (Vencido) • No se permiten campañas en meses anteriores' : 'Haz clic fuera de los días para crear una nueva campaña en este mes'}
                             >
                               {/* Cabecera de celda: Hito clínico y badge de campañas si existen */}
                               <div className="flex items-center justify-between gap-1 overflow-hidden">
-                                <div className="text-[7.5px] truncate text-slate-700 font-bold leading-tight text-left">
+                                <div className="text-[7.5px] truncate text-slate-700 dark:text-slate-300 font-bold leading-tight text-left">
                                   {hitoClinico}
                                 </div>
                                 {cellCampaigns.length > 0 && (
@@ -939,8 +943,12 @@ export default function ResolutionAnnualMatrix({
                                 )}
                               </div>
 
-                              {/* Mini Calendario Mensual del Curso de Vida (Blanco) */}
-                              <div className="w-full rounded-lg p-0.5 border border-slate-200 bg-white shadow-xs flex flex-col justify-between my-0.5">
+                              {/* Mini Calendario Mensual del Curso de Vida (Blanco en activo, grisáceo vencido en pasado) */}
+                              <div className={`w-full rounded-lg p-0.5 border flex flex-col justify-between my-0.5 transition-colors ${
+                                isPast 
+                                  ? 'bg-slate-100/90 dark:bg-slate-900/60 border-slate-300 dark:border-slate-800 shadow-none' 
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
+                              }`}>
                                 <div className="grid grid-cols-7 gap-[1px] w-full">
                                   {days.map(d => {
                                     const resCalls = (d.callsResolucion || []).filter(c => c.cursoVidaId === prog.id);
@@ -979,16 +987,16 @@ export default function ResolutionAnnualMatrix({
                                             : isSun
                                               ? 'Domingo no operativo'
                                               : isPast
-                                                ? 'Periodo cerrado'
+                                                ? 'Periodo cerrado (Vencido)'
                                                 : `${d.isoDate}: Haz clic para crear campaña en este día.`
                                         }
                                         style={bgStyle}
                                         className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
                                           isSun
-                                            ? 'bg-slate-100/60 text-slate-300 opacity-40 cursor-default'
+                                            ? 'bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                             : hasCalls
                                               ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                              : 'bg-slate-50 text-slate-700 hover:bg-blue-100 hover:text-blue-900 border border-slate-100 cursor-pointer'
+                                              : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-900 dark:hover:text-blue-200 border border-slate-100 dark:border-slate-700/50 cursor-pointer'
                                         }`}
                                       >
                                         {d.dayOfMonth}
@@ -996,8 +1004,8 @@ export default function ResolutionAnnualMatrix({
                                     );
                                   })}
                                 </div>
-                                <div className="flex items-center justify-between text-[7px] text-slate-600 mt-0.5 pt-0.5 border-t border-slate-100 px-0.5">
-                                  <span className={progCalls > 0 ? "text-emerald-700 font-bold truncate" : "text-slate-400 truncate"}>
+                                <div className="flex items-center justify-between text-[7px] text-slate-600 dark:text-slate-400 mt-0.5 pt-0.5 border-t border-slate-100 dark:border-slate-800 px-0.5">
+                                  <span className={progCalls > 0 ? "text-emerald-700 dark:text-emerald-400 font-bold truncate" : "text-slate-400 truncate"}>
                                     {progCalls} llam.
                                   </span>
                                   <span className="text-[6.5px] text-slate-400">{days.length}d</span>
@@ -1005,11 +1013,11 @@ export default function ResolutionAnnualMatrix({
                               </div>
 
                               {/* Footer de Celda: Conteo y botón + */}
-                              <div className="flex items-center justify-between pt-0.5 border-t border-slate-200/40">
+                              <div className="flex items-center justify-between pt-0.5 border-t border-slate-200/40 dark:border-slate-800">
                                 <span 
                                   className={`text-[8.5px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
                                     isPast 
-                                      ? 'bg-slate-200 text-slate-500' 
+                                      ? 'bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300' 
                                       : (count > 0 || cellCampaigns.length > 0) ? 'text-white' : 'text-white bg-slate-400'
                                   }`}
                                   style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: pal.colorHex } : {}}
@@ -1017,9 +1025,11 @@ export default function ResolutionAnnualMatrix({
                                   {count} pac.
                                 </span>
                                 {isPast ? (
-                                  <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Mes finalizado" />
+                                  <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Periodo cerrado • Vencido" />
                                 ) : (
-                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600 shrink-0" title="Crear nueva campaña" />
+                                  <span className="text-blue-600 hover:text-blue-800 dark:text-blue-400 font-bold text-xs leading-none">
+                                    +
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -1039,26 +1049,26 @@ export default function ResolutionAnnualMatrix({
       {/* 2. CALENDARIO: GRUPOS DE RIESGO CON SEPARACIÓN VISUAL REFORZADA           */}
       {/* ========================================================================= */}
       {(activeTab === 'ambos' || activeTab === 'grupos_riesgo') && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-6">
-          <div className="p-6 border-b border-slate-200 bg-slate-50/70 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden space-y-6 transition-colors">
+          <div className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/90 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-purple-700 text-white flex items-center justify-center font-black text-lg shadow-sm">
                 2
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg flex items-center gap-2">
                   <span>Cronograma por Grupos de Riesgo Priorizados</span>
-                  <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-md">
+                  <span className="text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 px-2.5 py-0.5 rounded-md border border-purple-200 dark:border-purple-900/50">
                     10 Cohortes Clínicas Crónicas y Específicas
                   </span>
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Líneas separadas de forma nítida con sus hitos inamovibles de control mensual y códigos CUPS.
                 </p>
               </div>
             </div>
-            <div className="text-xs text-purple-900 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl flex items-center gap-2">
-              <Zap className="w-4 h-4 text-purple-600 shrink-0" />
+            <div className="text-xs text-purple-900 dark:text-purple-200 bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-900 px-3 py-1.5 rounded-xl flex items-center gap-2">
+              <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
               <span>Al crear campaña desde aquí, <strong>el Paso 1 te permitirá seleccionar los Cursos de Vida</strong> a intervenir.</span>
             </div>
           </div>
@@ -1081,9 +1091,9 @@ export default function ResolutionAnnualMatrix({
                 <col className="w-[7%]" />
               </colgroup>
               <thead>
-                <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
-                  <th className="p-2 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300 overflow-hidden">
-                    <div className="truncate font-black text-slate-800">
+                <tr className="bg-slate-100 dark:bg-slate-900 border-b-2 border-slate-300 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-700 dark:text-slate-300 font-bold transition-colors">
+                  <th className="p-2 sticky left-0 bg-slate-100 dark:bg-slate-900 z-10 border-r-2 border-slate-300 dark:border-slate-800 overflow-hidden transition-colors">
+                    <div className="truncate font-black text-slate-800 dark:text-white">
                       Grupo de Riesgo Priorizado
                     </div>
                   </th>
@@ -1091,27 +1101,27 @@ export default function ResolutionAnnualMatrix({
                     const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
                     const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
                     return (
-                      <th key={idx} className="p-1 text-center border-r border-slate-200 last:border-r-0 overflow-hidden">
-                        <div className="font-black text-slate-800 text-[11px] truncate">{abrev}</div>
-                        <div className="text-[8px] font-normal text-slate-500 capitalize truncate">{nombreMes}</div>
+                      <th key={idx} className="p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden transition-colors">
+                        <div className="font-black text-slate-800 dark:text-slate-200 text-[11px] truncate">{abrev}</div>
+                        <div className="text-[8px] font-normal text-slate-500 dark:text-slate-400 capitalize truncate">{nombreMes}</div>
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody className="divide-y-4 divide-slate-100 text-xs">
-                {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES */}
-                <tr className="bg-slate-950 text-white border-b-4 border-slate-300 group/roadmap">
-                  <td className="p-2 sticky left-0 bg-slate-950 z-10 border-r-2 border-slate-700 shadow-md overflow-hidden">
+                {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES (Blanco en Luz, Negro en Noche) */}
+                <tr className="bg-white dark:bg-slate-950 text-slate-800 dark:text-white border-b-4 border-slate-200 dark:border-slate-800 group/roadmap transition-colors">
+                  <td className="p-2 sticky left-0 bg-white dark:bg-slate-950 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden transition-colors">
                     <div className="flex items-center gap-1.5 overflow-hidden">
-                      <div className="w-6 h-6 rounded-md bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 border border-purple-500/30">
+                      <div className="w-6 h-6 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200 dark:border-purple-800/60">
                         <Calendar className="w-3.5 h-3.5" />
                       </div>
                       <div className="min-w-0 flex-1 overflow-hidden">
-                        <div className="text-[10px] font-black uppercase tracking-wider text-purple-300 truncate">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-purple-700 dark:text-purple-400 truncate">
                           Ruta Res. 3280
                         </div>
-                        <div className="text-[8px] text-slate-300 truncate">
+                        <div className="text-[8px] text-slate-500 dark:text-slate-400 truncate">
                           {totalYearlyCalls} llam. • 365d
                         </div>
                       </div>
@@ -1125,13 +1135,17 @@ export default function ResolutionAnnualMatrix({
                     return (
                       <td 
                         key={mIdx} 
-                        className={`p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top transition-opacity ${
-                          isPast ? 'opacity-30 filter grayscale-[60%]' : ''
+                        className={`p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden align-top transition-all ${
+                          isPast ? 'bg-slate-100/90 dark:bg-slate-900/60 filter grayscale contrast-[75%] opacity-70' : 'bg-white dark:bg-slate-950'
                         }`}
-                        title={isPast ? 'Periodo pasado cerrado en la Resolución 3280' : undefined}
+                        title={isPast ? 'Periodo pasado cerrado (Vencido) en la Resolución 3280' : undefined}
                       >
-                        {/* Mini Calendario Mensual Blanco */}
-                        <div className="w-full rounded-lg p-1 border border-slate-200 bg-white shadow-xs flex flex-col justify-between min-h-[58px]">
+                        {/* Mini Calendario Mensual (Blanco en activo, grisáceo vencido en pasado) */}
+                        <div className={`w-full rounded-lg p-1 border flex flex-col justify-between min-h-[58px] transition-colors ${
+                          isPast 
+                            ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 shadow-none' 
+                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
+                        }`}>
                           <div className="grid grid-cols-7 gap-[1px] w-full">
                             {days.map(d => {
                               const grIds = Array.from(d.gruposRiesgoPresentes || []);
@@ -1161,10 +1175,10 @@ export default function ResolutionAnnualMatrix({
                                   style={bgStyle}
                                   className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
                                     isSun
-                                      ? 'bg-slate-100 text-slate-300 opacity-40 cursor-default'
+                                      ? 'bg-slate-100 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                       : hasCalls
                                         ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                        : 'bg-slate-50 text-slate-700 hover:bg-slate-200 hover:text-slate-900 border border-slate-100 cursor-pointer'
+                                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border border-slate-100 dark:border-slate-700/50 cursor-pointer'
                                   }`}
                                 >
                                   {d.dayOfMonth}
@@ -1172,8 +1186,8 @@ export default function ResolutionAnnualMatrix({
                               );
                             })}
                           </div>
-                          <div className="flex items-center justify-between text-[7.5px] text-slate-600 mt-1 pt-0.5 border-t border-slate-100 px-0.5">
-                            <span className={monthCalls > 0 ? "text-purple-700 font-bold truncate" : "text-slate-400 truncate"}>
+                          <div className="flex items-center justify-between text-[7.5px] text-slate-600 dark:text-slate-400 mt-1 pt-0.5 border-t border-slate-100 dark:border-slate-800 px-0.5">
+                            <span className={monthCalls > 0 ? "text-purple-700 dark:text-purple-400 font-bold truncate" : "text-slate-400 truncate"}>
                               {monthCalls} llam.
                             </span>
                             <span className="text-[7px] text-slate-400">{days.length}d</span>
@@ -1191,10 +1205,10 @@ export default function ResolutionAnnualMatrix({
                   return (
                     <tr 
                       key={rg.id} 
-                      className="hover:bg-purple-50/30 transition-colors border-b-4 border-slate-100 group/row"
+                      className="hover:bg-purple-50/30 dark:hover:bg-purple-950/20 transition-colors border-b-4 border-slate-100 dark:border-slate-800 group/row"
                     >
                       {/* Columna Fija: Grupo de Riesgo con Icono SVG en su color oficial */}
-                      <td className="p-2 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-sm overflow-hidden">
+                      <td className="p-2 sticky left-0 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
                         <div className="flex items-center gap-2 overflow-hidden">
                           <div 
                             className="shrink-0 p-1.5 rounded-lg border flex items-center justify-center shadow-xs"
@@ -1207,7 +1221,7 @@ export default function ResolutionAnnualMatrix({
                             <IconComponent className="w-4 h-4" />
                           </div>
                           <div className="min-w-0 flex-1 overflow-hidden">
-                            <div className="font-black text-slate-900 text-xs flex items-center gap-1">
+                            <div className="font-black text-slate-900 dark:text-white text-xs flex items-center gap-1">
                               <span className="truncate">{rg.nombre}</span>
                               <span 
                                 className="text-[9px] font-black px-1 rounded text-white shrink-0"
@@ -1216,7 +1230,7 @@ export default function ResolutionAnnualMatrix({
                                 #{rg.id}
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-500 font-semibold truncate mt-0.5">
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate mt-0.5">
                               {rg.descripcion}
                             </div>
                           </div>
@@ -1249,17 +1263,17 @@ export default function ResolutionAnnualMatrix({
                             <div 
                               className={`p-1 rounded-xl border text-[9px] transition-all flex flex-col justify-between min-h-[105px] overflow-hidden ${
                                 isPast
-                                  ? 'bg-slate-100/70 border-slate-200 text-slate-400 opacity-60'
+                                  ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 text-slate-500 filter grayscale contrast-[75%] opacity-70'
                                   : (count > 0 || cellCampaigns.length > 0)
-                                    ? 'border-purple-200 text-slate-900 group-hover:border-purple-500 group-hover:shadow-sm bg-white'
-                                    : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
+                                    ? 'border-purple-200 dark:border-purple-900/60 text-slate-900 dark:text-white group-hover:border-purple-500 group-hover:shadow-sm bg-white dark:bg-slate-900'
+                                    : 'bg-slate-50/50 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 text-slate-400 group-hover:border-slate-300'
                               }`}
                               style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: `${pal.colorHex}08` } : {}}
-                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : 'Haz clic fuera de los días para crear una nueva campaña en este mes'}
+                              title={isPast ? 'Periodo pasado cerrado (Vencido) • No se permiten campañas en meses anteriores' : 'Haz clic fuera de los días para crear una nueva campaña en este mes'}
                             >
                               {/* Cabecera de celda: Hito clínico y badge de campañas si existen */}
                               <div className="flex items-center justify-between gap-1 overflow-hidden">
-                                <div className="text-[7.5px] truncate text-slate-700 font-bold leading-tight text-left">
+                                <div className="text-[7.5px] truncate text-slate-700 dark:text-slate-300 font-bold leading-tight text-left">
                                   {hitoClinico}
                                 </div>
                                 {cellCampaigns.length > 0 && (
@@ -1269,8 +1283,12 @@ export default function ResolutionAnnualMatrix({
                                 )}
                               </div>
 
-                              {/* Mini Calendario Mensual del Grupo de Riesgo (Blanco) */}
-                              <div className="w-full rounded-lg p-0.5 border border-slate-200 bg-white shadow-xs flex flex-col justify-between my-0.5">
+                              {/* Mini Calendario Mensual del Grupo de Riesgo (Blanco en activo, grisáceo vencido en pasado) */}
+                              <div className={`w-full rounded-lg p-0.5 border flex flex-col justify-between my-0.5 transition-colors ${
+                                isPast 
+                                  ? 'bg-slate-100/90 dark:bg-slate-900/60 border-slate-300 dark:border-slate-800 shadow-none' 
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
+                              }`}>
                                 <div className="grid grid-cols-7 gap-[1px] w-full">
                                   {days.map(d => {
                                     const resCalls = (d.callsResolucion || []).filter(c => c.grupoRiesgoId === rg.id);
@@ -1309,16 +1327,16 @@ export default function ResolutionAnnualMatrix({
                                             : isSun
                                               ? 'Domingo no operativo'
                                               : isPast
-                                                ? 'Periodo cerrado'
+                                                ? 'Periodo cerrado (Vencido)'
                                                 : `${d.isoDate}: Haz clic para crear campaña en este día.`
                                         }
                                         style={bgStyle}
                                         className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
                                           isSun
-                                            ? 'bg-slate-100/60 text-slate-300 opacity-40 cursor-default'
+                                            ? 'bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                             : hasCalls
                                               ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                              : 'bg-slate-50 text-slate-700 hover:bg-purple-100 hover:text-purple-900 border border-slate-100 cursor-pointer'
+                                              : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-900 dark:hover:text-purple-200 border border-slate-100 dark:border-slate-700/50 cursor-pointer'
                                         }`}
                                       >
                                         {d.dayOfMonth}
@@ -1326,8 +1344,8 @@ export default function ResolutionAnnualMatrix({
                                     );
                                   })}
                                 </div>
-                                <div className="flex items-center justify-between text-[7px] text-slate-600 mt-0.5 pt-0.5 border-t border-slate-100 px-0.5">
-                                  <span className={rgCalls > 0 ? "text-purple-700 font-bold truncate" : "text-slate-400 truncate"}>
+                                <div className="flex items-center justify-between text-[7px] text-slate-600 dark:text-slate-400 mt-0.5 pt-0.5 border-t border-slate-100 dark:border-slate-800 px-0.5">
+                                  <span className={rgCalls > 0 ? "text-purple-700 dark:text-purple-400 font-bold truncate" : "text-slate-400 truncate"}>
                                     {rgCalls} llam.
                                   </span>
                                   <span className="text-[6.5px] text-slate-400">{days.length}d</span>
@@ -1335,11 +1353,11 @@ export default function ResolutionAnnualMatrix({
                               </div>
 
                               {/* Footer de Celda: Conteo y botón + */}
-                              <div className="flex items-center justify-between pt-0.5 border-t border-purple-200/40">
+                              <div className="flex items-center justify-between pt-0.5 border-t border-purple-200/40 dark:border-slate-800">
                                 <span 
                                   className={`text-[8.5px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
                                     isPast 
-                                      ? 'bg-slate-200 text-slate-500' 
+                                      ? 'bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300' 
                                       : (count > 0 || cellCampaigns.length > 0) ? 'text-white' : 'text-white bg-slate-400'
                                   }`}
                                   style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: pal.colorHex } : {}}
@@ -1347,9 +1365,11 @@ export default function ResolutionAnnualMatrix({
                                   {count} pac.
                                 </span>
                                 {isPast ? (
-                                  <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Mes finalizado" />
+                                  <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Periodo cerrado • Vencido" />
                                 ) : (
-                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700 shrink-0" title="Crear nueva campaña" />
+                                  <span className="text-purple-600 hover:text-purple-800 dark:text-purple-400 font-bold text-xs leading-none">
+                                    +
+                                  </span>
                                 )}
                               </div>
                             </div>
