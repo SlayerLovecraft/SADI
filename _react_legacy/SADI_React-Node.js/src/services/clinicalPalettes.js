@@ -265,3 +265,4 @@ export function getGrupoRiesgoColor(idOrKey) {
   }
   return GRUPOS_RIESGO_PALETTE[2]; // Default Cardiovascular
 }
+

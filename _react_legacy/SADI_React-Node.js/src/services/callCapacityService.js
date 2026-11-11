@@ -353,3 +353,4 @@ function getHitoClinico3280(pat, monthIndex) {
     indicaciones: milestone?.indicaciones || 'Presentarse 15 minutos antes con documento original en la sede asignada.'
   };
 }
+

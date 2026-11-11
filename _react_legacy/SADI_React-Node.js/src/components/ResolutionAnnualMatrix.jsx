@@ -18,10 +18,10 @@ import { GRUPOS_RIESGO_10 } from '@/services/gruposRiesgoCatalog';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
 import { CURSOS_VIDA_PALETTE, GRUPOS_RIESGO_PALETTE } from '@/services/clinicalPalettes';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
-import AnnualTimelineRuler from '@/components/AnnualTimelineRuler';
 import { 
   generateAnnualResolutionRoadmap, 
   validateCampaignCallCapacity, 
+  generateIndividualClinicalPrompt,
   DAILY_CALL_CAPACITY,
   OPERATING_HOURS_START,
   OPERATING_HOURS_END 
@@ -124,6 +124,44 @@ export default function ResolutionAnnualMatrix({
   const roadmap365 = useMemo(() => {
     return generateAnnualResolutionRoadmap(patients, selectedYear);
   }, [patients, selectedYear]);
+
+  // Modal de Detalle de Día de la Ruta 3280 y Prompt IA
+  const [selectedRoadmapDay, setSelectedRoadmapDay] = useState(null);
+  const [isRoadmapDayOpen, setIsRoadmapDayOpen] = useState(false);
+  const [selectedPromptPatient, setSelectedPromptPatient] = useState(null);
+
+  // Helper para obtener los días del mes en roadmap365
+  const getDaysForMonth = (mIdx) => {
+    const daysInMonth = new Date(selectedYear, mIdx + 1, 0).getDate();
+    const days = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const padD = String(d).padStart(2, '0');
+      const padM = String(mIdx + 1).padStart(2, '0');
+      const iso = `${selectedYear}-${padM}-${padD}`;
+      const dayData = roadmap365[iso] || {
+        isoDate: iso,
+        dayIndex: d,
+        dayOfMonth: d,
+        isSunday: new Date(selectedYear, mIdx, d, 12, 0, 0).getDay() === 0,
+        callsResolucion: [],
+        cursosVidaPresentes: new Set(),
+        gruposRiesgoPresentes: new Set(),
+        totalLlamadasResolucion: 0,
+        cupoDisponible: DAILY_CALL_CAPACITY
+      };
+      days.push({
+        ...dayData,
+        dayOfMonth: d,
+        isoDate: iso
+      });
+    }
+    return days;
+  };
+
+  // Total anual de llamadas de resolución
+  const totalYearlyCalls = useMemo(() => {
+    return Object.values(roadmap365).reduce((acc, d) => acc + (d.totalLlamadasResolucion || 0), 0);
+  }, [roadmap365]);
 
   // 3. Mapeo de pacientes a Cursos de Vida y Meses
   const matrixCursosData = useMemo(() => {
@@ -457,26 +495,119 @@ export default function ResolutionAnnualMatrix({
             </div>
           </div>
 
-          <div className="overflow-x-auto px-4">
-            <table className="w-full text-left border-collapse min-w-[1100px]">
+          <div className="w-full overflow-hidden px-2 sm:px-4">
+            <table className="w-full table-fixed text-left border-collapse">
+              <colgroup>
+                <col className="w-[16%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+              </colgroup>
               <thead>
                 <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
-                  <th className="p-3.5 w-64 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300">
-                    Curso de Vida & Rango Etario
+                  <th className="p-2 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300 overflow-hidden">
+                    <div className="truncate font-black text-slate-800">
+                      Curso de Vida & Rango Etario
+                    </div>
                   </th>
                   {MESES_TITULOS.map((mObj, idx) => {
                     const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
                     const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
                     return (
-                      <th key={idx} className="p-2 text-center border-r border-slate-200 last:border-r-0">
-                        <div className="font-black text-slate-800">{abrev}</div>
-                        <div className="text-[9px] font-normal text-slate-500 capitalize">{nombreMes}</div>
+                      <th key={idx} className="p-1 text-center border-r border-slate-200 last:border-r-0 overflow-hidden">
+                        <div className="font-black text-slate-800 text-[11px] truncate">{abrev}</div>
+                        <div className="text-[8px] font-normal text-slate-500 capitalize truncate">{nombreMes}</div>
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody className="divide-y-4 divide-slate-100 text-xs">
+                {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES */}
+                <tr className="bg-slate-950 text-white border-b-4 border-slate-300 group/roadmap">
+                  <td className="p-2 sticky left-0 bg-slate-950 z-10 border-r-2 border-slate-700 shadow-md overflow-hidden">
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      <div className="w-6 h-6 rounded-md bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                        <Calendar className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-emerald-400 truncate">
+                          Ruta Res. 3280
+                        </div>
+                        <div className="text-[8px] text-slate-300 truncate">
+                          {totalYearlyCalls} llam. • 365d
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  {MESES_TITULOS.map((_, mIdx) => {
+                    const days = getDaysForMonth(mIdx);
+                    const monthCalls = days.reduce((acc, d) => acc + (d.totalLlamadasResolucion || 0), 0);
+
+                    return (
+                      <td key={mIdx} className="p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top">
+                        <div className="w-full bg-slate-900/90 rounded-lg p-1 border border-slate-800 flex flex-col justify-between min-h-[58px]">
+                          <div className="grid grid-cols-7 gap-[1px] w-full">
+                            {days.map(d => {
+                              const cvIds = Array.from(d.cursosVidaPresentes || []);
+                              const colors = cvIds.map(id => CURSOS_VIDA_PALETTE[id]?.colorHex || '#3b82f6');
+                              const hasCalls = colors.length > 0;
+                              const isSun = d.isSunday;
+
+                              let bgStyle = {};
+                              if (hasCalls) {
+                                if (colors.length === 1) {
+                                  bgStyle = { backgroundColor: colors[0] };
+                                } else {
+                                  bgStyle = { background: `linear-gradient(135deg, ${colors[0]} 0%, ${colors[0]} 50%, ${colors[1]} 50%, ${colors[1]} 100%)` };
+                                }
+                              }
+
+                              return (
+                                <button
+                                  key={d.isoDate}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRoadmapDay(d);
+                                    setSelectedPromptPatient(null);
+                                    setIsRoadmapDayOpen(true);
+                                  }}
+                                  title={`${d.isoDate}: ${d.totalLlamadasResolucion || 0} llamadas`}
+                                  style={bgStyle}
+                                  className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
+                                    isSun
+                                      ? 'bg-slate-950/40 text-slate-700 opacity-30 cursor-default'
+                                      : hasCalls
+                                        ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
+                                        : 'bg-slate-800/60 text-slate-500 hover:bg-slate-700 hover:text-slate-200 cursor-pointer'
+                                  }`}
+                                >
+                                  {d.dayOfMonth}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center justify-between text-[7.5px] text-slate-300 mt-1 pt-0.5 border-t border-slate-800/80 px-0.5">
+                            <span className={monthCalls > 0 ? "text-emerald-400 font-bold truncate" : "text-slate-500 truncate"}>
+                              {monthCalls} llam.
+                            </span>
+                            <span className="text-[7px] text-slate-500">{days.length}d</span>
+                          </div>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+
                 {PROGRAMAS_3280.map(prog => {
                   const pal = CURSOS_VIDA_PALETTE[prog.id] || CURSOS_VIDA_PALETTE['E'];
                   const IconComponent = getCursoVidaIcon(prog.id);
@@ -487,29 +618,29 @@ export default function ResolutionAnnualMatrix({
                       className="hover:bg-slate-50/80 transition-colors border-b-4 border-slate-100 group/row"
                     >
                       {/* Columna Fija: Curso de Vida con Icono SVG en su color oficial */}
-                      <td className="p-3.5 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-[3px_0_6px_rgba(0,0,0,0.03)]">
-                        <div className="flex items-center gap-3">
+                      <td className="p-2 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-2 overflow-hidden">
                           <div 
-                            className="shrink-0 p-2.5 rounded-xl border flex items-center justify-center shadow-xs"
+                            className="shrink-0 p-1.5 rounded-lg border flex items-center justify-center shadow-xs"
                             style={{ 
                               backgroundColor: `${pal.colorHex}18`, 
                               borderColor: `${pal.colorHex}40`,
                               color: pal.colorHex 
                             }}
                           >
-                            <IconComponent className="w-5 h-5" />
+                            <IconComponent className="w-4 h-4" />
                           </div>
-                          <div>
-                            <div className="font-black text-slate-900 text-xs flex items-center gap-1.5">
-                              <span>{prog.nombre}</span>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="font-black text-slate-900 text-xs flex items-center gap-1">
+                              <span className="truncate">{prog.nombre}</span>
                               <span 
-                                className="text-[10px] font-black px-1.5 py-0.2 rounded text-white"
+                                className="text-[9px] font-black px-1 rounded text-white shrink-0"
                                 style={{ backgroundColor: pal.colorHex }}
                               >
                                 {prog.id}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                            <div className="text-[10px] text-slate-500 font-semibold truncate mt-0.5">
                               {prog.edad}
                             </div>
                           </div>
@@ -526,27 +657,27 @@ export default function ResolutionAnnualMatrix({
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('curso_vida', prog, mIdx, 'wizard')}
-                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-blue-50/50 transition-colors relative group"
+                            className="p-1 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-blue-50/50 transition-colors relative group overflow-hidden"
                           >
                             <div 
-                              className={`p-2 rounded-xl border text-[11px] transition-all flex flex-col justify-between min-h-[62px] ${
+                              className={`p-1.5 rounded-xl border text-[10px] transition-all flex flex-col justify-between min-h-[58px] overflow-hidden ${
                                 count > 0 
                                   ? 'border-blue-200 text-slate-900 group-hover:border-blue-500 group-hover:shadow-sm'
                                   : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
                               }`}
                               style={count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
                             >
-                              <div className="text-[9px] line-clamp-2 text-slate-600 text-left font-medium leading-tight">
+                              <div className="text-[8.5px] line-clamp-2 text-slate-600 text-left font-medium leading-tight overflow-hidden">
                                 {hitoClinico}
                               </div>
-                              <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/40">
+                              <div className="flex items-center justify-between mt-1 pt-0.5 border-t border-slate-200/40">
                                 <span 
-                                  className="text-[10px] font-black px-1.5 py-0.5 rounded-full text-white"
+                                  className="text-[9px] font-black px-1 py-0.2 rounded-full text-white truncate max-w-[70%]"
                                   style={{ backgroundColor: count > 0 ? pal.colorHex : '#94a3b8' }}
                                 >
                                   {count} pac.
                                 </span>
-                                <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600" />
+                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600 shrink-0" />
                               </div>
                             </div>
                           </td>
@@ -557,18 +688,6 @@ export default function ResolutionAnnualMatrix({
                 })}
               </tbody>
             </table>
-          </div>
-
-          {/* ======================================================================= */}
-          {/* REGLETA ANUAL DE 365 DÍAS DEBAJO DE LOS MESES DE CURSOS DE VIDA         */}
-          {/* ======================================================================= */}
-          <div className="p-6 pt-2">
-            <AnnualTimelineRuler
-              type="cursos_vida"
-              year={selectedYear}
-              roadmap365={roadmap365}
-              onSelectDay={(day) => console.log('Día seleccionado:', day.isoDate)}
-            />
           </div>
         </div>
       )}
@@ -601,26 +720,119 @@ export default function ResolutionAnnualMatrix({
             </div>
           </div>
 
-          <div className="overflow-x-auto px-4">
-            <table className="w-full text-left border-collapse min-w-[1100px]">
+          <div className="w-full overflow-hidden px-2 sm:px-4">
+            <table className="w-full table-fixed text-left border-collapse">
+              <colgroup>
+                <col className="w-[16%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+                <col className="w-[7%]" />
+              </colgroup>
               <thead>
                 <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
-                  <th className="p-3.5 w-64 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300">
-                    Grupo de Riesgo Priorizado
+                  <th className="p-2 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300 overflow-hidden">
+                    <div className="truncate font-black text-slate-800">
+                      Grupo de Riesgo Priorizado
+                    </div>
                   </th>
                   {MESES_TITULOS.map((mObj, idx) => {
                     const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
                     const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
                     return (
-                      <th key={idx} className="p-2 text-center border-r border-slate-200 last:border-r-0">
-                        <div className="font-black text-slate-800">{abrev}</div>
-                        <div className="text-[9px] font-normal text-slate-500 capitalize">{nombreMes}</div>
+                      <th key={idx} className="p-1 text-center border-r border-slate-200 last:border-r-0 overflow-hidden">
+                        <div className="font-black text-slate-800 text-[11px] truncate">{abrev}</div>
+                        <div className="text-[8px] font-normal text-slate-500 capitalize truncate">{nombreMes}</div>
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody className="divide-y-4 divide-slate-100 text-xs">
+                {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES */}
+                <tr className="bg-slate-950 text-white border-b-4 border-slate-300 group/roadmap">
+                  <td className="p-2 sticky left-0 bg-slate-950 z-10 border-r-2 border-slate-700 shadow-md overflow-hidden">
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      <div className="w-6 h-6 rounded-md bg-purple-500/20 text-purple-300 flex items-center justify-center shrink-0 border border-purple-500/30">
+                        <Calendar className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-purple-300 truncate">
+                          Ruta Res. 3280
+                        </div>
+                        <div className="text-[8px] text-slate-300 truncate">
+                          {totalYearlyCalls} llam. • 365d
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  {MESES_TITULOS.map((_, mIdx) => {
+                    const days = getDaysForMonth(mIdx);
+                    const monthCalls = days.reduce((acc, d) => acc + (d.totalLlamadasResolucion || 0), 0);
+
+                    return (
+                      <td key={mIdx} className="p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top">
+                        <div className="w-full bg-slate-900/90 rounded-lg p-1 border border-slate-800 flex flex-col justify-between min-h-[58px]">
+                          <div className="grid grid-cols-7 gap-[1px] w-full">
+                            {days.map(d => {
+                              const grIds = Array.from(d.gruposRiesgoPresentes || []);
+                              const colors = grIds.map(id => GRUPOS_RIESGO_PALETTE[id]?.colorHex || '#8b5cf6');
+                              const hasCalls = colors.length > 0;
+                              const isSun = d.isSunday;
+
+                              let bgStyle = {};
+                              if (hasCalls) {
+                                if (colors.length === 1) {
+                                  bgStyle = { backgroundColor: colors[0] };
+                                } else {
+                                  bgStyle = { background: `linear-gradient(135deg, ${colors[0]} 0%, ${colors[0]} 50%, ${colors[1]} 50%, ${colors[1]} 100%)` };
+                                }
+                              }
+
+                              return (
+                                <button
+                                  key={d.isoDate}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRoadmapDay(d);
+                                    setSelectedPromptPatient(null);
+                                    setIsRoadmapDayOpen(true);
+                                  }}
+                                  title={`${d.isoDate}: ${d.totalLlamadasResolucion || 0} llamadas (Grupos de Riesgo)`}
+                                  style={bgStyle}
+                                  className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
+                                    isSun
+                                      ? 'bg-slate-950/40 text-slate-700 opacity-30 cursor-default'
+                                      : hasCalls
+                                        ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
+                                        : 'bg-slate-800/60 text-slate-500 hover:bg-slate-700 hover:text-slate-200 cursor-pointer'
+                                  }`}
+                                >
+                                  {d.dayOfMonth}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center justify-between text-[7.5px] text-slate-300 mt-1 pt-0.5 border-t border-slate-800/80 px-0.5">
+                            <span className={monthCalls > 0 ? "text-purple-300 font-bold truncate" : "text-slate-500 truncate"}>
+                              {monthCalls} llam.
+                            </span>
+                            <span className="text-[7px] text-slate-500">{days.length}d</span>
+                          </div>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+
                 {GRUPOS_RIESGO_10.map(rg => {
                   const pal = GRUPOS_RIESGO_PALETTE[rg.id] || GRUPOS_RIESGO_PALETTE[2];
                   const IconComponent = getGrupoRiesgoIcon(rg.id);
@@ -631,29 +843,29 @@ export default function ResolutionAnnualMatrix({
                       className="hover:bg-purple-50/30 transition-colors border-b-4 border-slate-100 group/row"
                     >
                       {/* Columna Fija: Grupo de Riesgo con Icono SVG en su color oficial */}
-                      <td className="p-3.5 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-[3px_0_6px_rgba(0,0,0,0.03)]">
-                        <div className="flex items-center gap-3">
+                      <td className="p-2 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-2 overflow-hidden">
                           <div 
-                            className="shrink-0 p-2.5 rounded-xl border flex items-center justify-center shadow-xs"
+                            className="shrink-0 p-1.5 rounded-lg border flex items-center justify-center shadow-xs"
                             style={{ 
                               backgroundColor: `${pal.colorHex}18`, 
                               borderColor: `${pal.colorHex}40`,
                               color: pal.colorHex 
                             }}
                           >
-                            <IconComponent className="w-5 h-5" />
+                            <IconComponent className="w-4 h-4" />
                           </div>
-                          <div>
-                            <div className="font-black text-slate-900 text-xs flex items-center gap-1.5">
-                              <span>{rg.nombre}</span>
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <div className="font-black text-slate-900 text-xs flex items-center gap-1">
+                              <span className="truncate">{rg.nombre}</span>
                               <span 
-                                className="text-[10px] font-black px-1.5 py-0.2 rounded text-white"
+                                className="text-[9px] font-black px-1 rounded text-white shrink-0"
                                 style={{ backgroundColor: pal.colorHex }}
                               >
                                 #{rg.id}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-semibold line-clamp-1 mt-0.5">
+                            <div className="text-[10px] text-slate-500 font-semibold truncate mt-0.5">
                               {rg.descripcion}
                             </div>
                           </div>
@@ -671,27 +883,27 @@ export default function ResolutionAnnualMatrix({
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('grupo_riesgo', rg, mIdx, 'wizard')}
-                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-purple-50/50 transition-colors relative group"
+                            className="p-1 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-purple-50/50 transition-colors relative group overflow-hidden"
                           >
                             <div 
-                              className={`p-2 rounded-xl border text-[11px] transition-all flex flex-col justify-between min-h-[62px] ${
+                              className={`p-1.5 rounded-xl border text-[10px] transition-all flex flex-col justify-between min-h-[58px] overflow-hidden ${
                                 count > 0 
                                   ? 'border-purple-200 text-slate-900 group-hover:border-purple-500 group-hover:shadow-sm'
                                   : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
                               }`}
                               style={count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
                             >
-                              <div className="text-[9px] line-clamp-2 text-slate-600 text-left font-medium leading-tight">
+                              <div className="text-[8.5px] line-clamp-2 text-slate-600 text-left font-medium leading-tight overflow-hidden">
                                 {hitoClinico}
                               </div>
-                              <div className="flex items-center justify-between mt-1 pt-1 border-t border-purple-200/40">
+                              <div className="flex items-center justify-between mt-1 pt-0.5 border-t border-purple-200/40">
                                 <span 
-                                  className="text-[10px] font-black px-1.5 py-0.5 rounded-full text-white"
+                                  className="text-[9px] font-black px-1 py-0.2 rounded-full text-white truncate max-w-[70%]"
                                   style={{ backgroundColor: count > 0 ? pal.colorHex : '#94a3b8' }}
                                 >
                                   {count} pac.
                                 </span>
-                                <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-purple-700" />
+                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700 shrink-0" />
                               </div>
                             </div>
                           </td>
@@ -703,18 +915,6 @@ export default function ResolutionAnnualMatrix({
               </tbody>
             </table>
           </div>
-
-          {/* ======================================================================= */}
-          {/* REGLETA ANUAL DE 365 DÍAS DEBAJO DE LOS MESES DE GRUPOS DE RIESGO       */}
-          {/* ======================================================================= */}
-          <div className="p-6 pt-2">
-            <AnnualTimelineRuler
-              type="grupos_riesgo"
-              year={selectedYear}
-              roadmap365={roadmap365}
-              onSelectDay={(day) => console.log('Día de riesgo seleccionado:', day.isoDate)}
-            />
-          </div>
         </div>
       )}
 
@@ -722,7 +922,7 @@ export default function ResolutionAnnualMatrix({
       {/* MODAL PRINCIPAL: WIZARD DE CAMPAÑA (5 PASOS) O COHORTE DE PACIENTES       */}
       {/* ========================================================================= */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 rounded-3xl">
+        <DialogContent className="w-[95%] sm:w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto p-0 rounded-3xl">
           {/* Header del Modal */}
           <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 text-white rounded-t-3xl">
             <div className="flex justify-between items-start">
@@ -1193,6 +1393,149 @@ export default function ResolutionAnnualMatrix({
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* MODAL INTERACTIVO: DETALLE DE DÍA DE LA RUTA 3280 Y PROMPTS IA             */}
+      {/* ========================================================================= */}
+      <Dialog open={isRoadmapDayOpen} onOpenChange={setIsRoadmapDayOpen}>
+        <DialogContent className="w-[95%] max-w-3xl sm:w-[90%] max-h-[85vh] overflow-y-auto p-0 rounded-3xl">
+          {selectedRoadmapDay && (
+            <div className="space-y-4">
+              {/* Cabecera del día */}
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 text-white rounded-t-3xl">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                      Ruta Preventiva Res. 3280 • Hito Inamovible
+                    </span>
+                    <DialogTitle className="text-lg font-bold mt-1 text-white flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-emerald-400" />
+                      Fecha: {selectedRoadmapDay.isoDate} ({selectedRoadmapDay.dayOfMonth} de {(() => {
+                        const mIdx = new Date(selectedRoadmapDay.isoDate + 'T12:00:00').getMonth();
+                        const mObj = MESES_TITULOS[mIdx];
+                        return typeof mObj === 'string' ? mObj : (mObj?.nombre || '');
+                      })()} {selectedYear})
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-slate-300 mt-0.5">
+                      {selectedRoadmapDay.callsResolucion?.length || 0} paciente(s) con llamada priorizada según ventana normativa.
+                    </DialogDescription>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                      Aforo Gateway GSM OpenVox
+                    </div>
+                    <div className="text-xs font-bold text-emerald-400">
+                      {selectedRoadmapDay.totalLlamadasResolucion || 0} / {DAILY_CALL_CAPACITY} llamadas
+                    </div>
+                    <div className="text-[9px] text-slate-400">
+                      Saldo restante: {selectedRoadmapDay.cupoDisponible ?? (DAILY_CALL_CAPACITY - (selectedRoadmapDay.totalLlamadasResolucion || 0))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de pacientes del día */}
+              <div className="p-5 pt-0 space-y-3">
+                <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span>Pacientes Citados para esta Fecha:</span>
+                  <span className="text-slate-500 text-[11px] font-normal">
+                    Horario autorizado: 08:00 AM a 06:00 PM (10h • 350 llam/h)
+                  </span>
+                </div>
+
+                {(!selectedRoadmapDay.callsResolucion || selectedRoadmapDay.callsResolucion.length === 0) ? (
+                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500">
+                    No hay llamadas de la Resolución 3280 programadas para este día. El cupo del Gateway GSM ({DAILY_CALL_CAPACITY} llamadas) está 100% disponible para campañas hospitalarias.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {selectedRoadmapDay.callsResolucion.map((cItem, cIdx) => (
+                      <div 
+                        key={cIdx}
+                        className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-900 text-xs">{cItem.nombre}</span>
+                            <span className="text-[10px] text-slate-500 font-mono">CC: {cItem.documento}</span>
+                            <span 
+                              className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                              style={{ backgroundColor: cItem.cursoVidaColorHex }}
+                            >
+                              {cItem.cursoVidaNombre}
+                            </span>
+                            <span 
+                              className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                              style={{ backgroundColor: cItem.grupoRiesgoColorHex }}
+                            >
+                              {cItem.grupoRiesgoNombre}
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-1.5">
+                            <Stethoscope className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="font-semibold text-blue-900">{cItem.accion3280}</span>
+                            <span className="text-[9px] px-1 bg-slate-100 rounded text-slate-600 font-mono">CUPS: {cItem.cups}</span>
+                          </div>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const promptText = generateIndividualClinicalPrompt(
+                              { nombre: cItem.nombre, cc: cItem.documento, telefono: cItem.telefono },
+                              cItem.accion3280,
+                              cItem.cursoVidaNombre,
+                              cItem.grupoRiesgoNombre
+                            );
+                            setSelectedPromptPatient({ ...cItem, promptText });
+                          }}
+                          className="text-xs shrink-0 rounded-lg gap-1 border-blue-200 text-blue-700 hover:bg-blue-50 font-bold"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                          Ver Prompt IA
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Panel de Prompt IA Individualizado */}
+                {selectedPromptPatient && (
+                  <div className="p-4 bg-slate-950 text-slate-200 rounded-2xl border border-slate-800 space-y-2 text-xs">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                      <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        Prompt Clínico IA para {selectedPromptPatient.nombre}
+                      </span>
+                      <button 
+                        onClick={() => setSelectedPromptPatient(null)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <pre className="text-[11px] text-slate-300 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                      {selectedPromptPatient.promptText}
+                    </pre>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-2">
+                  <Button
+                    onClick={() => setIsRoadmapDayOpen(false)}
+                    className="text-xs rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800"
+                  >
+                    Cerrar Expediente
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
