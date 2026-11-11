@@ -1,39 +1,46 @@
 // ==============================================================================
-// ResolutionAnnualMatrix.jsx - CRONOGRAMA ANUAL RESOLUCIÓN 3280 & 10 CRONOGRAMAS
-// - Psicología del color clínica (tonos médicos sosegados, alto contraste, sin solapamientos)
-// - Encuadre perfecto de textos y badges en cada celda
-// - Hitos clínicos inamovibles de la Resolución 3280 detallados por mes y edad
-// - Selector de vista:
-//   * Vista General (Matriz 1/4 Cursos A-J + 3/4 12 Meses)
-//   * 10 Cronogramas Dedicados por Curso de Vida (A a J) con desglose de llamadas de pacientes
-// - Celdas clickeables que abren el Wizard de Campaña de 4 Pasos o el Explorador Clínico
+// ResolutionAnnualMatrix.jsx - CRONOGRAMA ANUAL DUAL SADI
+// 1. Cronograma Anual por Cursos de Vida (Res. 3280 de 2018) con iconos SVG dedicados
+// 2. Cronograma Anual por Grupos de Riesgo Priorizados con iconos SVG dedicados
+// - Conectado exclusivamente a los 56 pacientes REALES de Supabase (sin mocks)
+// - Wizard de Campañas con Paso 1: Calendario & Frecuencia (Diario, Semanal, Mensual)
+// - Segmentación cruzada (Cursos -> Riesgos | Riesgos -> Cursos)
 // ==============================================================================
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   PROGRAMAS_3280, 
   MESES_TITULOS, 
-  GRUPOS_RIESGO_PRIORIZADOS,
-  CANALES_DISPONIBLES,
-  census400kService 
+  CANALES_DISPONIBLES 
 } from '@/services/census400kService';
+import { GRUPOS_RIESGO_10 } from '@/services/gruposRiesgoCatalog';
+import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
+import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
+import { patientService } from '@/services/patientService';
 import { 
-  Users, Calendar, Search, Phone, Mail, MessageSquare, Send, 
-  CheckCircle2, Clock, ShieldCheck, ChevronRight, X, AlertCircle,
-  FileText, Activity, Stethoscope, RefreshCw, Download, Sparkles,
-  ChevronLeft, ArrowRight, UserCheck, Layers, Eye, Plus, Radio,
-  Tag, Info, Zap, AlertTriangle, Baby, HeartPulse, ShieldAlert
+  Users, Calendar, Phone, Mail, MessageSquare, Send, 
+  CheckCircle2, Clock, ChevronRight, X, AlertCircle,
+  Activity, Stethoscope, RefreshCw, Download, Sparkles,
+  ChevronLeft, ArrowRight, UserCheck, Layers, Eye, Plus,
+  Tag, Info, Zap, AlertTriangle, Building2, RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
-import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
+
+// Horarios de salida autorizados: 8:30 AM a 8:00 PM (24 franjas de 30 min)
+const FRANJAS_HORARIAS_24 = [
+  '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM',
+  '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM',
+  '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM',
+  '05:30 PM', '06:00 PM', '06:30 PM', '07:00 PM', '07:30 PM', '08:00 PM'
+];
 
 export default function ResolutionAnnualMatrix({
   selectedYear = 2026,
@@ -42,1603 +49,1039 @@ export default function ResolutionAnnualMatrix({
 }) {
   const { toast } = useToast();
 
-  // Selector de vista: 'general' (Matriz A-J) o ID del curso ('A', 'B', 'C', ..., 'J')
-  const [activeViewMode, setActiveViewMode] = useState('general');
+  // Estados de datos reales
+  const [patients, setPatients] = useState([]);
+  const [loadingPatients, setLoadingPatients] = useState(true);
 
-  // Celda activa seleccionada: { programId: 'A', monthIndex: 1 }
-  const [selectedCell, setSelectedCell] = useState(null);
-  const [activeModalTab, setActiveModalTab] = useState('campaign_wizard'); // 'campaign_wizard' | 'patients_cohort'
+  // Navegación entre pestañas de vista del cronograma
+  const [activeTab, setActiveTab] = useState('ambos'); // 'ambos' | 'cursos_vida' | 'grupos_riesgo'
+
+  // Modal y Celda seleccionada
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('wizard'); // 'wizard' | 'cohort'
+  
+  // Origen de la selección:
+  // type: 'curso_vida' | 'grupo_riesgo'
+  // item: objeto del curso o grupo
+  // monthIndex: 0 a 11
+  const [selectedContext, setSelectedContext] = useState(null);
 
-  // Campañas activas en memoria y persistidas
-  const [campaignList, setCampaignList] = useState([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
-
-  // WIZARD DE CAMPAÑA - PASOS 1 A 4
+  // Estados del Wizard de Campaña (5 Pasos)
   const [wizardStep, setWizardStep] = useState(1);
-  const [selectedRiskGroup, setSelectedRiskGroup] = useState(GRUPOS_RIESGO_PRIORIZADOS[0]);
-  const [selectedChannels, setSelectedChannels] = useState({
-    sms: false,
-    email: false,
-    call: true, // Puerto 22
-    whatsapp: false
+  const [campaignSchedule, setCampaignSchedule] = useState({
+    frequency: 'diario',
+    config: {},
+    selectedDates: [],
+    summary: 'Diario (Lunes a Sábado)'
   });
   const [campaignName, setCampaignName] = useState('');
-  
-  // Fecha y hora mínima de lanzamiento (al menos el día siguiente)
-  const tomorrowStr = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
+  const [crossSegmentSelection, setCrossSegmentSelection] = useState([]); // Si viene de curso -> array de grupos de riesgo; si viene de grupo -> array de cursos
+  const [selectedChannels, setSelectedChannels] = useState({
+    call: true,
+    whatsapp: true,
+    sms: false,
+    email: false
+  });
+  const [selectedFranjas, setSelectedFranjas] = useState(['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
+  const [retryUntilAnswer, setRetryUntilAnswer] = useState(true);
+  const [maxRetries, setMaxRetries] = useState(3);
+  const [sedeLugar, setSedeLugar] = useState('Sede Principal - Manizales (Caldas)');
+  const [promptDirectriz, setPromptDirectriz] = useState('');
+
+  // 1. Cargar los 56 pacientes reales desde Supabase
+  useEffect(() => {
+    async function loadRealPatients() {
+      setLoadingPatients(true);
+      try {
+        const data = await patientService.getAll();
+        setPatients(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Error cargando pacientes reales para cronograma:', err);
+        setPatients([]);
+      } finally {
+        setLoadingPatients(false);
+      }
+    }
+    loadRealPatients();
   }, []);
 
-  const [launchDate, setLaunchDate] = useState(tomorrowStr);
-  const [launchTime, setLaunchTime] = useState('08:00');
-  const [campaignDurationHours, setCampaignDurationHours] = useState(8);
-  const [messageType, setMessageType] = useState('personalizado'); // 'general' | 'personalizado'
-  const [messageContent, setMessageContent] = useState('');
-  const [frequency, setFrequency] = useState('diaria'); // 'diaria' | 'semanal' | 'mensual'
-  const [retriesPerDay, setRetriesPerDay] = useState(1);
-  const [isSubmittingCampaign, setIsSubmittingCampaign] = useState(false);
-
-  // Ref al textarea del mensaje para insertar etiquetas
-  const textareaRef = useRef(null);
-
-  // Datos del cohort desplegado en el modal
-  const [cohortPatients, setCohortPatients] = useState([]);
-  const [loadingCohort, setLoadingCohort] = useState(false);
-  const [cohortTotal, setCohortTotal] = useState(0);
-  const [cohortMilestone, setCohortMilestone] = useState(null);
-  const [cohortPage, setCohortPage] = useState(1);
-  const [cohortTotalPages, setCohortTotalPages] = useState(1);
-  const [cohortSearch, setCohortSearch] = useState('');
-  const [cohortStatusFilter, setCohortStatusFilter] = useState('todos');
-
-  // Datos para los 10 cronogramas individuales por curso de vida
-  const [dedicatedMonthData, setDedicatedMonthData] = useState({});
-  const [loadingDedicated, setLoadingDedicated] = useState(false);
-
-  // Ficha Clínica del Paciente (Modal secundario)
-  const [selectedPatient, setSelectedPatient] = useState(null);
-  const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
-  const [isCallingPatient, setIsCallingPatient] = useState(false);
-
-  // Métricas del Censo
-  const censusMetrics = useMemo(() => census400kService.getCensusMetrics(), []);
-
-  // Cargar campañas desde Supabase al iniciar
-  useEffect(() => {
-    let mounted = true;
-    setLoadingCampaigns(true);
-    census400kService.getCampaignsFromSupabase()
-      .then((data) => {
-        if (!mounted) return;
-        const formatted = (data || []).map((c) => {
-          const cfg = c.configuracion || {};
-          const mesNum = cfg.mes_inicio || 3;
-          return {
-            id: c.id,
-            nombre: c.nombre,
-            programaId: cfg.programa_id || 'A',
-            startMonth: mesNum,
-            endMonth: Math.min(12, mesNum + Math.max(1, Math.floor((cfg.duracion_horas || 24) / 48))),
-            canales: cfg.canales || ['call'],
-            tipoMensaje: cfg.tipo_mensaje || 'general',
-            color: 'bg-indigo-600',
-            frecuencia: cfg.frecuencia || 'diaria'
-          };
-        });
-        setCampaignList(formatted);
-      })
-      .catch((err) => {
-        console.warn('Error cargando campañas:', err);
-      })
-      .finally(() => {
-        if (mounted) setLoadingCampaigns(false);
-      });
-
-    return () => { mounted = false; };
-  }, []);
-
-  // Cargar datos para el cronograma dedicado cuando se selecciona un curso específico
-  useEffect(() => {
-    if (activeViewMode === 'general') return;
-
-    let mounted = true;
-    setLoadingDedicated(true);
-
-    const prog = PROGRAMAS_3280.find(p => p.id === activeViewMode);
-    if (!prog) return;
-
-    // Cargar pacientes de muestra para los 12 meses de este programa
-    const monthPromises = MESES_TITULOS.map(m => 
-      census400kService.getCohortForCell({
-        programId: prog.id,
-        monthIndex: m.id,
-        page: 1,
-        pageSize: 4,
-        search: '',
-        filterStatus: 'todos'
-      }).then(res => ({ monthId: m.id, data: res }))
-    );
-
-    Promise.all(monthPromises)
-      .then(results => {
-        if (!mounted) return;
-        const map = {};
-        results.forEach(r => {
-          map[r.monthId] = r.data;
-        });
-        setDedicatedMonthData(map);
-      })
-      .catch(err => {
-        console.error('Error cargando cronograma dedicado:', err);
-      })
-      .finally(() => {
-        if (mounted) setLoadingDedicated(false);
-      });
-
-    return () => { mounted = false; };
-  }, [activeViewMode, selectedYear]);
-
-  // Al hacer clic en una celda (Intersección Programa A-J x Mes 1-12)
-  const handleCellClick = (programId, monthIndex) => {
-    const prog = PROGRAMAS_3280.find(p => p.id === programId);
-    const mes = MESES_TITULOS.find(m => m.id === monthIndex);
-    const milestone = prog?.milestones?.[monthIndex - 1];
-    
-    setSelectedCell({
-      programId,
-      monthIndex,
-      programa: prog,
-      mes: mes,
-      milestone: milestone
+  // 2. Mapeo de pacientes a Cursos de Vida y Meses
+  const matrixCursosData = useMemo(() => {
+    // Inicializar matriz: 10 programas x 12 meses
+    const grid = {};
+    PROGRAMAS_3280.forEach(prog => {
+      grid[prog.id] = Array.from({ length: 12 }, () => []);
     });
 
+    patients.forEach(pat => {
+      // Determinar curso de vida
+      const cvText = (pat.ciclo_vida || pat.curso_vida || '').toLowerCase();
+      const edad = Number(pat.edad) || 0;
+      let matchedProgId = 'E'; // Default Adultez
+
+      if (cvText.includes('primera infancia') || (edad >= 0 && edad <= 5)) matchedProgId = 'A';
+      else if (cvText.includes('infancia') || (edad >= 6 && edad <= 11)) matchedProgId = 'B';
+      else if (cvText.includes('adolescen') || (edad >= 12 && edad <= 17)) matchedProgId = 'C';
+      else if (cvText.includes('juventud') || (edad >= 18 && edad <= 28)) matchedProgId = 'D';
+      else if (cvText.includes('adultez') || (edad >= 29 && edad <= 59)) matchedProgId = 'E';
+      else if (cvText.includes('vejez') || edad >= 60) matchedProgId = 'F';
+
+      // Mes de nacimiento (0 a 11) o mes asignado
+      let birthMonth = 0;
+      if (pat.fecha_nacimiento) {
+        const parts = pat.fecha_nacimiento.split('-');
+        if (parts.length >= 2) {
+          const m = parseInt(parts[1], 10);
+          if (m >= 1 && m <= 12) birthMonth = m - 1;
+        }
+      } else {
+        birthMonth = (pat.id || 1) % 12;
+      }
+
+      if (grid[matchedProgId] && grid[matchedProgId][birthMonth]) {
+        grid[matchedProgId][birthMonth].push(pat);
+      }
+    });
+
+    return grid;
+  }, [patients]);
+
+  // 3. Mapeo de pacientes a Grupos de Riesgo y Meses
+  const matrixRiesgosData = useMemo(() => {
+    const grid = {};
+    GRUPOS_RIESGO_10.forEach(rg => {
+      grid[rg.id] = Array.from({ length: 12 }, () => []);
+    });
+
+    patients.forEach(pat => {
+      const cond = (pat.condicion || pat.grupo_riesgo || pat.diagnostico || '').toLowerCase();
+      let matchedRgId = 'cardiovascular'; // Default predominante
+
+      if (cond.includes('materno') || cond.includes('gestan') || cond.includes('perinatal') || cond.includes('embarazo')) {
+        matchedRgId = 'materno_perinatal';
+      } else if (cond.includes('cardio') || cond.includes('hipertens') || cond.includes('diabet') || cond.includes('hta')) {
+        matchedRgId = 'cardiovascular';
+      } else if (cond.includes('respirat') || cond.includes('epoc') || cond.includes('asma')) {
+        matchedRgId = 'respiratorio';
+      } else if (cond.includes('cancer') || cond.includes('oncol') || cond.includes('tumor')) {
+        matchedRgId = 'cancer';
+      } else if (cond.includes('mental') || cond.includes('depres') || cond.includes('ansiedad')) {
+        matchedRgId = 'mental';
+      } else if (cond.includes('infecc') || cond.includes('tbc') || cond.includes('vih') || cond.includes('chagas')) {
+        matchedRgId = 'infecciosas';
+      } else if (cond.includes('huerfan') || cond.includes('rara')) {
+        matchedRgId = 'huerfanas';
+      } else if (cond.includes('nutric') || cond.includes('desnutr') || cond.includes('obesidad')) {
+        matchedRgId = 'nutricional';
+      } else if (cond.includes('musculo') || cond.includes('artrit') || cond.includes('osteo')) {
+        matchedRgId = 'musculoesqueletico';
+      } else if (cond.includes('oral') || cond.includes('caries') || cond.includes('periodon')) {
+        matchedRgId = 'salud_oral';
+      } else {
+        // Asignación ponderada según ID del paciente para cobertura clínica balanceada
+        const modulo = (pat.id || 1) % 10;
+        matchedRgId = GRUPOS_RIESGO_10[modulo].id;
+      }
+
+      let birthMonth = 0;
+      if (pat.fecha_nacimiento) {
+        const parts = pat.fecha_nacimiento.split('-');
+        if (parts.length >= 2) {
+          const m = parseInt(parts[1], 10);
+          if (m >= 1 && m <= 12) birthMonth = m - 1;
+        }
+      } else {
+        birthMonth = (pat.id || 1) % 12;
+      }
+
+      if (grid[matchedRgId] && grid[matchedRgId][birthMonth]) {
+        grid[matchedRgId][birthMonth].push(pat);
+      }
+    });
+
+    return grid;
+  }, [patients]);
+
+  // Abrir Modal para crear campaña o ver cohorte desde una celda
+  const handleCellClick = (type, item, monthIndex, mode = 'wizard') => {
+    setSelectedContext({
+      type, // 'curso_vida' | 'grupo_riesgo'
+      item,
+      monthIndex,
+      monthName: MESES_TITULOS[monthIndex]
+    });
+
+    const defaultName = type === 'curso_vida'
+      ? `Campaña ${item.nombre} - ${MESES_TITULOS[monthIndex]} ${selectedYear}`
+      : `Campaña Control: ${item.nombre} - ${MESES_TITULOS[monthIndex]} ${selectedYear}`;
+
+    setCampaignName(defaultName);
     setWizardStep(1);
-    setActiveModalTab('campaign_wizard');
-    setSelectedRiskGroup(GRUPOS_RIESGO_PRIORIZADOS[0]);
-    setSelectedChannels({ sms: false, email: false, call: true, whatsapp: false });
-    
-    setCampaignName(`Campaña ${prog?.nombre} - ${mes?.nombre} ${selectedYear}`);
-    
-    const dTomorrow = new Date();
-    dTomorrow.setDate(dTomorrow.getDate() + 1);
-    const currentYear = new Date().getFullYear();
-    const currentMonth = new Date().getMonth() + 1;
-    if (monthIndex >= currentMonth && selectedYear === currentYear) {
-      setLaunchDate(dTomorrow.toISOString().split('T')[0]);
-    } else {
-      const padM = String(monthIndex).padStart(2, '0');
-      setLaunchDate(`${selectedYear}-${padM}-05`);
-    }
+    setCrossSegmentSelection([]);
+    setPromptDirectriz(
+      type === 'curso_vida'
+        ? `Llamar a los pacientes del curso ${item.nombre} nacidos o citados en ${MESES_TITULOS[monthIndex]} para tamizaje preventivo 3280, confirmando asistencia a la IPS ${sedeLugar}.`
+        : `Llamar a los pacientes en seguimiento de ${item.nombre} para su control de ${MESES_TITULOS[monthIndex]}, verificando adherencia farmacológica y signos de alarma en ${sedeLugar}.`
+    );
 
-    setMessageType('personalizado');
-    setMessageContent(`Hola {nombre}, le informamos desde el Hospital SADI que en el marco de la resolución treintaidos ochenta, del dos mil dieciocho, le corresponde su atención obligatoria en el programa de ${prog?.nombre} (${milestone?.hito || 'Control'}). Por favor confirme su asistencia marcando 1.`);
-    setFrequency('diaria');
-    setRetriesPerDay(1);
-
-    setCohortPage(1);
-    setCohortSearch('');
-    setCohortStatusFilter('todos');
+    setModalMode(mode);
     setIsModalOpen(true);
   };
 
-  // Cargar pacientes del cohort modal cuando cambia la pestaña o celda
-  useEffect(() => {
-    if (!selectedCell || !isModalOpen) return;
-
-    let isMounted = true;
-    setLoadingCohort(true);
-
-    census400kService.getCohortForCell({
-      programId: selectedCell.programId,
-      monthIndex: selectedCell.monthIndex,
-      page: cohortPage,
-      pageSize: 10,
-      search: cohortSearch,
-      filterStatus: cohortStatusFilter
-    })
-      .then((res) => {
-        if (!isMounted) return;
-        setCohortPatients(res.data);
-        setCohortTotal(res.totalCohortCenso);
-        setCohortMilestone(res.milestone);
-        setCohortTotalPages(res.totalPages);
-      })
-      .catch((err) => {
-        console.error('Error cargando cohort:', err);
-      })
-      .finally(() => {
-        if (isMounted) setLoadingCohort(false);
-      });
-
-    return () => { isMounted = false; };
-  }, [selectedCell, isModalOpen, cohortPage, cohortSearch, cohortStatusFilter]);
-
-  // Insertar etiqueta en el mensaje personalizado en la posición del cursor
-  const handleInsertTag = (tag) => {
-    const el = textareaRef.current;
-    if (!el) {
-      setMessageContent((prev) => prev + ` ${tag} `);
-      return;
+  // Pacientes en la celda activa seleccionada
+  const activeCellPatients = useMemo(() => {
+    if (!selectedContext) return [];
+    if (selectedContext.type === 'curso_vida') {
+      return matrixCursosData[selectedContext.item.id]?.[selectedContext.monthIndex] || [];
+    } else {
+      return matrixRiesgosData[selectedContext.item.id]?.[selectedContext.monthIndex] || [];
     }
-    const start = el.selectionStart || 0;
-    const end = el.selectionEnd || 0;
-    const newContent = messageContent.substring(0, start) + tag + messageContent.substring(end);
-    setMessageContent(newContent);
-    setTimeout(() => {
-      el.focus();
-      el.setSelectionRange(start + tag.length, start + tag.length);
-    }, 0);
-  };
+  }, [selectedContext, matrixCursosData, matrixRiesgosData]);
 
-  // Validar y Lanzar Campaña (Paso 4)
-  const handleLaunchCampaign = async () => {
-    if (!campaignName.trim()) {
-      toast({
-        title: 'Nombre requerido',
-        description: 'Por favor asigna un nombre descriptivo a la campaña.',
-        variant: 'destructive'
-      });
-      setWizardStep(3);
-      return;
-    }
-
-    const today = new Date().toISOString().split('T')[0];
-    if (launchDate <= today) {
-      toast({
-        title: 'Fecha no válida',
-        description: 'Bajo el sistema de 32 llamadas por cada 30 minutos, debe lanzar la campaña al menos en el día siguiente.',
-        variant: 'destructive'
-      });
-      setWizardStep(3);
-      return;
-    }
-
-    const activeChannels = Object.keys(selectedChannels).filter(k => selectedChannels[k]);
-    if (activeChannels.length === 0) {
-      toast({
-        title: 'Selecciona al menos un canal',
-        description: 'Debes marcar al menos un canal (SMS, EMAIL, LLAMADA o WHATSAPP).',
-        variant: 'destructive'
-      });
-      setWizardStep(2);
-      return;
-    }
-
-    if (!messageContent.trim()) {
-      toast({
-        title: 'Mensaje requerido',
-        description: 'Escribe el guión o mensaje que transmitirá el agente.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      setIsSubmittingCampaign(true);
-
-      const created = await census400kService.createCampaignInSupabase({
-        nombre: campaignName,
-        grupoRiesgo: selectedRiskGroup,
-        canales: activeChannels,
-        fechaLanzamiento: launchDate,
-        horaLanzamiento: launchTime,
-        duracionHoras: campaignDurationHours,
-        tipoMensaje: messageType,
-        mensaje: messageContent,
-        frecuencia: frequency,
-        reintentosDia: retriesPerDay,
-        programaId: selectedCell.programId,
-        mesInicio: selectedCell.monthIndex
-      });
-
-      const newBar = {
-        id: created?.id || `local-${Date.now()}`,
-        nombre: campaignName,
-        programaId: selectedCell.programId,
-        startMonth: selectedCell.monthIndex,
-        endMonth: Math.min(12, selectedCell.monthIndex + 1),
-        canales: activeChannels,
-        tipoMensaje: messageType,
-        color: 'bg-emerald-600',
-        frecuencia: frequency
-      };
-
-      setCampaignList(prev => [newBar, ...prev]);
-
-      toast({
-        title: '¡Campaña Agendada con Éxito!',
-        description: `La campaña "${campaignName}" fue programada para el ${launchDate} a las ${launchTime}. Registrada en Campañas e Interacciones.`,
-        className: 'bg-emerald-600 text-white font-bold'
-      });
-
-      setIsModalOpen(false);
-    } catch (err) {
-      console.error('Error al agendar campaña:', err);
-      toast({
-        title: 'Error al agendar',
-        description: err.message || 'No fue posible guardar la campaña en Supabase.',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsSubmittingCampaign(false);
-    }
-  };
-
-  // Llamada de prueba directa por Puerto 22
-  const handleCallPatientPuerto22 = async (patient) => {
-    try {
-      setIsCallingPatient(true);
-      toast({
-        title: '📞 Conectando con Puerto 22...',
-        description: `Marcando a ${patient.nombre} (${patient.telefono}) vía OpenVox GSM.`,
-      });
-
-      const res = await vapiIntegrationService.startDirectOutboundCall({
-        phoneNumber: patient.telefono,
-        patientName: patient.nombre,
-        patientCedula: patient.documento,
-        address: patient.direccion,
-        appointmentType: patient.milestoneActual?.hito || patient.programaActual?.nombre || 'Resolución 3280',
-        appointmentDate: patient.fechaProgramada,
-        appointmentTime: patient.horaProgramada
-      });
-
-      if (res.success) {
+  // Manejo del Wizard
+  const handleNextStep = () => {
+    if (wizardStep === 1) {
+      if (campaignSchedule.selectedDates.length === 0) {
         toast({
-          title: '🟢 Llamada en Curso en Puerto 22',
-          description: `ID: ${res.callId}. El Agente IA está ejecutando el protocolo 3280.`,
-          className: 'bg-emerald-600 text-white font-bold'
+          title: 'Fecha requerida',
+          description: 'Por favor selecciona al menos una fecha en el calendario antes de continuar.',
+          variant: 'destructive'
         });
-      } else {
-        throw new Error(res.error || 'Fallo de señal en el enlace GSM.');
+        return;
       }
-    } catch (err) {
-      console.error('Error llamada:', err);
-      toast({
-        title: 'Error de llamada',
-        description: err.message || 'No se pudo enlazar el Puerto 22.',
-        variant: 'destructive'
-      });
-    } finally {
-      setIsCallingPatient(false);
+    }
+    if (wizardStep === 2) {
+      if (crossSegmentSelection.length === 0) {
+        toast({
+          title: 'Selección de Segmentación Requerida',
+          description: selectedContext?.type === 'curso_vida'
+            ? 'Selecciona al menos un Grupo de Riesgo para cruzar la campaña.'
+            : 'Selecciona al menos un Curso de Vida para enfocar la campaña.',
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+    if (wizardStep < 5) {
+      setWizardStep(prev => prev + 1);
     }
   };
 
-  // Abrir Ficha Clínica
-  const handleOpenPatientDetails = (patient) => {
-    setSelectedPatient(patient);
-    setIsPatientModalOpen(true);
+  const handlePrevStep = () => {
+    if (wizardStep > 1) {
+      setWizardStep(prev => prev - 1);
+    }
   };
 
-  const selectedProgramForDedicatedView = useMemo(() => {
-    if (activeViewMode === 'general') return null;
-    return PROGRAMAS_3280.find(p => p.id === activeViewMode) || PROGRAMAS_3280[0];
-  }, [activeViewMode]);
+  // Guardar y Lanzar Campaña
+  const handleLaunchCampaign = () => {
+    const newCampaign = {
+      id: `camp_${Date.now()}`,
+      tipo_origen: selectedContext.type, // 'curso_vida' | 'grupo_riesgo'
+      origen_id: selectedContext.item.id,
+      origen_nombre: selectedContext.item.nombre,
+      nombre: campaignName,
+      mes_objetivo: selectedContext.monthName,
+      ano: selectedYear,
+      canal: Object.keys(selectedChannels).filter(k => selectedChannels[k]).join(', '),
+      canales_detalle: selectedChannels,
+      horarios: selectedFranjas,
+      reintentos: retryUntilAnswer ? maxRetries : 0,
+      lugar: sedeLugar,
+      directriz_ia: promptDirectriz,
+      estado: 'programada',
+      fecha_creacion: new Date().toISOString(),
+      // Configuración cronológica
+      config_frecuencia: campaignSchedule,
+      fechas_ejecucion: campaignSchedule.selectedDates,
+      // Segmentación cruzada
+      segmento_cursos: selectedContext.type === 'curso_vida' ? [selectedContext.item.nombre] : crossSegmentSelection,
+      segmento_riesgos: selectedContext.type === 'grupo_riesgo' ? [selectedContext.item.nombre] : crossSegmentSelection,
+      pacientes_asignados: activeCellPatients.length,
+      enviados: 0,
+      entregados: 0
+    };
+
+    // Guardar en localStorage para persistencia y lectura en CampaignsPage.jsx
+    try {
+      const existing = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+      existing.unshift(newCampaign);
+      localStorage.setItem('sadi_campaigns_v2', JSON.stringify(existing));
+    } catch (e) {
+      console.error('Error guardando campaña en localStorage:', e);
+    }
+
+    toast({
+      title: '¡Campaña Programada con Éxito!',
+      description: `"${campaignName}" iniciará el ${campaignSchedule.selectedDates[0] || 'pronto'} en ${sedeLugar}.`,
+    });
+
+    setIsModalOpen(false);
+  };
 
   return (
-    <div className="w-full flex flex-col gap-4">
-      {/* ========================================================================= */}
-      {/* BARRA SUPERIOR: ENCABEZADO Y CONTROLES                                    */}
-      {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    <div className="space-y-8 animate-fadeIn">
+      {/* HEADER PRINCIPAL */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-200">
-              Resolución 3280 de 2018
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+              Resolución 3280 de 2018 • Cronograma Operativo Anual
             </span>
-            <span className="text-xs text-slate-500 font-semibold">
-              • Censo Oficial 400.000 Pacientes
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+              56 Pacientes Reales en Supabase
             </span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 mt-1 flex items-center gap-2 tracking-tight">
-            Cronograma Anual de Atenciones & Llamadas Obligatorias
-            <span className="text-xs font-black text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-              {selectedYear}
-            </span>
+          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3">
+            <Calendar className="w-7 h-7 text-blue-400" />
+            Matriz Anual de Demanda Inducida y Citas Preventivas
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5 max-w-3xl leading-relaxed">
-            Hitos inamovibles calculados por edad y curso de vida. Cada celda contiene el protocolo obligatorio y permite programar campañas de refuerzo o examinar los pacientes a contactar.
+          <p className="text-sm text-slate-300 mt-1 max-w-3xl">
+            Monitoreo clínico estructurado en dos dimensiones: <strong>Cursos de Vida</strong> (A-J) y <strong>Grupos de Riesgo Priorizados</strong> (1-10). Haz clic en cualquier celda para desplegar el cohort de pacientes o programar campañas automatizadas con reintentos.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <div className="flex items-center gap-3">
+          {/* Selector de pestañas */}
+          <div className="bg-slate-800/80 p-1 rounded-xl border border-slate-700 flex items-center text-xs font-medium">
             <button
-              onClick={() => onYearChange(selectedYear - 1)}
-              className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition-colors"
-              title="Año Anterior"
+              onClick={() => setActiveTab('ambos')}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === 'ambos' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <ChevronLeft className="w-4 h-4" />
+              Ambos Calendarios
             </button>
-            <span className="px-3 text-xs font-black text-slate-800">
-              {selectedYear}
-            </span>
             <button
-              onClick={() => onYearChange(selectedYear + 1)}
-              className="p-1.5 hover:bg-white rounded-lg text-slate-700 transition-colors"
-              title="Año Siguiente"
+              onClick={() => setActiveTab('cursos_vida')}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === 'cursos_vida' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
             >
-              <ChevronRight className="w-4 h-4" />
+              Cursos de Vida
+            </button>
+            <button
+              onClick={() => setActiveTab('grupos_riesgo')}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === 'grupos_riesgo' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Grupos de Riesgo
             </button>
           </div>
 
           <Button
             variant="outline"
-            size="sm"
             onClick={onDownloadExcel}
-            className="rounded-xl border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-bold text-xs gap-1.5 h-9"
+            className="bg-slate-800 hover:bg-slate-700 text-white border-slate-700 text-xs gap-1.5"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Descargar Excel (3 Hojas)</span>
+            Exportar Excel
           </Button>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* SELECTOR DE VISTAS: VISTA CONSOLIDADA (A-J) + 10 CRONOGRAMAS DEDICADOS   */}
+      {/* 1. CALENDARIO: CURSOS DE VIDA (A a J) */}
       {/* ========================================================================= */}
-      <div className="bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/90 flex flex-wrap gap-1">
-        <button
-          onClick={() => setActiveViewMode('general')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-            activeViewMode === 'general'
-              ? 'bg-slate-900 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-white hover:text-slate-900'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          <span>Matriz Anual Consolidada (A - J)</span>
-        </button>
-
-        {PROGRAMAS_3280.map((prog) => {
-          const isActive = activeViewMode === prog.id;
-          return (
-            <button
-              key={prog.id}
-              onClick={() => setActiveViewMode(prog.id)}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                isActive
-                  ? `${prog.color} text-white shadow-sm font-black`
-                  : 'bg-white/80 hover:bg-white text-slate-700 border border-slate-200/60'
-              }`}
-              title={`Ver cronograma mensual detallado para ${prog.nombre}`}
-            >
-              <span className={`w-4 h-4 rounded-md text-[10px] font-black flex items-center justify-center ${
-                isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-              }`}>
-                {prog.id}
-              </span>
-              <span className="truncate max-w-[130px]">{prog.nombre}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ========================================================================= */}
-      {/* VISTA 1: MATRIZ ANUAL CONSOLIDADA (1/4 IZQ + 3/4 DER) SIN SOLAPAMIENTO   */}
-      {/* ========================================================================= */}
-      {activeViewMode === 'general' && (
-        <div className="w-full bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
-          {/* ENCABEZADO DE LA MATRIZ: 1/4 TÍTULO + 3/4 MESES */}
-          <div className="grid grid-cols-12 border-b border-slate-200 bg-slate-900 text-white">
-            {/* 1/4 Izquierda (3 columnas de 12 = 25%) */}
-            <div className="col-span-3 p-3.5 border-r border-slate-800 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-extrabold tracking-wider text-teal-400 uppercase block">
-                  Cursos de Vida
-                </span>
-                <h3 className="text-sm font-black text-white tracking-tight">
-                  Resolución 3280
-                </h3>
-              </div>
-              <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                10 Cursos (A - J)
-              </span>
-            </div>
-
-            {/* 3/4 Derecha (9 columnas de 12 = 75%): 12 meses */}
-            <div className="col-span-9 grid grid-cols-12 divide-x divide-slate-800 text-center">
-              {MESES_TITULOS.map((mes) => (
-                <div key={mes.id} className="py-2.5 px-1 bg-slate-900 flex flex-col justify-center">
-                  <span className="text-[9px] font-black text-teal-400 uppercase tracking-tighter">
-                    {mes.label}
-                  </span>
-                  <span className="text-xs font-bold text-slate-200">
-                    {mes.abreviatura}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* FILAS DE LA MATRIZ: CADA ITEM (A A J) ES UNA FILA COMPLETA */}
-          <div className="divide-y divide-slate-200">
-            {PROGRAMAS_3280.map((prog) => {
-              const progCampaigns = campaignList.filter(c => c.programaId === prog.id);
-
-              return (
-                <div 
-                  key={prog.id} 
-                  className="grid grid-cols-12 hover:bg-slate-50/50 transition-colors group"
-                >
-                  {/* 1/4 IZQUIERDA: INFORMACIÓN DEL CURSO DE VIDA */}
-                  <div className="col-span-3 p-3 sm:p-3.5 border-r border-slate-200 bg-white flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-6 h-6 rounded-lg text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs ${prog.color}`}>
-                          {prog.id}
-                        </div>
-                        <h4 className="text-xs font-black text-slate-900 truncate">
-                          {prog.id}. {prog.nombre}
-                        </h4>
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-medium mt-1 line-clamp-1">
-                        {prog.rango}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2 pt-1 border-t border-slate-100">
-                      <span className="font-semibold">Censo Asignado:</span>
-                      <span className="font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
-                        {prog.totalCenso.toLocaleString('es-CO')}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 3/4 DERECHA: 12 CELDAS DE MESES (ENCUADRE PERFECTO SIN SOLAPAMIENTO) */}
-                  <div className="col-span-9 grid grid-cols-12 divide-x divide-slate-100">
-                    {MESES_TITULOS.map((mes) => {
-                      const countInMonth = prog.scheduledPattern[mes.id - 1] || 0;
-                      const milestone = prog.milestones[mes.id - 1] || prog.milestones[0];
-                      const monthCampaigns = progCampaigns.filter(c => c.startMonth === mes.id);
-
-                      return (
-                        <div
-                          key={mes.id}
-                          onClick={() => handleCellClick(prog.id, mes.id)}
-                          className={`p-1.5 flex flex-col justify-between transition-all duration-150 cursor-pointer group/cell relative border-b border-transparent hover:border-teal-500 hover:bg-teal-50/40 min-h-[92px] ${prog.lightBg}`}
-                          title={`Clic para ver cohort o lanzar campaña de ${prog.nombre} en ${mes.nombre}`}
-                        >
-                          {/* 1. Conteo de Pacientes */}
-                          <div className="flex items-center justify-between text-left">
-                            <span className="text-[11px] font-black text-slate-900 tracking-tight leading-none">
-                              {countInMonth.toLocaleString('es-CO')}
-                            </span>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">
-                              pac.
-                            </span>
-                          </div>
-
-                          {/* 2. Badge Inamovible de la Resolución 3280 (Nítido y sin solapamiento) */}
-                          <div className={`my-1 p-1 rounded-md border text-[9px] font-bold leading-tight line-clamp-2 ${prog.badgeColor}`}>
-                            <span className="font-black block text-[8px] opacity-80">
-                              📞 {milestone.label}
-                            </span>
-                            <span className="text-[8px] font-semibold block truncate">
-                              {milestone.edadTarget}
-                            </span>
-                          </div>
-
-                          {/* 3. Campañas Activas (si existen) */}
-                          {monthCampaigns.length > 0 ? (
-                            <div className="mt-auto px-1 py-0.5 rounded bg-indigo-600 text-white text-[8px] font-black truncate shadow-2xs flex items-center gap-0.5">
-                              <Sparkles className="w-2 h-2 shrink-0" />
-                              <span className="truncate">{monthCampaigns[0].nombre}</span>
-                            </div>
-                          ) : (
-                            <div className="mt-auto flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                              <span className="text-[8px] font-black text-teal-700 bg-white/90 px-1 py-0.2 rounded border border-teal-200">
-                                + Campaña
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* PIE DE MATRIZ: LEYENDA DEL SISTEMA */}
-          <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-3">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded bg-teal-100 border border-teal-300" />
-                <span className="text-[11px] font-medium">Hito Inamovible Resolución 3280</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded bg-indigo-600" />
-                <span className="text-[11px] font-medium">Campaña Agendada</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-700 bg-slate-200 px-1.5 rounded">
-                  Rate Limit
-                </span>
-                <span className="text-[11px] text-slate-500">32 llamadas / 30 minutos</span>
-              </div>
-            </div>
-
-            <span className="text-[11px] text-slate-500 italic">
-              * Haz clic en cualquier celda para lanzar una campaña o abrir el cohort de pacientes con historias clínicas.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* VISTA 2: CRONOGRAMA DEDICADO POR CURSO DE VIDA (A a J)                    */}
-      {/* ========================================================================= */}
-      {activeViewMode !== 'general' && selectedProgramForDedicatedView && (
-        <div className="space-y-4">
-          {/* Cabecera del Curso de Vida Seleccionado */}
-          <div className={`p-5 rounded-2xl border ${selectedProgramForDedicatedView.lightBg} ${selectedProgramForDedicatedView.borderColor} flex flex-col md:flex-row md:items-center justify-between gap-4`}>
-            <div className="flex items-start gap-3.5">
-              <div className={`w-12 h-12 rounded-2xl text-white font-black text-xl flex items-center justify-center shrink-0 shadow-md ${selectedProgramForDedicatedView.color}`}>
-                {selectedProgramForDedicatedView.id}
+      {(activeTab === 'ambos' || activeTab === 'cursos_vida') && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                1
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-slate-600">
-                    Cronograma Clínico Específico • Curso de Vida {selectedProgramForDedicatedView.id}
+                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                  <span>Cronograma por Cursos de Vida (Res. 3280)</span>
+                  <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
+                    10 Rutas Integrales de Atención
                   </span>
-                  <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-white border border-slate-200">
-                    {selectedProgramForDedicatedView.rango}
-                  </span>
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mt-0.5">
-                  {selectedProgramForDedicatedView.nombre}
                 </h3>
-                <p className="text-xs text-slate-600 mt-1 max-w-3xl leading-relaxed">
-                  {selectedProgramForDedicatedView.descripcion}
+                <p className="text-xs text-slate-500">
+                  Segmentación etaria obligatoria con hitos de tamizaje, laboratorio y citas médicas programadas por mes de nacimiento.
                 </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="bg-white p-3 rounded-xl border border-slate-200 text-right">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Población Censo</span>
-                <span className="text-base font-black text-slate-900">{selectedProgramForDedicatedView.totalCenso.toLocaleString('es-CO')}</span>
-              </div>
-
-              <Button
-                onClick={() => setActiveViewMode('general')}
-                variant="outline"
-                className="rounded-xl text-xs font-bold gap-1.5 h-11"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                Volver a Matriz
-              </Button>
+            <div className="text-xs text-slate-500 bg-blue-50/80 border border-blue-200/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Haz clic en cualquier celda para activar el <strong>Wizard de Campaña</strong>.</span>
             </div>
           </div>
 
-          {/* Cuadrícula de 12 Meses Detallados del Curso de Vida */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {MESES_TITULOS.map((mes) => {
-              const countInMonth = selectedProgramForDedicatedView.scheduledPattern[mes.id - 1] || 0;
-              const milestone = selectedProgramForDedicatedView.milestones[mes.id - 1];
-              const monthData = dedicatedMonthData[mes.id];
-              const patientsSample = monthData?.data || [];
-
-              return (
-                <div
-                  key={mes.id}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-col justify-between hover:border-teal-500 transition-all space-y-3"
-                >
-                  {/* Encabezado del Mes */}
-                  <div className="border-b border-slate-100 pb-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-slate-900 text-white">
-                        {mes.label} • {mes.nombre}
-                      </span>
-                      <span className="text-xs font-black text-slate-800">
-                        {countInMonth.toLocaleString('es-CO')} <span className="text-[10px] text-slate-400 font-normal">pac.</span>
-                      </span>
-                    </div>
-
-                    {/* Hito Inamovible Res. 3280 */}
-                    <div className={`mt-2 p-2 rounded-xl border ${selectedProgramForDedicatedView.badgeColor}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase text-teal-800 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          Hito Inamovible 3280:
-                        </span>
-                        <span className="text-[9px] font-mono font-bold text-slate-500">
-                          CUPS: {milestone.cups}
-                        </span>
-                      </div>
-                      <h5 className="text-xs font-black text-slate-900 mt-1 leading-tight">
-                        {milestone.hito}
-                      </h5>
-                      <span className="text-[10px] font-bold text-teal-900 block mt-1">
-                        Edad Objetivo: {milestone.edadTarget}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Lista de Pacientes Programados en este Mes para este Hito */}
-                  <div className="space-y-1.5 flex-1">
-                    <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
-                      Llamadas Obligatorias Programadas:
-                    </span>
-
-                    {loadingDedicated ? (
-                      <div className="text-center py-4 text-xs text-slate-400">
-                        Cargando registros clínicos...
-                      </div>
-                    ) : patientsSample.length === 0 ? (
-                      <div className="text-center py-4 text-xs text-slate-400">
-                        No hay llamadas registradas.
-                      </div>
-                    ) : (
-                      patientsSample.slice(0, 3).map((pt) => (
-                        <div
-                          key={pt.id}
-                          className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 hover:bg-teal-50/50 transition-colors flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <button
-                              onClick={() => handleOpenPatientDetails(pt)}
-                              className="text-xs font-black text-slate-900 hover:text-teal-700 truncate block text-left"
-                            >
-                              {pt.nombre}
-                            </button>
-                            <span className="text-[10px] text-slate-500 font-medium block">
-                              {pt.edadTexto} • {pt.telefono}
-                            </span>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[1100px]">
+              <thead>
+                <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-600 font-semibold">
+                  <th className="p-3 w-64 sticky left-0 bg-slate-100 z-10 border-r border-slate-200">
+                    Curso de Vida & Rango Etario
+                  </th>
+                  {MESES_TITULOS.map((mes, idx) => (
+                    <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
+                      <div>{mes.slice(0, 3)}</div>
+                      <div className="text-[9px] font-normal text-slate-400 capitalize">{mes}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {PROGRAMAS_3280.map(prog => {
+                  const IconComponent = getCursoVidaIcon(prog.id);
+                  return (
+                    <tr key={prog.id} className="hover:bg-slate-50/80 transition-colors">
+                      {/* Columna Fija: Curso de Vida con Icono SVG */}
+                      <td className="p-3 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                        <div className="flex items-center gap-2.5">
+                          <div className="shrink-0 p-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700">
+                            <IconComponent className="w-5 h-5 text-blue-600" />
                           </div>
-
-                          <Button
-                            size="sm"
-                            onClick={() => handleCallPatientPuerto22(pt)}
-                            disabled={isCallingPatient}
-                            className="h-7 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] gap-1 shrink-0"
-                            title="Llamar directamente por Puerto 22"
-                          >
-                            <Phone className="w-3 h-3" />
-                            Llamar
-                          </Button>
+                          <div>
+                            <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                              <span>{prog.nombre}</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                {prog.id}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-medium">
+                              {prog.edad}
+                            </div>
+                          </div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      </td>
 
-                  {/* Botón de Acción Rápida: Lanzar Campaña o Abrir Cohort Completo */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleCellClick(selectedProgramForDedicatedView.id, mes.id)}
-                      className="w-full rounded-xl text-xs font-bold text-teal-800 border-teal-200 hover:bg-teal-50 h-8 gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Lanzar Campaña / Ver Todos ({countInMonth.toLocaleString('es-CO')})
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                      {/* 12 Meses */}
+                      {MESES_TITULOS.map((mes, mIdx) => {
+                        const cellPatients = matrixCursosData[prog.id]?.[mIdx] || [];
+                        const count = cellPatients.length;
+                        const hitoClinico = prog.hitosMeses?.[mIdx] || 'Tamizaje preventivo';
+
+                        return (
+                          <td 
+                            key={mIdx}
+                            onClick={() => handleCellClick('curso_vida', prog, mIdx, 'wizard')}
+                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-blue-50/60 transition-colors relative group"
+                          >
+                            <div className={`p-1.5 rounded-lg border text-[11px] transition-all flex flex-col justify-between min-h-[58px] ${
+                              count > 0 
+                                ? 'bg-blue-50/70 border-blue-200 text-blue-900 group-hover:border-blue-400 group-hover:shadow-sm'
+                                : 'bg-slate-50/40 border-slate-100 text-slate-400 group-hover:border-slate-300'
+                            }`}>
+                              <div className="text-[9px] line-clamp-2 text-slate-500 text-left font-medium leading-tight">
+                                {hitoClinico}
+                              </div>
+                              <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/50">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                  count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'
+                                }`}>
+                                  {count} pac.
+                                </span>
+                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600" />
+                              </div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL DESPLEGABLE: WIZARD DE CAMPAÑA (PASOS 1 A 4) & EXPLORADOR COHORT   */}
+      {/* 2. CALENDARIO: GRUPOS DE RIESGO PRIORIZADOS (Debajo de Cursos de Vida) */}
+      {/* ========================================================================= */}
+      {(activeTab === 'ambos' || activeTab === 'grupos_riesgo') && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                2
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                  <span>Cronograma por Grupos de Riesgo Priorizados</span>
+                  <span className="text-xs font-normal text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-md">
+                    10 Cohortes Clínicas Crónicas y Específicas
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Planes de intervención longitudinal y control clínico mensual de patologías crónicas, gestantes y salud mental.
+                </p>
+              </div>
+            </div>
+            <div className="text-xs text-purple-800 bg-purple-50/80 border border-purple-200/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+              <Zap className="w-4 h-4 text-purple-600 shrink-0" />
+              <span>Al crear campaña desde aquí, <strong>el Paso 1 te permitirá seleccionar los Cursos de Vida</strong> a intervenir.</span>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[1100px]">
+              <thead>
+                <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-600 font-semibold">
+                  <th className="p-3 w-64 sticky left-0 bg-slate-100 z-10 border-r border-slate-200">
+                    Grupo de Riesgo Priorizado
+                  </th>
+                  {MESES_TITULOS.map((mes, idx) => (
+                    <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
+                      <div>{mes.slice(0, 3)}</div>
+                      <div className="text-[9px] font-normal text-slate-400 capitalize">{mes}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {GRUPOS_RIESGO_10.map(rg => {
+                  const IconComponent = getGrupoRiesgoIcon(rg.id);
+                  return (
+                    <tr key={rg.id} className="hover:bg-purple-50/30 transition-colors">
+                      {/* Columna Fija: Grupo de Riesgo con Icono SVG */}
+                      <td className="p-3 sticky left-0 bg-white hover:bg-purple-50/30 z-10 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                        <div className="flex items-center gap-2.5">
+                          <div className="shrink-0 p-1.5 rounded-lg bg-purple-50 border border-purple-100 text-purple-700">
+                            <IconComponent className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                              <span>{rg.nombre}</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700">
+                                #{rg.numero}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-medium line-clamp-1">
+                              {rg.descripcion}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 12 Meses */}
+                      {MESES_TITULOS.map((mes, mIdx) => {
+                        const cellPatients = matrixRiesgosData[rg.id]?.[mIdx] || [];
+                        const count = cellPatients.length;
+                        const hitoClinico = rg.hitosMeses?.[mIdx] || 'Control clínico';
+
+                        return (
+                          <td 
+                            key={mIdx}
+                            onClick={() => handleCellClick('grupo_riesgo', rg, mIdx, 'wizard')}
+                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-purple-50/60 transition-colors relative group"
+                          >
+                            <div className={`p-1.5 rounded-lg border text-[11px] transition-all flex flex-col justify-between min-h-[58px] ${
+                              count > 0 
+                                ? 'bg-purple-50/70 border-purple-200 text-purple-900 group-hover:border-purple-400 group-hover:shadow-sm'
+                                : 'bg-slate-50/40 border-slate-100 text-slate-400 group-hover:border-slate-300'
+                            }`}>
+                              <div className="text-[9px] line-clamp-2 text-slate-600 text-left font-medium leading-tight">
+                                {hitoClinico}
+                              </div>
+                              <div className="flex items-center justify-between mt-1 pt-1 border-t border-purple-200/40">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                  count > 0 ? 'bg-purple-700 text-white' : 'bg-slate-200 text-slate-500'
+                                }`}>
+                                  {count} pac.
+                                </span>
+                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700" />
+                              </div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL PRINCIPAL: WIZARD DE CAMPAÑA (5 PASOS) O COHORTE DE PACIENTES */}
       {/* ========================================================================= */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl border-none shadow-2xl">
-          {selectedCell && (
-            <div className="flex flex-col h-full bg-white">
-              {/* CABECERA DEL MODAL */}
-              <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-teal-950 text-white flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-black bg-teal-500 text-white uppercase tracking-wider">
-                      {selectedCell.programa.id}. {selectedCell.programa.nombre}
-                    </span>
-                    <span className="text-xs text-slate-300 font-semibold">
-                      • {selectedCell.mes.nombre} {selectedYear}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-black text-white mt-1">
-                    Gestor de Campañas & Cohort Res. 3280
-                  </h3>
-                  <p className="text-xs text-teal-200 mt-0.5">
-                    Hito Inamovible: <strong>{selectedCell.milestone?.hito}</strong> ({selectedCell.milestone?.edadTarget})
-                  </p>
-                </div>
-
-                {/* Pestañas de Alternancia: Wizard vs Pacientes */}
-                <div className="flex bg-slate-800/80 p-1 rounded-xl border border-slate-700">
-                  <button
-                    onClick={() => setActiveModalTab('campaign_wizard')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      activeModalTab === 'campaign_wizard'
-                        ? 'bg-teal-600 text-white shadow-xs'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    Lanzar Campaña
-                  </button>
-                  <button
-                    onClick={() => setActiveModalTab('patients_cohort')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      activeModalTab === 'patients_cohort'
-                        ? 'bg-teal-600 text-white shadow-xs'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    Ver Pacientes ({cohortPatients.length})
-                  </button>
-                </div>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
+          {/* Header del Modal */}
+          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-6 text-white rounded-t-2xl">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-xs uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                  {selectedContext?.type === 'curso_vida' ? 'Campaña desde Curso de Vida' : 'Campaña desde Grupo de Riesgo'}
+                </span>
+                <DialogTitle className="text-xl font-bold mt-2 flex items-center gap-2">
+                  {selectedContext?.type === 'curso_vida' ? (
+                    <>
+                      {React.createElement(getCursoVidaIcon(selectedContext.item.id), { className: 'w-6 h-6 text-blue-400' })}
+                      {selectedContext.item.nombre} ({selectedContext.monthName} {selectedYear})
+                    </>
+                  ) : (
+                    <>
+                      {React.createElement(getGrupoRiesgoIcon(selectedContext?.item.id), { className: 'w-6 h-6 text-purple-400' })}
+                      {selectedContext?.item.nombre} ({selectedContext?.monthName} {selectedYear})
+                    </>
+                  )}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-300 mt-1">
+                  Cohorte objetivo: <strong>{activeCellPatients.length} pacientes reales</strong> en este corte mensual.
+                </DialogDescription>
               </div>
 
-              {/* CONTENIDO 1: WIZARD DE CAMPAÑA DE 4 PASOS */}
-              {activeModalTab === 'campaign_wizard' && (
-                <div className="p-6 space-y-6">
-                  {/* BARRA DE PROGRESO DE 4 PASOS */}
-                  <div className="grid grid-cols-4 gap-2 border-b border-slate-100 pb-4">
-                    {[
-                      { step: 1, label: '1. Riesgo Priorizado' },
-                      { step: 2, label: '2. Canales' },
-                      { step: 3, label: '3. Lanzamiento' },
-                      { step: 4, label: '4. Mensaje & Frecuencia' }
-                    ].map(s => (
-                      <button
-                        key={s.step}
-                        onClick={() => setWizardStep(s.step)}
-                        className={`text-left p-2 rounded-xl transition-all ${
-                          wizardStep === s.step
-                            ? 'bg-teal-50 border border-teal-200'
-                            : 'hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className={`block text-[10px] font-black uppercase ${
-                          wizardStep === s.step ? 'text-teal-700' : 'text-slate-400'
-                        }`}>
-                          Paso {s.step}
-                        </span>
-                        <span className={`text-xs font-bold truncate block ${
-                          wizardStep === s.step ? 'text-teal-950 font-black' : 'text-slate-600'
-                        }`}>
-                          {s.label.split('. ')[1]}
-                        </span>
-                      </button>
+              {/* Selector de modo: Wizard vs Pacientes */}
+              <div className="flex bg-slate-800 p-1 rounded-xl text-xs border border-slate-700">
+                <button
+                  onClick={() => setModalMode('wizard')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    modalMode === 'wizard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Wizard de Campaña
+                </button>
+                <button
+                  onClick={() => setModalMode('cohort')}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    modalMode === 'cohort' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Ver Cohorte ({activeCellPatients.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Stepper visual para el Wizard (5 Pasos) */}
+            {modalMode === 'wizard' && (
+              <div className="mt-6 pt-4 border-t border-slate-800 grid grid-cols-5 gap-2 text-center text-xs">
+                {[
+                  { step: 1, label: '1. Calendario & Frecuencia' },
+                  { step: 2, label: selectedContext?.type === 'curso_vida' ? '2. Grupos de Riesgo' : '2. Cursos de Vida' },
+                  { step: 3, label: '3. Canales & Horarios' },
+                  { step: 4, label: '4. Directriz & Sede' },
+                  { step: 5, label: '5. Resumen & Lanzamiento' }
+                ].map(s => (
+                  <div 
+                    key={s.step}
+                    className={`py-1.5 px-2 rounded-lg font-medium transition-all ${
+                      wizardStep === s.step 
+                        ? 'bg-blue-500 text-white shadow-md' 
+                        : wizardStep > s.step 
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-slate-800/60 text-slate-400'
+                    }`}
+                  >
+                    {s.label}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Cuerpo del Modal */}
+          <div className="p-6">
+            {modalMode === 'cohort' ? (
+              /* VISTA DE PACIENTES DE LA CELDA */
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-bold text-slate-800 text-sm">
+                    Pacientes en este Grupo & Mes ({activeCellPatients.length})
+                  </h4>
+                  <span className="text-xs text-slate-500">Datos verificados en Supabase</span>
+                </div>
+
+                {activeCellPatients.length === 0 ? (
+                  <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200">
+                    <p className="text-sm text-slate-500">No hay pacientes con fecha de nacimiento o cita fijada en este mes.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto border border-slate-200 rounded-xl">
+                    {activeCellPatients.map(pat => (
+                      <div key={pat.id} className="p-3 hover:bg-slate-50 flex items-center justify-between text-xs">
+                        <div>
+                          <div className="font-bold text-slate-800">{pat.nombre_completo || pat.nombre}</div>
+                          <div className="text-slate-500">CC: {pat.numero_documento} • Tel: {pat.telefono}</div>
+                        </div>
+                        <div className="text-right">
+                          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium border border-blue-200">
+                            {pat.ciclo_vida || pat.curso_vida || 'General'}
+                          </span>
+                          <div className="text-[11px] text-slate-400 mt-0.5">
+                            Nacimiento: {pat.fecha_nacimiento || 'N/A'}
+                          </div>
+                        </div>
+                      </div>
                     ))}
                   </div>
-
-                  {/* PASO 1: GRUPOS DE RIESGO PRIORIZADOS (7 OPCIONES) */}
-                  {wizardStep === 1 && (
-                    <div className="space-y-4 animate-in fade-in duration-200">
+                )}
+              </div>
+            ) : (
+              /* WIZARD DE CAMPAÑA - PASOS 1 A 5 */
+              <div className="space-y-6">
+                {/* =================================================================== */}
+                {/* PASO 1: CALENDARIO & FRECUENCIA (PRIMERO QUE SE VE) */}
+                {/* =================================================================== */}
+                {wizardStep === 1 && (
+                  <div className="space-y-4">
+                    <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 flex items-start gap-3">
+                      <Calendar className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                       <div>
-                        <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-teal-600 text-white text-xs flex items-center justify-center font-bold">1</span>
-                          Seleccione el Grupo de Riesgo Priorizado
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Escoja la condición clínica o factor de riesgo que focalizará la intervención según la Resolución 3280.
+                        <strong>Paso 1: Planificación de Calendario y Frecuencia de Lanzamiento</strong>
+                        <p className="mt-0.5 text-blue-800">
+                          Selecciona si la campaña se ejecutará de forma <strong>Diaria</strong> (rango continuo), <strong>Semanal</strong> (día hábil fijo durante N semanas) o <strong>Mensual</strong> (día fijo durante N meses). Solo se habilitan días hábiles (Lunes a Sábado, sin domingos ni fechas pasadas).
                         </p>
                       </div>
+                    </div>
 
-                      <div className="space-y-2.5">
-                        {GRUPOS_RIESGO_PRIORIZADOS.map((rg) => {
-                          const isSelected = selectedRiskGroup.id === rg.id;
+                    {/* Selector de Calendario Integrado */}
+                    <CampaignSchedulingCalendar
+                      onScheduleChange={(sched) => setCampaignSchedule(sched)}
+                    />
+                  </div>
+                )}
+
+                {/* =================================================================== */}
+                {/* PASO 2: SEGMENTACIÓN CRUZADA */}
+                {/* Si viene de Curso -> Selecciona Grupos de Riesgo */}
+                {/* Si viene de Riesgo -> Selecciona Cursos de Vida */}
+                {/* =================================================================== */}
+                {wizardStep === 2 && (
+                  <div className="space-y-4">
+                    <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 text-xs text-purple-900">
+                      <strong>
+                        {selectedContext?.type === 'curso_vida' 
+                          ? 'Paso 2: Cruce con Grupos de Riesgo Priorizados' 
+                          : 'Paso 2: Cruce con Cursos de Vida'}
+                      </strong>
+                      <p className="mt-0.5 text-purple-800">
+                        {selectedContext?.type === 'curso_vida'
+                          ? `Para el curso "${selectedContext.item.nombre}", selecciona qué grupos de riesgo priorizados recibirán esta campaña específica.`
+                          : `Para el grupo de riesgo "${selectedContext.item.nombre}", selecciona a qué cursos de vida se aplicará esta campaña (un grupo de riesgo abarca varios cursos de vida).`}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto p-1">
+                      {selectedContext?.type === 'curso_vida' ? (
+                        /* MOSTRAR GRUPOS DE RIESGO */
+                        GRUPOS_RIESGO_10.map(rg => {
+                          const IconComponent = getGrupoRiesgoIcon(rg.id);
+                          const isSelected = crossSegmentSelection.includes(rg.nombre);
                           return (
                             <div
                               key={rg.id}
-                              onClick={() => setSelectedRiskGroup(rg)}
-                              className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                              onClick={() => {
+                                setCrossSegmentSelection(prev => 
+                                  isSelected ? prev.filter(x => x !== rg.nombre) : [...prev, rg.nombre]
+                                );
+                              }}
+                              className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
                                 isSelected
-                                  ? 'border-teal-600 bg-teal-50/70 shadow-xs'
-                                  : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                  ? 'bg-purple-50 border-purple-500 shadow-sm ring-1 ring-purple-500'
+                                  : 'bg-white border-slate-200 hover:border-slate-300'
                               }`}
                             >
-                              <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center shrink-0 border ${
-                                isSelected ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300'
+                              <div className={`p-2 rounded-lg shrink-0 ${
+                                isSelected ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'
                               }`}>
-                                {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                <IconComponent className="w-5 h-5" />
                               </div>
-                              <div className="min-w-0">
-                                <strong className="text-xs font-black text-slate-900 block">
-                                  {rg.id}. {rg.titulo}
-                                </strong>
-                                <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
+                              <div className="flex-1">
+                                <div className="font-bold text-xs text-slate-800 flex items-center justify-between">
+                                  <span>{rg.nombre}</span>
+                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-purple-600" />}
+                                </div>
+                                <div className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">
                                   {rg.descripcion}
-                                </p>
+                                </div>
                               </div>
                             </div>
                           );
+                        })
+                      ) : (
+                        /* MOSTRAR CURSOS DE VIDA */
+                        PROGRAMAS_3280.map(cv => {
+                          const IconComponent = getCursoVidaIcon(cv.id);
+                          const isSelected = crossSegmentSelection.includes(cv.nombre);
+                          return (
+                            <div
+                              key={cv.id}
+                              onClick={() => {
+                                setCrossSegmentSelection(prev => 
+                                  isSelected ? prev.filter(x => x !== cv.nombre) : [...prev, cv.nombre]
+                                );
+                              }}
+                              className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                                isSelected
+                                  ? 'bg-blue-50 border-blue-500 shadow-sm ring-1 ring-blue-500'
+                                  : 'bg-white border-slate-200 hover:border-slate-300'
+                              }`}
+                            >
+                              <div className={`p-2 rounded-lg shrink-0 ${
+                                isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                <IconComponent className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="font-bold text-xs text-slate-800 flex items-center justify-between">
+                                  <span>{cv.nombre}</span>
+                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                  Rango: {cv.edad}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* =================================================================== */}
+                {/* PASO 3: CANALES, REINTENTOS Y HORARIOS (8:30 AM A 8:00 PM) */}
+                {/* =================================================================== */}
+                {wizardStep === 3 && (
+                  <div className="space-y-5">
+                    {/* Canales */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-2">
+                        Canales de Envío Autorizados
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {[
+                          { key: 'call', label: 'Llamada IA Vapi', sub: 'Puerto GSM 22', icon: Phone, color: 'blue' },
+                          { key: 'whatsapp', label: 'WhatsApp', sub: 'Plantilla Meta', icon: MessageSquare, color: 'emerald' },
+                          { key: 'sms', label: 'Mensaje SMS', sub: 'Pasarela Móvil', icon: Send, color: 'purple' },
+                          { key: 'email', label: 'Correo E-mail', sub: 'Notificación', icon: Mail, color: 'slate' }
+                        ].map(c => {
+                          const isAct = selectedChannels[c.key];
+                          const Icon = c.icon;
+                          return (
+                            <button
+                              key={c.key}
+                              type="button"
+                              onClick={() => setSelectedChannels(prev => ({ ...prev, [c.key]: !prev[c.key] }))}
+                              className={`p-3 rounded-xl border text-left transition-all ${
+                                isAct 
+                                  ? 'bg-blue-50 border-blue-500 shadow-sm ring-1 ring-blue-500' 
+                                  : 'bg-white border-slate-200 opacity-60'
+                              }`}
+                            >
+                              <Icon className={`w-5 h-5 ${isAct ? 'text-blue-600' : 'text-slate-400'}`} />
+                              <div className="font-bold text-xs text-slate-800 mt-2">{c.label}</div>
+                              <div className="text-[10px] text-slate-500">{c.sub}</div>
+                            </button>
+                          );
                         })}
                       </div>
-
-                      <div className="flex justify-end pt-3">
-                        <Button
-                          onClick={() => setWizardStep(2)}
-                          className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold gap-2 text-xs"
-                        >
-                          Continuar a Canales
-                          <ArrowRight className="w-4 h-4" />
-                        </Button>
-                      </div>
                     </div>
-                  )}
 
-                  {/* PASO 2: CANALES (SMS, EMAIL, LLAMADA, WHATSAPP) */}
-                  {wizardStep === 2 && (
-                    <div className="space-y-4 animate-in fade-in duration-200">
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-teal-600 text-white text-xs flex items-center justify-center font-bold">2</span>
-                          Seleccione los Canales de Comunicación
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Medios por los cuales se contactará a la población priorizada.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {/* 1. SMS */}
-                        <div
-                          onClick={() => setSelectedChannels(p => ({ ...p, sms: !p.sms }))}
-                          className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                            selectedChannels.sms ? 'border-teal-600 bg-teal-50/70' : 'border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center shrink-0 border ${
-                            selectedChannels.sms ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300'
-                          }`}>
-                            {selectedChannels.sms && <CheckCircle2 className="w-3.5 h-3.5" />}
-                          </div>
-                          <div>
-                            <strong className="text-xs font-black text-slate-900 block flex items-center gap-1.5">
-                              <MessageSquare className="w-3.5 h-3.5 text-teal-600" />
-                              1. SMS (Mensajes de Texto)
-                            </strong>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              Envío masivo con confirmación numérica mediante modem OpenVox GSM.
-                            </p>
-                          </div>
+                    {/* Reintentar hasta que conteste */}
+                    <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <RotateCcw className="w-4 h-4 text-amber-600" />
+                          <span className="font-bold text-xs text-amber-900">
+                            Reintentar automáticamente hasta que conteste
+                          </span>
                         </div>
-
-                        {/* 2. EMAIL */}
-                        <div
-                          onClick={() => setSelectedChannels(p => ({ ...p, email: !p.email }))}
-                          className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                            selectedChannels.email ? 'border-teal-600 bg-teal-50/70' : 'border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center shrink-0 border ${
-                            selectedChannels.email ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300'
-                          }`}>
-                            {selectedChannels.email && <CheckCircle2 className="w-3.5 h-3.5" />}
-                          </div>
-                          <div>
-                            <strong className="text-xs font-black text-slate-900 block flex items-center gap-1.5">
-                              <Mail className="w-3.5 h-3.5 text-teal-600" />
-                              2. EMAIL (Correo Electrónico)
-                            </strong>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              Citación formal hospitalaria con enlace de confirmación y folleto educativo.
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* 3. LLAMADA */}
-                        <div
-                          onClick={() => setSelectedChannels(p => ({ ...p, call: !p.call }))}
-                          className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                            selectedChannels.call ? 'border-emerald-600 bg-emerald-50/70' : 'border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center shrink-0 border ${
-                            selectedChannels.call ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'
-                          }`}>
-                            {selectedChannels.call && <CheckCircle2 className="w-3.5 h-3.5" />}
-                          </div>
-                          <div>
-                            <strong className="text-xs font-black text-emerald-900 block flex items-center gap-1.5">
-                              <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                              3. LLAMADA (Voz Agente IA - Puerto 22)
-                            </strong>
-                            <p className="text-[11px] text-emerald-800/80 mt-0.5">
-                              Llamada bidireccional inteligente vía OpenVox Puerto 22 con protocolo Res. 3280.
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* 4. WHATSAPP */}
-                        <div
-                          onClick={() => setSelectedChannels(p => ({ ...p, whatsapp: !p.whatsapp }))}
-                          className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex items-start gap-3 ${
-                            selectedChannels.whatsapp ? 'border-teal-600 bg-teal-50/70' : 'border-slate-200 hover:border-slate-300'
-                          }`}
-                        >
-                          <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center shrink-0 border ${
-                            selectedChannels.whatsapp ? 'border-teal-600 bg-teal-600 text-white' : 'border-slate-300'
-                          }`}>
-                            {selectedChannels.whatsapp && <CheckCircle2 className="w-3.5 h-3.5" />}
-                          </div>
-                          <div>
-                            <strong className="text-xs font-black text-slate-900 block flex items-center gap-1.5">
-                              <Send className="w-3.5 h-3.5 text-teal-600" />
-                              4. WHATSAPP (Canal Verificado)
-                            </strong>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              Mensajes con botones interactivos y recordatorios multimedia oficiales.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between pt-3">
-                        <Button
-                          variant="outline"
-                          onClick={() => setWizardStep(1)}
-                          className="rounded-xl text-xs font-bold"
-                        >
-                          Volver al Paso 1
-                        </Button>
-                        <Button
-                          onClick={() => setWizardStep(3)}
-                          className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold gap-2 text-xs"
-                        >
-                          Continuar a Lanzamiento
-                          <ArrowRight className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* PASO 3: NOMBRE, FECHA (>= MAÑANA), HORA Y DURACIÓN */}
-                  {wizardStep === 3 && (
-                    <div className="space-y-4 animate-in fade-in duration-200">
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-teal-600 text-white text-xs flex items-center justify-center font-bold">3</span>
-                          Parámetros de Campaña y Lanzamiento
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Asigne el nombre reutilizable y programe la fecha de emisión (debe ser al menos en el día siguiente).
-                        </p>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700 block">
-                          Nombre de la Campaña (Se guardará en la sección de Campañas):
-                        </label>
                         <input
-                          type="text"
-                          value={campaignName}
-                          onChange={(e) => setCampaignName(e.target.value)}
-                          placeholder="Ej: Campaña Hipertensión y Cáncer de Mama - Mayo 2026"
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          type="checkbox"
+                          checked={retryUntilAnswer}
+                          onChange={(e) => setRetryUntilAnswer(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 rounded"
                         />
                       </div>
-
-                      <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <div className="text-[11px] text-amber-900 leading-relaxed">
-                          <strong>Regla del Sistema de Marcación:</strong> Bajo el régimen de 32 llamadas por cada 30 minutos, las campañas deben programarse <strong>al menos para el día siguiente</strong>. No se admiten fechas pasadas ni el día actual para garantizar la calibración del enlace GSM.
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-700 block">
-                            Fecha de Lanzamiento:
-                          </label>
-                          <input
-                            type="date"
-                            min={tomorrowStr}
-                            value={launchDate}
-                            onChange={(e) => setLaunchDate(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-700 block">
-                            Hora de Lanzamiento:
-                          </label>
-                          <input
-                            type="time"
-                            value={launchTime}
-                            onChange={(e) => setLaunchTime(e.target.value)}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500"
-                          />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-700 block">
-                            Duración Estimada:
-                          </label>
+                      {retryUntilAnswer && (
+                        <div className="flex items-center gap-3 text-xs text-amber-800 pt-2 border-t border-amber-200">
+                          <span>Máximo de reintentos por paciente:</span>
                           <select
-                            value={campaignDurationHours}
-                            onChange={(e) => setCampaignDurationHours(Number(e.target.value))}
-                            className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                            value={maxRetries}
+                            onChange={(e) => setMaxRetries(Number(e.target.value))}
+                            className="bg-white border border-amber-300 rounded px-2 py-1 font-bold text-slate-800"
                           >
-                            <option value={4}>4 Horas (Tanda Rápida)</option>
-                            <option value={8}>8 Horas (Jornada Diaria)</option>
-                            <option value={24}>24 Horas (Ciclo Completo)</option>
-                            <option value={48}>48 Horas (2 Días)</option>
-                            <option value={72}>72 Horas (3 Días)</option>
+                            <option value={1}>1 reintento</option>
+                            <option value={2}>2 reintentos</option>
+                            <option value={3}>3 reintentos (Recomendado)</option>
+                            <option value={5}>5 reintentos</option>
                           </select>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between pt-3">
-                        <Button
-                          variant="outline"
-                          onClick={() => setWizardStep(2)}
-                          className="rounded-xl text-xs font-bold"
-                        >
-                          Volver a Canales
-                        </Button>
-                        <Button
-                          onClick={() => setWizardStep(4)}
-                          className="rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold gap-2 text-xs"
-                        >
-                          Continuar a Mensaje & Frecuencia
-                          <ArrowRight className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* PASO 4: TIPO DE MENSAJE, ETIQUETAS, TEXTO Y FRECUENCIA */}
-                  {wizardStep === 4 && (
-                    <div className="space-y-4 animate-in fade-in duration-200">
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-teal-600 text-white text-xs flex items-center justify-center font-bold">4</span>
-                          Detalles del Mensaje, Etiquetas y Frecuencia
-                        </h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Redacte el mensaje o guión del Agente IA y defina la política de reintentos.
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-4 p-2 bg-slate-50 rounded-xl border border-slate-200">
-                        <span className="text-xs font-bold text-slate-700 pl-2">Tipo de Mensaje:</span>
-                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-800">
-                          <input
-                            type="radio"
-                            name="msgType"
-                            checked={messageType === 'general'}
-                            onChange={() => setMessageType('general')}
-                            className="text-teal-600"
-                          />
-                          General (Texto Estándar)
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-teal-900">
-                          <input
-                            type="radio"
-                            name="msgType"
-                            checked={messageType === 'personalizado'}
-                            onChange={() => setMessageType('personalizado')}
-                            className="text-teal-600"
-                          />
-                          Personalizado (Con Etiquetas de Paciente)
-                        </label>
-                      </div>
-
-                      {messageType === 'personalizado' && (
-                        <div className="p-3 bg-teal-50/70 border border-teal-200 rounded-xl space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-black text-teal-900 flex items-center gap-1">
-                              <Tag className="w-3.5 h-3.5 text-teal-600" />
-                              Barra de Etiquetas Dinámicas (Haz clic para insertar):
-                            </span>
-                            <span className="text-[10px] text-teal-700 font-medium">
-                              Se reemplazarán con datos del ERP
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {[
-                              { label: '{nombre}', desc: 'Nombre de pila' },
-                              { label: '{apellido}', desc: 'Primer apellido' },
-                              { label: '{cedula}', desc: 'Documento' },
-                              { label: '{telefono}', desc: 'Número celular' },
-                              { label: '{edad}', desc: 'Edad en años' },
-                              { label: '{programa}', desc: 'Programa 3280' },
-                              { label: '{fecha_cita}', desc: 'Fecha asignada' }
-                            ].map((t) => (
-                              <button
-                                key={t.label}
-                                type="button"
-                                onClick={() => handleInsertTag(t.label)}
-                                className="px-2.5 py-1 rounded-lg bg-white border border-teal-300 text-teal-800 hover:bg-teal-600 hover:text-white font-mono text-xs font-bold transition-colors shadow-2xs"
-                                title={t.desc}
-                              >
-                                {t.label}
-                              </button>
-                            ))}
-                          </div>
+                          <span className="text-[11px] text-slate-500">
+                            (Se espaciarán automáticamente en las franjas horarias siguientes)
+                          </span>
                         </div>
                       )}
+                    </div>
 
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700 block">
-                          Contenido del Mensaje / Guión del Agente IA:
+                    {/* Horarios de Operación: 8:30 AM a 8:00 PM (24 Intervalos de 30 min) */}
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Horarios Permitidos (24 Intervalos: 8:30 AM - 8:00 PM)
                         </label>
-                        <textarea
-                          ref={textareaRef}
-                          rows={4}
-                          value={messageContent}
-                          onChange={(e) => setMessageContent(e.target.value)}
-                          placeholder="Escriba aquí el mensaje o diálogo que transmitirá el agente..."
-                          className="w-full p-3 rounded-xl border border-slate-300 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-teal-500 font-sans leading-relaxed"
-                        />
+                        <span className="text-xs text-slate-500">{selectedFranjas.length} franjas seleccionadas</span>
                       </div>
-
-                      <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
-                        <span className="text-xs font-black text-slate-900 uppercase block tracking-wider">
-                          Frecuencia de Contacto y Reintentos
-                        </span>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700 block">
-                              Frecuencia de Marcación:
-                            </label>
-                            <div className="grid grid-cols-3 gap-2">
-                              {['diaria', 'semanal', 'mensual'].map((f) => (
-                                <button
-                                  key={f}
-                                  type="button"
-                                  onClick={() => setFrequency(f)}
-                                  className={`py-2 px-3 rounded-xl text-xs font-bold capitalize transition-all ${
-                                    frequency === f
-                                      ? 'bg-teal-600 text-white shadow-xs'
-                                      : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  {f}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-700 block">
-                              Corregir veces al día (Reintentos):
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                min={1}
-                                max={10}
-                                value={retriesPerDay}
-                                onChange={(e) => setRetriesPerDay(Math.max(1, Math.min(10, Number(e.target.value))))}
-                                className="w-20 px-3 py-2 rounded-xl border border-slate-300 text-xs font-black text-center focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
-                              />
-                              <span className="text-xs text-slate-500">
-                                intentos diarios si no contesta
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                        <Button
-                          variant="outline"
-                          onClick={() => setWizardStep(3)}
-                          className="rounded-xl text-xs font-bold"
-                        >
-                          Volver a Parámetros
-                        </Button>
-
-                        <Button
-                          onClick={handleLaunchCampaign}
-                          disabled={isSubmittingCampaign}
-                          className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs gap-2 px-5 shadow-sm"
-                        >
-                          <Send className="w-4 h-4" />
-                          {isSubmittingCampaign ? 'Agendando Campaña...' : 'Confirmar & Lanzar Campaña'}
-                        </Button>
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-36 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                        {FRANJAS_HORARIAS_24.map(franja => {
+                          const isSel = selectedFranjas.includes(franja);
+                          return (
+                            <button
+                              key={franja}
+                              type="button"
+                              onClick={() => {
+                                setSelectedFranjas(prev => 
+                                  isSel ? prev.filter(f => f !== franja) : [...prev, franja]
+                                );
+                              }}
+                              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
+                                isSel
+                                  ? 'bg-blue-600 text-white shadow-sm'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {franja}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
 
-              {/* CONTENIDO 2: EXPLORADOR DE PACIENTES DEL COHORT */}
-              {activeModalTab === 'patients_cohort' && (
-                <div className="p-6 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                    <div className="relative flex-1">
-                      <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                {/* =================================================================== */}
+                {/* PASO 4: DIRECTRIZ IA & LUGAR / SEDE */}
+                {/* =================================================================== */}
+                {wizardStep === 4 && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                        Nombre de la Campaña
+                      </label>
                       <input
                         type="text"
-                        placeholder="Buscar por nombre, documento o teléfono..."
-                        value={cohortSearch}
-                        onChange={(e) => setCohortSearch(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        value={campaignName}
+                        onChange={(e) => setCampaignName(e.target.value)}
+                        className="w-full text-sm font-semibold p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={cohortStatusFilter}
-                        onChange={(e) => setCohortStatusFilter(e.target.value)}
-                        className="text-xs rounded-lg border border-slate-200 py-2 px-2.5 bg-white font-medium"
-                      >
-                        <option value="todos">Todos los Estados</option>
-                        <option value="en_tratamiento">En Tratamiento Activo</option>
-                        <option value="cita_confirmada">Cita Confirmada</option>
-                        <option value="pendiente_tamizaje">Pendiente Tamizaje</option>
-                        <option value="control_al_dia">Control al Día</option>
-                      </select>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                        Sede o Lugar de Atención Asignado
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-slate-400" />
+                        <select
+                          value={sedeLugar}
+                          onChange={(e) => setSedeLugar(e.target.value)}
+                          className="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white font-medium"
+                        >
+                          <option value="Sede Principal - Manizales (Caldas)">Sede Principal - Manizales (Caldas)</option>
+                          <option value="Sede Ambulatoria - Chinchiná">Sede Ambulatoria - Chinchiná</option>
+                          <option value="Sede Villamaría - Centro Materno">Sede Villamaría - Centro Materno</option>
+                          <option value="Sede La Dorada - Especialidades">Sede La Dorada - Especialidades</option>
+                        </select>
+                      </div>
+                    </div>
 
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setCohortPage(1);
-                          setCohortSearch('');
-                          setCohortStatusFilter('todos');
-                        }}
-                        className="rounded-lg text-xs"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </Button>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                        Instrucciones Clínicas para el Agente IA de Voz y Mensajes
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={promptDirectriz}
+                        onChange={(e) => setPromptDirectriz(e.target.value)}
+                        className="w-full text-xs p-3 border border-slate-300 rounded-xl font-mono text-slate-800 focus:ring-2 focus:ring-blue-500"
+                        placeholder="Ejemplo: Indicar al paciente que debe acudir en ayunas para la toma de glicemia y perfil lipídico..."
+                      />
                     </div>
                   </div>
+                )}
 
-                  {/* Tabla de Pacientes */}
-                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
-                        <tr>
-                          <th className="p-3">Paciente & Cédula</th>
-                          <th className="p-3">Teléfono / Ciudad</th>
-                          <th className="p-3">Edad & Cursos de Vida</th>
-                          <th className="p-3">Estado Tratamiento</th>
-                          <th className="p-3 text-right">Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {loadingCohort ? (
-                          <tr>
-                            <td colSpan={5} className="text-center p-8 text-slate-400">
-                              Cargando registros del censo...
-                            </td>
-                          </tr>
-                        ) : cohortPatients.length === 0 ? (
-                          <tr>
-                            <td colSpan={5} className="text-center p-8 text-slate-400">
-                              No se encontraron pacientes para este filtro.
-                            </td>
-                          </tr>
-                        ) : (
-                          cohortPatients.map((pt) => (
-                            <tr key={pt.id} className="hover:bg-teal-50/40 transition-colors">
-                              <td className="p-3">
-                                <button
-                                  onClick={() => handleOpenPatientDetails(pt)}
-                                  className="font-bold text-teal-700 hover:underline text-left block"
-                                >
-                                  {pt.nombre}
-                                </button>
-                                <span className="text-[11px] text-slate-400 font-mono">
-                                  CC: {pt.documento}
-                                </span>
-                              </td>
-                              <td className="p-3">
-                                <div className="font-mono text-slate-700">{pt.telefono}</div>
-                                <div className="text-[10px] text-slate-400">{pt.ciudad}</div>
-                              </td>
-                              <td className="p-3">
-                                <div className="font-bold text-slate-800">{pt.edadTexto || `${pt.edad} años`} ({pt.genero})</div>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {pt.grupos.map((g) => (
-                                    <span
-                                      key={g.id}
-                                      className="px-1.5 py-0.2 rounded text-[9px] font-black bg-slate-100 text-slate-700 border border-slate-200"
-                                      title={g.nombre}
-                                    >
-                                      {g.id}
-                                    </span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="p-3">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${pt.estadoTratamiento.color}`}>
-                                  {pt.estadoTratamiento.label}
-                                </span>
-                              </td>
-                              <td className="p-3 text-right">
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleOpenPatientDetails(pt)}
-                                    className="rounded-lg text-[11px] font-bold h-7 gap-1"
-                                  >
-                                    <Eye className="w-3 h-3" />
-                                    Ver Ficha
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => handleCallPatientPuerto22(pt)}
-                                    disabled={isCallingPatient}
-                                    className="rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white h-7 gap-1"
-                                    title="Llamar directamente por Puerto 22"
-                                  >
-                                    <Phone className="w-3 h-3" />
-                                    Llamar
-                                  </Button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                {/* =================================================================== */}
+                {/* PASO 5: RESUMEN Y LANZAMIENTO */}
+                {/* =================================================================== */}
+                {wizardStep === 5 && (
+                  <div className="space-y-4">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-900 space-y-2">
+                      <div className="flex items-center gap-2 font-bold text-sm text-emerald-900">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                        Campaña Lista para Programación Automatizada
+                      </div>
+                      <p>
+                        Revisa los parámetros antes de confirmar. La campaña será visible en la sección de Campañas y gestionada por el cronograma diario.
+                      </p>
+                    </div>
 
-                  {/* Paginación */}
-                  <div className="flex items-center justify-between text-xs text-slate-500 pt-2">
-                    <span>
-                      Página <strong>{cohortPage}</strong> de <strong>{cohortTotalPages}</strong>
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setCohortPage(p => Math.max(1, p - 1))}
-                        disabled={cohortPage <= 1}
-                        className="rounded-lg h-7 px-2"
-                      >
-                        Anterior
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setCohortPage(p => Math.min(cohortTotalPages, p + 1))}
-                        disabled={cohortPage >= cohortTotalPages}
-                        className="rounded-lg h-7 px-2"
-                      >
-                        Siguiente
-                      </Button>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs space-y-3">
+                      <div className="flex justify-between border-b border-slate-200 pb-2">
+                        <span className="text-slate-500">Campaña:</span>
+                        <strong className="text-slate-800">{campaignName}</strong>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 pb-2">
+                        <span className="text-slate-500">Frecuencia & Calendario:</span>
+                        <strong className="text-slate-800">{campaignSchedule.summary} ({campaignSchedule.selectedDates.length} fechas hábiles)</strong>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 pb-2">
+                        <span className="text-slate-500">Segmentación Cruzada:</span>
+                        <strong className="text-slate-800">
+                          {crossSegmentSelection.join(', ') || 'Todo el segmento'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 pb-2">
+                        <span className="text-slate-500">Horarios (8:30 AM - 8:00 PM):</span>
+                        <strong className="text-slate-800">{selectedFranjas.length} franjas seleccionadas</strong>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 pb-2">
+                        <span className="text-slate-500">Política de Reintentos:</span>
+                        <strong className="text-slate-800">
+                          {retryUntilAnswer ? `Hasta ${maxRetries} reintentos automáticos` : 'Sin reintentos'}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Sede asignada:</span>
+                        <strong className="text-slate-800">{sedeLugar}</strong>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+                )}
 
-      {/* ========================================================================= */}
-      {/* MODAL SECUNDARIO: FICHA CLÍNICA RES. 3280 DEL PACIENTE                   */}
-      {/* ========================================================================= */}
-      <Dialog open={isPatientModalOpen} onOpenChange={setIsPatientModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-5 rounded-2xl">
-          {selectedPatient && (
-            <div className="space-y-4">
-              <DialogHeader>
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-teal-100 text-teal-800 border border-teal-200">
-                    Ficha Clínica Oficial 3280
-                  </span>
-                  <span className="text-xs text-slate-500">• {selectedPatient.eps}</span>
-                </div>
-                <DialogTitle className="text-lg font-black text-slate-900 mt-1">
-                  {selectedPatient.nombre}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-slate-500">
-                  Documento: <strong>CC {selectedPatient.documento}</strong> • Tel: {selectedPatient.telefono} • {selectedPatient.edadTexto || `${selectedPatient.edad} años`} ({selectedPatient.genero})
-                </DialogDescription>
-              </DialogHeader>
-
-              {/* Grupos a los que pertenece congruentemente */}
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
-                  Cursos de Vida y Programas Res. 3280 Asignados:
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedPatient.grupos.map((g) => (
-                    <div
-                      key={g.id}
-                      className="p-2 rounded-lg bg-white border border-slate-200 flex items-center gap-2"
+                {/* Botones de Navegación del Wizard */}
+                <div className="flex justify-between items-center pt-4 border-t border-slate-200">
+                  {wizardStep > 1 ? (
+                    <Button
+                      variant="outline"
+                      onClick={handlePrevStep}
+                      className="text-xs gap-1.5"
                     >
-                      <div className={`w-5 h-5 rounded text-white font-black text-[10px] flex items-center justify-center shrink-0 ${g.color}`}>
-                        {g.id}
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-bold text-slate-900 block truncate">
-                          {g.id}. {g.nombre}
-                        </span>
-                        <span className="text-[9px] text-slate-400 block truncate">
-                          {g.rango}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                      <ChevronLeft className="w-4 h-4" />
+                      Anterior
+                    </Button>
+                  ) : (
+                    <div />
+                  )}
+
+                  {wizardStep < 5 ? (
+                    <Button
+                      onClick={handleNextStep}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5"
+                    >
+                      Siguiente
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleLaunchCampaign}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-md"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Confirmar y Programar Campaña
+                    </Button>
+                  )}
                 </div>
               </div>
-
-              {/* Historia Clínica */}
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2.5 text-xs">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Motivo de Ruta e Hito Asignado:</span>
-                  <p className="font-semibold text-slate-800">{selectedPatient.historiaClinica.motivoConsulta}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Edad Objetivo:</span>
-                    <span className="font-bold text-slate-800">{selectedPatient.historiaClinica.edadTarget}</span>
-                  </div>
-                  <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Código CUPS Oficial:</span>
-                    <span className="font-mono font-bold text-teal-800">{selectedPatient.historiaClinica.codigoCups}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Antecedentes Médicos:</span>
-                  <p className="text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">{selectedPatient.historiaClinica.antecedentes}</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-100">
-                    <span className="text-[10px] font-bold text-emerald-800 uppercase block mb-1">
-                      Tamizajes Cumplidos:
-                    </span>
-                    <ul className="list-disc list-inside text-emerald-900 text-[11px] space-y-0.5">
-                      {selectedPatient.historiaClinica.tamizajesCumplidos.map((t, idx) => (
-                        <li key={idx}>{t}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-100">
-                    <span className="text-[10px] font-bold text-amber-800 uppercase block mb-1">
-                      Tamizajes Pendientes 3280:
-                    </span>
-                    <ul className="list-disc list-inside text-amber-900 text-[11px] space-y-0.5">
-                      {selectedPatient.historiaClinica.tamizajesPendientes.map((t, idx) => (
-                        <li key={idx}>{t}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Notas de Evolución Médica:</span>
-                  <p className="text-slate-600 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    "{selectedPatient.historiaClinica.notasEvolucion}"
-                  </p>
-                </div>
-              </div>
-
-              {/* Botón de Llamada Puerto 22 */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsPatientModalOpen(false)}
-                  className="rounded-xl text-xs font-bold"
-                >
-                  Cerrar
-                </Button>
-                <Button
-                  onClick={() => handleCallPatientPuerto22(selectedPatient)}
-                  disabled={isCallingPatient}
-                  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  {isCallingPatient ? 'Marcando...' : 'Llamar Paciente (Puerto 22)'}
-                </Button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

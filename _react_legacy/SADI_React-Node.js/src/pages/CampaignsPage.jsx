@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,8 @@ import {
   Send, Plus, Clock, CheckCircle, AlertCircle, Edit, Trash2, Loader2,
   Calendar, Layers, ShieldAlert, Settings, RotateCw, CheckCircle2,
   PhoneCall, UserX, ChevronRight, FileSpreadsheet, Eye, Play, Sparkles,
-  Search, Filter
+  Search, Filter, RotateCcw, Building2, CalendarRange, HeartPulse,
+  Info, ExternalLink, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
@@ -17,7 +18,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
@@ -40,6 +40,16 @@ import {
   MAX_PATIENTS_PER_BATCH 
 } from '@/services/ivrScheduleService';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
+import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
+
+// 24 Franjas Horarias de 30 min (08:30 AM a 08:00 PM)
+const FRANJAS_HORARIAS_24 = [
+  '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM',
+  '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM',
+  '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM',
+  '05:30 PM', '06:00 PM', '06:30 PM', '07:00 PM', '07:30 PM', '08:00 PM'
+];
 
 const CampaignsPage = () => {
   const { toast } = useToast();
@@ -48,18 +58,32 @@ const CampaignsPage = () => {
   // 'campanas' (Paso 1) | 'tandas' (Paso 2) | 'casos_humanos' (Paso 3) | 'config' (Paso 4)
   const [activeTab, setActiveTab] = useState('campanas');
 
+  // Subfiltro de Paquetes en Paso 1: 'todos' | 'cursos_vida' | 'grupos_riesgo'
+  const [campaignPackageFilter, setCampaignPackageFilter] = useState('cursos_vida');
+
   // Estados de Campañas
   const [campaigns, setCampaigns] = useState([]);
-  const [templates, setTemplates] = useState([]);
-  const [segments, setSegments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [campaignStatusFilter, setCampaignStatusFilter] = useState('todos');
   const [campaignSearchTerm, setCampaignSearchTerm] = useState('');
+
+  // Modales
+  const [showRelaunchDialog, setShowRelaunchDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState(null);
+
+  // Estados para Relanzamiento de Campaña (Solo Fechas, Días, Semanas, Lugares y Frecuencia)
+  const [relaunchSchedule, setRelaunchSchedule] = useState({
+    frequency: 'diario',
+    config: {},
+    selectedDates: [],
+    summary: 'Diario (Lunes a Sábado)'
+  });
+  const [relaunchLugar, setRelaunchLugar] = useState('Sede Principal - Manizales (Caldas)');
+  const [relaunchFranjas, setRelaunchFranjas] = useState(['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
+  const [relaunchRetryUntilAnswer, setRelaunchRetryUntilAnswer] = useState(true);
+  const [relaunchMaxRetries, setRelaunchMaxRetries] = useState(3);
 
   // Estados de Tandas Diarias (24 Intervalos de 30 min)
   const [scheduleData, setScheduleData] = useState(null);
@@ -78,28 +102,6 @@ const CampaignsPage = () => {
 
   // Hospital ID
   const [hospitalId, setHospitalId] = useState(null);
-
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
-
-  const [newCampaign, setNewCampaign] = useState({
-    nombre: '',
-    templateId: '',
-    segmentId: '',
-    anio: currentYear,
-    mes: currentMonth,
-    diaInicio: 1,
-    horaProgramada: '08:30',
-    edadTipo: 'cualquiera', // 'cualquiera' | 'curso_vida' | 'personalizado'
-    edadCursoVida: 'primera_infancia',
-    edadCustom: {
-      anos: '',
-      meses: '',
-      dias: ''
-    },
-    modoReintento: 'hasta_responder', // 'hasta_responder' | 'solo_una_vez'
-    contextoAgente: 'Le informamos al paciente sobre la jornada de salud obligatoria de la Resolución 3280, verificamos si presenta síntomas y agendamos su cita médica preventiva en su IPS de adscripción.'
-  });
 
   useEffect(() => {
     initializePage();
@@ -136,8 +138,6 @@ const CampaignsPage = () => {
       
       await Promise.all([
         loadCampaigns(hId),
-        loadTemplates(hId),
-        loadSegments(hId),
         loadDailySchedule()
       ]);
       
@@ -165,124 +165,185 @@ const CampaignsPage = () => {
     }
   };
 
+  // Carga unificada de campañas (Supabase + localStorage sadi_campaigns_v2)
   const loadCampaigns = async (hId) => {
     try {
+      let combined = [];
+
+      // 1. Supabase campañas
       const result = await campaignService.getAll(hId);
-      if (result.success) {
-        setCampaigns(result.data || []);
+      if (result.success && Array.isArray(result.data)) {
+        combined = [...result.data];
       }
+
+      // 2. LocalStorage sadi_campaigns_v2
+      try {
+        const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+        if (Array.isArray(localData)) {
+          // Unir evitando duplicados de ID
+          const existingIds = new Set(combined.map(c => c.id));
+          localData.forEach(item => {
+            if (!existingIds.has(item.id)) {
+              combined.push(item);
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Error leyendo sadi_campaigns_v2:', err);
+      }
+
+      setCampaigns(combined);
     } catch (error) {
       console.error('Error en loadCampaigns:', error);
     }
   };
 
-  const loadTemplates = async (hId) => {
-    try {
-      const result = await templateService.getAll(hId);
-      if (result.success) {
-        setTemplates(result.data || []);
-      }
-    } catch (error) {
-      console.error('Error en loadTemplates:', error);
+  const normalizeStatus = (status) => (status || '').toLowerCase().trim();
+
+  const getEffectiveCampaignStatus = (campaign) => {
+    const destinatarios = Number(campaign?.destinatarios || campaign?.pacientes_asignados) || 0;
+    const enviados = Number(campaign?.enviados) || 0;
+    const entregados = Number(campaign?.entregados) || 0;
+    const fallidos = Number(campaign?.fallidos) || 0;
+
+    const processed = entregados + fallidos;
+    const raw = normalizeStatus(campaign?.estado || campaign?.status);
+
+    if (destinatarios > 0 && processed >= destinatarios) return 'Completada';
+    if (raw === 'activa' || raw === 'active' || raw === 'enviando') return 'Activa';
+    if (enviados > 0 || entregados > 0 || fallidos > 0) return 'Activa';
+    if (raw === 'programada' || raw === 'scheduled') return 'Programada';
+    if (raw === 'completada' || raw === 'completed') return 'Completada';
+
+    return 'Programada';
+  };
+
+  const getStatusColor = (estado) => {
+    switch (estado) {
+      case 'Activa':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'Completada':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Programada':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'No Enviada':
+        return 'bg-red-100 text-red-800 border-red-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const loadSegments = async (hId) => {
-    try {
-      const result = await segmentService.getAll(hId);
-      if (result.success) {
-        setSegments(result.data || []);
-      }
-    } catch (error) {
-      console.error('Error en loadSegments:', error);
+  // Clasificación de campañas en los 2 paquetes: 'curso_vida' o 'grupo_riesgo'
+  const getCampaignPackageType = (c) => {
+    if (c.tipo_origen === 'grupo_riesgo') return 'grupo_riesgo';
+    if (c.tipo_origen === 'curso_vida') return 'curso_vida';
+    
+    // Fallback por texto del nombre o contexto
+    const txt = `${c.nombre || ''} ${c.contexto_agente || ''} ${c.edad_curso_vida || ''}`.toLowerCase();
+    if (txt.includes('materno') || txt.includes('cardio') || txt.includes('hipertens') || txt.includes('riesgo') || txt.includes('cancer') || txt.includes('mental')) {
+      return 'grupo_riesgo';
     }
+    return 'curso_vida';
   };
 
-  const handleCreateCampaign = async (e) => {
-    e.preventDefault();
-    if (!hospitalId) {
+  // Conteo por paquetes
+  const countCursosVida = useMemo(() => {
+    return campaigns.filter(c => getCampaignPackageType(c) === 'curso_vida').length;
+  }, [campaigns]);
+
+  const countGruposRiesgo = useMemo(() => {
+    return campaigns.filter(c => getCampaignPackageType(c) === 'grupo_riesgo').length;
+  }, [campaigns]);
+
+  // Filtrado de Campañas según paquete, estado y término de búsqueda
+  const filteredCampaigns = useMemo(() => {
+    return campaigns.filter(c => {
+      // 1. Filtro de Paquete
+      const pkg = getCampaignPackageType(c);
+      if (campaignPackageFilter !== 'todos' && pkg !== campaignPackageFilter) {
+        return false;
+      }
+
+      // 2. Filtro de Estado
+      const st = getEffectiveCampaignStatus(c).toLowerCase();
+      const matchesFilter = campaignStatusFilter === 'todos' || st === campaignStatusFilter.toLowerCase();
+
+      // 3. Término de búsqueda
+      const matchesSearch = campaignSearchTerm === '' ||
+        (c.nombre || '').toLowerCase().includes(campaignSearchTerm.toLowerCase()) ||
+        (c.contexto_agente || '').toLowerCase().includes(campaignSearchTerm.toLowerCase()) ||
+        (c.lugar || '').toLowerCase().includes(campaignSearchTerm.toLowerCase());
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [campaigns, campaignPackageFilter, campaignStatusFilter, campaignSearchTerm]);
+
+  // Abrir Modal de Relanzamiento
+  const handleOpenRelaunchModal = (campaign) => {
+    setSelectedCampaign(campaign);
+    setRelaunchLugar(campaign.lugar || 'Sede Principal - Manizales (Caldas)');
+    setRelaunchFranjas(campaign.horarios || ['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
+    setRelaunchRetryUntilAnswer(campaign.reintentos ? true : true);
+    setRelaunchMaxRetries(campaign.reintentos || 3);
+    setShowRelaunchDialog(true);
+  };
+
+  // Confirmar Relanzamiento (Solo se editan fechas, días, semanas, lugares y frecuencia)
+  const handleConfirmRelaunch = async () => {
+    if (!selectedCampaign) return;
+
+    if (!relaunchSchedule.selectedDates || relaunchSchedule.selectedDates.length === 0) {
       toast({
-        title: "Error",
-        description: "No se pudo identificar el hospital",
+        title: "Fechas requeridas",
+        description: "Por favor selecciona al menos una fecha en el calendario antes de relanzar.",
         variant: "destructive"
       });
       return;
     }
 
-    const targetTemplateId = newCampaign.templateId || templates[0]?.id;
-    const targetSegmentId = newCampaign.segmentId || segments[0]?.id;
-
-    if (newCampaign.edadTipo === 'personalizado') {
-      const { anos, meses, dias } = newCampaign.edadCustom;
-      if (!anos && !meses && !dias) {
-        toast({
-          title: "Rango personalizado incompleto",
-          description: "Por favor ingresa al menos un valor en Años, Meses o Días.",
-          variant: "destructive"
-        });
-        return;
-      }
-    }
-
     try {
       setSubmitting(true);
-      const fechaProg = `${newCampaign.anio}-${String(newCampaign.mes).padStart(2, '0')}-${String(newCampaign.diaInicio).padStart(2, '0')}`;
 
-      const campaignData = {
-        nombre: newCampaign.nombre,
-        template_id: targetTemplateId,
-        segment_id: targetSegmentId,
-        fecha_programada: fechaProg,
-        hora_programada: newCampaign.horaProgramada,
-        dia_inicio: parseInt(newCampaign.diaInicio),
-        mes: parseInt(newCampaign.mes),
-        anio: parseInt(newCampaign.anio),
-        edad_tipo: newCampaign.edadTipo,
-        edad_curso_vida: newCampaign.edadTipo === 'curso_vida' ? newCampaign.edadCursoVida : null,
-        edad_custom: newCampaign.edadTipo === 'personalizado' ? newCampaign.edadCustom : null,
-        modo_reintento: newCampaign.modoReintento,
-        contexto_agente: newCampaign.contextoAgente,
-        hospital_id: hospitalId,
-        tipo: 'automatica_3280',
-        estado: 'programada'
+      const relanchedCampaign = {
+        ...selectedCampaign,
+        id: `camp_relanz_${Date.now()}`,
+        nombre: `${selectedCampaign.nombre.replace(/ \(Relanzada.*?\)/g, '')} (Relanzada ${relaunchSchedule.selectedDates[0] || ''})`,
+        lugar: relaunchLugar,
+        config_frecuencia: relaunchSchedule,
+        fechas_ejecucion: relaunchSchedule.selectedDates,
+        fecha_programada: relaunchSchedule.selectedDates[0] || new Date().toISOString().split('T')[0],
+        horarios: relaunchFranjas,
+        reintentos: relaunchRetryUntilAnswer ? relaunchMaxRetries : 0,
+        estado: 'programada',
+        enviados: 0,
+        entregados: 0,
+        fallidos: 0,
+        fecha_relanzamiento: new Date().toISOString()
       };
 
-      const result = await campaignService.create(campaignData);
-
-      if (result.success) {
-        toast({
-          title: "✅ Campaña Creada",
-          description: `"${newCampaign.nombre}" ha sido programada con éxito en las tandas operativas.`,
-        });
-
-        setShowCreateDialog(false);
-        setNewCampaign({
-          nombre: '',
-          templateId: '',
-          segmentId: '',
-          anio: currentYear,
-          mes: currentMonth,
-          diaInicio: 1,
-          horaProgramada: '08:30',
-          edadTipo: 'cualquiera',
-          edadCursoVida: 'primera_infancia',
-          edadCustom: { anos: '', meses: '', dias: '' },
-          modoReintento: 'hasta_responder',
-          contextoAgente: 'Le informamos al paciente sobre la jornada de salud obligatoria de la Resolución 3280, verificamos si presenta síntomas y agendamos su cita médica preventiva en su IPS de adscripción.'
-        });
-
-        await loadCampaigns(hospitalId);
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "No se pudo crear la campaña",
-          variant: "destructive"
-        });
+      // Guardar en localStorage sadi_campaigns_v2
+      try {
+        const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+        localData.unshift(relanchedCampaign);
+        localStorage.setItem('sadi_campaigns_v2', JSON.stringify(localData));
+      } catch (e) {
+        console.error('Error guardando relanzamiento en localStorage:', e);
       }
+
+      toast({
+        title: "🚀 Campaña Relanzada con Éxito",
+        description: `Se programó para ${relaunchSchedule.selectedDates.length} fecha(s) en ${relaunchLugar}.`,
+      });
+
+      setShowRelaunchDialog(false);
+      setSelectedCampaign(null);
+      await loadCampaigns(hospitalId);
+
     } catch (error) {
+      console.error('Error relanzando campaña:', error);
       toast({
         title: "Error",
-        description: error.message || "Ocurrió un error inesperado al crear la campaña",
+        description: "No se pudo relanzar la campaña",
         variant: "destructive"
       });
     } finally {
@@ -290,69 +351,29 @@ const CampaignsPage = () => {
     }
   };
 
-  const handleEditCampaign = async (e) => {
-    e.preventDefault();
-    try {
-      setSubmitting(true);
-      const campaignData = {
-        nombre: selectedCampaign.nombre,
-        template_id: selectedCampaign.template_id,
-        segment_id: selectedCampaign.segment_id,
-        fecha_programada: selectedCampaign.fecha_programada,
-        hora_programada: selectedCampaign.hora_programada,
-        hospital_id: hospitalId
-      };
-
-      const result = await campaignService.update(selectedCampaign.id, campaignData);
-
-      if (result.success) {
-        toast({
-          title: "✅ Campaña actualizada",
-          description: "Los cambios han sido guardados exitosamente",
-        });
-
-        setShowEditDialog(false);
-        setSelectedCampaign(null);
-        await loadCampaigns(hospitalId);
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "No se pudo actualizar la campaña",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Ocurrió un error al actualizar la campaña",
-        variant: "destructive"
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
+  // Eliminar Campaña
   const handleDeleteCampaign = async () => {
     try {
       setSubmitting(true);
-      const result = await campaignService.delete(selectedCampaign.id);
-
-      if (result.success) {
-        toast({
-          title: "✅ Campaña eliminada",
-          description: "La campaña ha sido eliminada exitosamente",
-        });
-
-        setShowDeleteDialog(false);
-        setSelectedCampaign(null);
-        await loadCampaigns(hospitalId);
+      if (selectedCampaign.id.startsWith('camp_')) {
+        // Eliminar de localStorage
+        try {
+          const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+          const filtered = localData.filter(c => c.id !== selectedCampaign.id);
+          localStorage.setItem('sadi_campaigns_v2', JSON.stringify(filtered));
+        } catch (e) {}
       } else {
-        toast({
-          title: "Error",
-          description: result.error || "No se pudo eliminar la campaña",
-          variant: "destructive"
-        });
+        await campaignService.delete(selectedCampaign.id);
       }
+
+      toast({
+        title: "✅ Campaña eliminada",
+        description: "La campaña ha sido eliminada exitosamente",
+      });
+
+      setShowDeleteDialog(false);
+      setSelectedCampaign(null);
+      await loadCampaigns(hospitalId);
     } catch (error) {
       toast({
         title: "Error",
@@ -421,10 +442,10 @@ const CampaignsPage = () => {
     ivrScheduleService.saveConfig(updated);
     setConfig(updated);
     toast({
-      title: updated.retryUntilAnswered ? "🔄 Reintentar hasta que conteste: ACTIVADO" : "⏸️ Reintento limitado",
+      title: updated.retryUntilAnswered ? "Reintentar Hasta Responder: ACTIVO" : "Reintentar Hasta Responder: INACTIVO",
       description: updated.retryUntilAnswered
-        ? "Las llamadas de campañas no contestadas se reasignarán automáticamente a las siguientes tandas del día (24 intervalos de 08:30 AM a 08:00 PM)."
-        : "Se detendrán los reintentos automáticos tras el límite fijado."
+        ? "El motor reasignará automáticamente las llamadas no contestadas a la siguiente tanda disponible."
+        : "Las llamadas se detendrán tras el límite fijado."
     });
   };
 
@@ -433,51 +454,22 @@ const CampaignsPage = () => {
     ivrScheduleService.saveConfig(updated);
     setConfig(updated);
     toast({
-      title: updated.isLiveEnabled ? "🟢 Emisión Automática EN VIVO Activada" : "🟡 Modo Standby Seguro Activado",
+      title: updated.isLiveEnabled ? "Modo En Vivo Activado" : "Modo Standby Seguro Activado",
       description: updated.isLiveEnabled
-        ? "Las campañas saldrán automáticamente por el Gateway GSM en sus tandas."
-        : "Las llamadas se encuentran en espera para revisión clínica."
+        ? "Las tandas de llamadas salientes se emitirán automáticamente al Gateway GSM."
+        : "El sistema está en pausa segura. Las tandas requieren ejecución manual.",
     });
   };
 
-  const handleSaveHumanIntervention = async (e) => {
-    e.preventDefault();
-    if (!selectedHumanCase) return;
-
-    try {
-      const updated = await ivrScheduleService.recordHumanIntervention(selectedHumanCase.id, {
-        responsable: 'Enfermería Hospital SADI',
-        notas: humanNotes,
-        resultado: humanOutcome
-      });
-      setScheduleData(updated);
-      setSelectedHumanCase(null);
-      setHumanNotes('');
-      toast({
-        title: "✅ Gestión Asistencial Registrada",
-        description: `El caso de ${selectedHumanCase.nombre} ha sido gestionado y archivado.`
-      });
-    } catch (e) {
-      toast({
-        title: "Error al registrar",
-        description: e.message,
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleMakeLiveCall = async (item) => {
+  const handleCallSinglePatient = async (item) => {
     setCallingId(item.id);
-    toast({
-      title: "📞 Probando llamada de campaña...",
-      description: `Marcando a ${item.nombre} (${item.telefono}) vía Puerto 22...`
-    });
-
     try {
-      const res = await vapiIntegrationService.triggerLiveCall(item.telefono, {
-        nombre: item.nombre,
-        cedula: item.documento,
-        programa3280: item.programa3280 || 'Campaña de Salud',
+      const res = await vapiIntegrationService.makeOutboundCall({
+        patientPhone: item.telefono || '+573002938450',
+        patientName: item.nombre || 'Paciente',
+        patientDoc: item.documento,
+        motivoLlamada: item.campana || 'Demanda Inducida Res. 3280',
+        accion3280: item.accion3280 || 'Control Preventivo de Salud',
         hitoClinico: item.accion3280 || 'Jornada Preventiva',
         cursoVida: item.cursoVida,
         direccion: item.direccion || 'Caldas'
@@ -504,51 +496,6 @@ const CampaignsPage = () => {
       setCallingId(null);
     }
   };
-
-  const normalizeStatus = (status) => (status || '').toLowerCase().trim();
-
-  const getEffectiveCampaignStatus = (campaign) => {
-    const destinatarios = Number(campaign?.destinatarios) || 0;
-    const enviados = Number(campaign?.enviados) || 0;
-    const entregados = Number(campaign?.entregados) || 0;
-    const fallidos = Number(campaign?.fallidos) || 0;
-
-    const processed = entregados + fallidos;
-    const raw = normalizeStatus(campaign?.estado || campaign?.status);
-
-    if (destinatarios > 0 && processed >= destinatarios) return 'Completada';
-    if (raw === 'activa' || raw === 'active' || raw === 'enviando') return 'Activa';
-    if (enviados > 0 || entregados > 0 || fallidos > 0) return 'Activa';
-    if (raw === 'programada' || raw === 'scheduled') return 'Programada';
-    if (raw === 'completada' || raw === 'completed') return 'No Enviada';
-
-    return 'Programada';
-  };
-
-  const getStatusColor = (estado) => {
-    switch (estado) {
-      case 'Activa':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'Completada':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'Programada':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'No Enviada':
-        return 'bg-red-100 text-red-800 border-red-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  // Filtrado de Campañas
-  const filteredCampaigns = campaigns.filter(c => {
-    const st = getEffectiveCampaignStatus(c).toLowerCase();
-    const matchesFilter = campaignStatusFilter === 'todos' || st === campaignStatusFilter.toLowerCase();
-    const matchesSearch = campaignSearchTerm === '' ||
-      (c.nombre || '').toLowerCase().includes(campaignSearchTerm.toLowerCase()) ||
-      (c.contexto_agente || '').toLowerCase().includes(campaignSearchTerm.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
 
   // Métricas de Tandas Diarias
   const items = scheduleData?.items || [];
@@ -578,10 +525,10 @@ const CampaignsPage = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-blue-600 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-gray-600">Cargando módulo de campañas SADI...</p>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto" />
+            <p className="text-sm font-semibold text-gray-600">Cargando campañas y tandas del hospital...</p>
           </div>
         </div>
       </Layout>
@@ -591,42 +538,35 @@ const CampaignsPage = () => {
   return (
     <Layout>
       <Helmet>
-        <title>Campañas y Monitor de Tandas • SADI</title>
-        <meta name="description" content="Gestión de campañas de salud Res. 3280 y monitor de tandas multicanal" />
+        <title>Campañas y Monitor de Tandas 3280 | SADI</title>
       </Helmet>
 
-      <div className="w-full min-w-0 space-y-6">
-
+      <div className="space-y-6 pb-12">
         {/* ========================================================================= */}
-        {/* ENCABEZADO PRINCIPAL DE CAMPAÑAS (HOMOGÉNEO CON CRONOGRAMA)               */}
+        {/* HEADER UNIFICADO CON ESTILO CLÍNICO DE TODA LA PLATAFORMA                 */}
         {/* ========================================================================= */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-blue-900 via-indigo-900 to-cyan-900 text-white p-6 rounded-3xl shadow-xl">
-          <div>
-            <div className="flex items-center gap-3">
-              <span className="p-2.5 bg-blue-500/20 rounded-2xl backdrop-blur-md border border-blue-400/30 shadow-inner">
-                <Send className="w-7 h-7 text-cyan-300" />
+        <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                Resolución 3280 de 2018 • Motor de Campañas y Relanzamientos
               </span>
-              <div>
-                <h1 className="text-2xl font-black tracking-tight">Gestión y Automatización de Campañas SADI</h1>
-                <p className="text-xs text-cyan-200 mt-0.5">
-                  Planificación de Campañas Res. 3280, Monitor de Tandas de 30 min y Trazabilidad Multicanal
-                </p>
-              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                Gateway GSM 32 Canales
+              </span>
             </div>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-3">
+              <Layers className="w-8 h-8 text-blue-400" />
+              Gestor de Campañas & Monitor de Tandas Diarias
+            </h1>
+            <p className="text-xs md:text-sm text-slate-300 max-w-3xl">
+              Supervisión en 2 paquetes estructurados (<strong>Cursos de Vida</strong> y <strong>Grupos de Riesgo</strong>), relanzamiento con nuevas fechas/lugares y control de los 24 intervalos diarios de llamadas (08:30 AM a 08:00 PM).
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* BOTÓN NUEVA CAMPAÑA */}
-            <Button
-              onClick={() => setShowCreateDialog(true)}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs rounded-2xl shadow-lg gap-2 py-2.5"
-            >
-              <Plus className="w-4 h-4" />
-              Nueva Campaña
-            </Button>
-
             {/* BADGE DE MODO DE EMISIÓN */}
-            <div className="text-right hidden sm:block">
+            <div className="text-right">
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
                 config.isLiveEnabled 
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
@@ -654,7 +594,7 @@ const CampaignsPage = () => {
             }`}
           >
             <Layers className="w-4 h-4" />
-            Cronograma & Campañas Anuales 3280
+            Campañas Organizadas en 2 Paquetes
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'campanas' ? 'bg-blue-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
               {campaigns.length}
             </span>
@@ -709,183 +649,310 @@ const CampaignsPage = () => {
         </div>
 
         {/* ========================================================================= */}
-        {/* PESTAÑA 1: LISTADO DE CAMPAÑAS Y GESTIÓN ANUAL                             */}
+        {/* PESTAÑA 1: LISTADO DE CAMPAÑAS EN 2 PAQUETES Y RELANZAMIENTO              */}
         {/* ========================================================================= */}
         {activeTab === 'campanas' && (
           <div className="space-y-6">
 
-            {/* Barra de Filtros y Búsqueda */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-              <div className="relative flex-1 w-full sm:w-auto">
-                <Search className="absolute left-3.5 top-3 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar campaña por nombre o directriz clínica..."
-                  value={campaignSearchTerm}
-                  onChange={(e) => setCampaignSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+            {/* BANNER INFORMATIVO: ORIGEN EN CRONOGRAMA & FUNCIÓN DE RELANZAR */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-blue-100 text-blue-700 shrink-0 mt-0.5">
+                  <Info className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-xs text-blue-950 uppercase tracking-wider">
+                    Estructura de Campañas y Relanzamiento SADI
+                  </h4>
+                  <p className="text-xs text-blue-800 mt-0.5 max-w-3xl">
+                    Las nuevas campañas se crean a partir de las celdas de los calendarios del <strong>Cronograma</strong> (Cursos de Vida y Grupos de Riesgo). En esta sección puedes supervisar los <strong>2 paquetes</strong> de campañas y <strong>Relanzarlas</strong> editando únicamente sus fechas, días, semanas, lugares y frecuencia de lanzamiento.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-                <Filter className="h-4 w-4 text-gray-400 shrink-0" />
-                {['todos', 'activa', 'programada', 'completada'].map((statusKey) => (
-                  <button
-                    key={statusKey}
-                    onClick={() => setCampaignStatusFilter(statusKey)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-colors whitespace-nowrap ${
-                      campaignStatusFilter === statusKey
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    {statusKey === 'todos' ? 'Todas' : statusKey}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Navegar al Cronograma si existe en el router o invocar evento
+                    window.location.hash = '#/cronograma';
+                  }}
+                  className="bg-white hover:bg-blue-50 text-blue-700 border-blue-200 text-xs font-bold rounded-xl gap-1.5"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Ir al Cronograma
+                </Button>
               </div>
             </div>
 
-            {/* Grilla de Campañas */}
+            {/* SELECTOR DE LOS 2 PAQUETES DE CAMPAÑAS */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+              {/* Pestañas de Paquetes */}
+              <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setCampaignPackageFilter('cursos_vida')}
+                  className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${
+                    campaignPackageFilter === 'cursos_vida'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>📁 Paquete: Cursos de Vida</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    campaignPackageFilter === 'cursos_vida' ? 'bg-blue-800 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {countCursosVida}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCampaignPackageFilter('grupos_riesgo')}
+                  className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${
+                    campaignPackageFilter === 'grupos_riesgo'
+                      ? 'bg-purple-700 text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <HeartPulse className="w-3.5 h-3.5" />
+                  <span>📁 Paquete: Grupos de Riesgo</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                    campaignPackageFilter === 'grupos_riesgo' ? 'bg-purple-900 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {countGruposRiesgo}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCampaignPackageFilter('todos')}
+                  className={`px-3 py-2 rounded-lg transition-all ${
+                    campaignPackageFilter === 'todos'
+                      ? 'bg-gray-800 text-white shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Todas ({campaigns.length})
+                </button>
+              </div>
+
+              {/* Filtros de Búsqueda y Estado */}
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar campaña o lugar..."
+                    value={campaignSearchTerm}
+                    onChange={(e) => setCampaignSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <select
+                  value={campaignStatusFilter}
+                  onChange={(e) => setCampaignStatusFilter(e.target.value)}
+                  className="text-xs p-1.5 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700"
+                >
+                  <option value="todos">Todos los Estados</option>
+                  <option value="programada">Programadas</option>
+                  <option value="activa">Activas</option>
+                  <option value="completada">Completadas</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Grilla de Campañas Filtradas */}
             {filteredCampaigns.length === 0 ? (
               <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center shadow-sm">
                 <Send className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-gray-900 mb-1">No se encontraron campañas</h3>
-                <p className="text-xs text-gray-500 mb-4">Crea una nueva campaña de demanda inducida para la cohorte hospitalaria.</p>
-                <Button onClick={() => setShowCreateDialog(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md">
-                  <Plus className="h-4 w-4 mr-1.5" />
-                  Crear Campaña
+                <h3 className="text-base font-bold text-gray-900 mb-1">
+                  No hay campañas en este paquete
+                </h3>
+                <p className="text-xs text-gray-500 mb-4 max-w-md mx-auto">
+                  Para crear nuevas campañas con segmentación clínica, accede al Cronograma y haz clic en la celda del mes deseado.
+                </p>
+                <Button 
+                  onClick={() => { window.location.hash = '#/cronograma'; }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md gap-1.5"
+                >
+                  <Calendar className="h-4 w-4" />
+                  Abrir Cronograma y Crear Campaña
                 </Button>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {filteredCampaigns.map((campaign, index) => {
                   const effectiveEstado = getEffectiveCampaignStatus(campaign);
+                  const pkgType = getCampaignPackageType(campaign);
+                  const isGrupoRiesgo = pkgType === 'grupo_riesgo';
+
                   return (
                     <motion.div
                       key={campaign.id}
                       initial={{ opacity: 0, y: 15 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow relative overflow-hidden"
+                      className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow relative overflow-hidden flex flex-col justify-between"
                     >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="bg-blue-50 p-2.5 rounded-2xl border border-blue-100 text-blue-600">
-                            <Send className="h-5 w-5" />
+                      <div>
+                        {/* Cabecera de la Tarjeta */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center space-x-3">
+                            <div className={`p-2.5 rounded-2xl border ${
+                              isGrupoRiesgo 
+                                ? 'bg-purple-50 border-purple-100 text-purple-700' 
+                                : 'bg-blue-50 border-blue-100 text-blue-700'
+                            }`}>
+                              {isGrupoRiesgo ? (
+                                <HeartPulse className="h-5 w-5 text-purple-600" />
+                              ) : (
+                                <Layers className="h-5 w-5 text-blue-600" />
+                              )}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  isGrupoRiesgo 
+                                    ? 'bg-purple-100 text-purple-800' 
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {isGrupoRiesgo ? 'Paquete Grupos de Riesgo' : 'Paquete Cursos de Vida'}
+                                </span>
+                              </div>
+                              <h3 className="font-bold text-sm text-gray-900 mt-0.5">{campaign.nombre}</h3>
+                              <p className="text-[11px] text-gray-400">
+                                Creada: {new Date(campaign.created_at || campaign.fecha_creacion || Date.now()).toLocaleDateString()}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-bold text-sm text-gray-900">{campaign.nombre}</h3>
-                            <p className="text-[11px] text-gray-400">
-                              Creada: {new Date(campaign.created_at || Date.now()).toLocaleDateString()}
-                            </p>
+                          <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full border ${getStatusColor(effectiveEstado)}`}>
+                            {effectiveEstado}
+                          </span>
+                        </div>
+
+                        {/* Metadatos Clínicos y de Lanzamiento */}
+                        <div className="space-y-2.5 text-xs">
+                          {/* Fechas y Frecuencia */}
+                          <div className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded-xl border border-slate-100">
+                            <span className="text-gray-500 flex items-center gap-1.5">
+                              <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                              Frecuencia & Fechas:
+                            </span>
+                            <span className="font-bold text-slate-800 text-right">
+                              {campaign.config_frecuencia?.summary || campaign.fecha_programada || 'Fechas múltiples'}
+                              {campaign.fechas_ejecucion?.length > 1 && (
+                                <span className="ml-1 text-[10px] text-blue-600 font-semibold">
+                                  ({campaign.fechas_ejecucion.length} días)
+                                </span>
+                              )}
+                            </span>
+                          </div>
+
+                          {/* Lugar / Sede */}
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500 flex items-center gap-1.5">
+                              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                              Sede / Lugar:
+                            </span>
+                            <span className="font-semibold text-slate-800">
+                              {campaign.lugar || 'Sede Principal - Manizales (Caldas)'}
+                            </span>
+                          </div>
+
+                          {/* Segmento / Cruce */}
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500">Segmentación:</span>
+                            <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
+                              {campaign.segmento_cursos?.join(', ') || campaign.segmento_riesgos?.join(', ') || campaign.origen_nombre || 'Resolución 3280'}
+                            </span>
+                          </div>
+
+                          {/* Política Reintentos */}
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-gray-500">Reintentos por tandas:</span>
+                            <span className="font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 text-[11px]">
+                              {campaign.reintentos ? `Hasta ${campaign.reintentos} reintentos` : 'Hasta que conteste'}
+                            </span>
+                          </div>
+
+                          {/* Directriz IA si existe */}
+                          {campaign.directriz_ia && (
+                            <div className="bg-blue-50/50 p-2.5 rounded-xl border border-blue-100 text-[11px] text-slate-700 italic line-clamp-2">
+                              "{campaign.directriz_ia}"
+                            </div>
+                          )}
+
+                          {/* Destinatarios y Aforo */}
+                          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                            <span className="text-gray-500">Aforo / Destinatarios:</span>
+                            <span className="font-bold text-gray-900">
+                              {campaign.pacientes_asignados || campaign.destinatarios || 56} pacientes
+                            </span>
                           </div>
                         </div>
-                        <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full border ${getStatusColor(effectiveEstado)}`}>
-                          {effectiveEstado}
-                        </span>
+
+                        {/* Progreso */}
+                        <div className="mt-4 pt-3 border-t border-gray-100">
+                          <div className="flex justify-between text-[11px] text-gray-500 mb-1">
+                            <span>Progreso de Emisión en Tandas</span>
+                            <span className="font-bold text-gray-700">
+                              {effectiveEstado === 'Completada' ? '100%' : effectiveEstado === 'Activa' ? '45%' : '0%'}
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full transition-all ${isGrupoRiesgo ? 'bg-purple-600' : 'bg-blue-600'}`}
+                              style={{ width: effectiveEstado === 'Completada' ? '100%' : effectiveEstado === 'Activa' ? '45%' : '5%' }}
+                            />
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="space-y-2.5 text-xs">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Programada para:</span>
-                          <span className="font-bold text-gray-900">{campaign.fecha_programada || 'Fecha pendiente'} (Día {campaign.dia_inicio || 1})</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Edad / Segmento:</span>
-                          <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                            {campaign.edad_tipo === 'curso_vida' 
-                              ? (campaign.edad_curso_vida?.replace('_', ' ') || 'Curso de vida')
-                              : campaign.edad_tipo === 'personalizado'
-                              ? 'Personalizado (A/M/D)'
-                              : 'Cualquiera (Todos)'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Política Reintento:</span>
-                          <span className="font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                            {campaign.modo_reintento === 'solo_una_vez' ? 'Solo 1 vez' : 'Hasta responder (Por tandas)'}
-                          </span>
-                        </div>
-                        {campaign.contexto_agente && (
-                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-[11px] text-slate-700 italic line-clamp-2">
-                            "{campaign.contexto_agente}"
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between text-xs pt-1">
-                          <span className="text-gray-500">Aforo / Destinatarios:</span>
-                          <span className="font-bold text-gray-900">{campaign.destinatarios || totalPacientes || 56} pacientes</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Duración Estimada Agente:</span>
-                          <span className="font-medium text-blue-700">
-                            {Math.ceil((campaign.destinatarios || totalPacientes || 56) / 32)} tanda(s) de 32 (~{Math.ceil((campaign.destinatarios || totalPacientes || 56) / 32) * 0.5}h en 24 tandas)
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Progreso */}
-                      <div className="mt-4 pt-3 border-t border-gray-100">
-                        <div className="flex justify-between text-[11px] text-gray-500 mb-1">
-                          <span>Progreso de Emisión</span>
-                          <span className="font-bold text-gray-700">
-                            {effectiveEstado === 'Completada' ? '100%' : effectiveEstado === 'Activa' ? '45%' : '0%'}
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full transition-all"
-                            style={{ width: effectiveEstado === 'Completada' ? '100%' : effectiveEstado === 'Activa' ? '45%' : '5%' }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Acciones */}
-                      <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                      {/* ACCIONES: RELANZAR CAMPAÑA DESTACADO */}
+                      <div className="mt-5 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                        {/* BOTÓN PRINCIPAL DE RELANZAR */}
                         <Button
                           type="button"
-                          variant="outline"
                           size="sm"
-                          onClick={() => {
-                            setSelectedCampaign({ ...campaign });
-                            setShowEditDialog(true);
-                          }}
-                          className="text-xs font-semibold rounded-xl"
+                          onClick={() => handleOpenRelaunchModal(campaign)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
                           disabled={submitting}
                         >
-                          <Edit className="h-3.5 w-3.5 mr-1" />
-                          Editar
-                        </Button>
-                        
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-red-600 hover:bg-red-50 text-xs font-semibold rounded-xl border-red-200"
-                          onClick={() => {
-                            setSelectedCampaign(campaign);
-                            setShowDeleteDialog(true);
-                          }}
-                          disabled={submitting}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 mr-1" />
-                          Eliminar
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Relanzar Campaña
                         </Button>
 
-                        {(effectiveEstado === 'Programada' || effectiveEstado === 'No Enviada') && (
-                          <Button 
+                        <div className="flex items-center gap-1.5">
+                          {(effectiveEstado === 'Programada' || effectiveEstado === 'No Enviada') && (
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSendNow(campaign)}
+                              className="text-blue-600 hover:bg-blue-50 text-xs font-bold rounded-xl border-blue-200"
+                              disabled={submitting}
+                            >
+                              <Send className="h-3.5 w-3.5 mr-1" />
+                              Emitir Ahora
+                            </Button>
+                          )}
+
+                          <Button
+                            type="button"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => handleSendNow(campaign)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs"
+                            className="text-red-600 hover:bg-red-50 text-xs font-semibold rounded-xl"
+                            onClick={() => {
+                              setSelectedCampaign(campaign);
+                              setShowDeleteDialog(true);
+                            }}
                             disabled={submitting}
                           >
-                            {submitting ? (
-                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                            ) : (
-                              <Send className="h-3.5 w-3.5 mr-1" />
-                            )}
-                            Enviar Ahora
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        )}
+                        </div>
                       </div>
                     </motion.div>
                   );
@@ -900,303 +967,194 @@ const CampaignsPage = () => {
         {/* ========================================================================= */}
         {activeTab === 'tandas' && (
           <div className="space-y-6">
-
-            {/* CARDS DE MÉTRICAS */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {/* Tarjetas de Métricas de Tandas Diarias */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between text-gray-500 text-xs font-medium">
-                  <span>Programados Hoy</span>
-                  <Calendar className="w-4 h-4 text-blue-600" />
-                </div>
-                <p className="text-2xl font-black text-gray-900 mt-2">{totalPacientes}</p>
-                <span className="text-[11px] text-gray-500">{programados} en cola de emisión</span>
+                <span className="text-[11px] font-bold text-gray-500 uppercase block">Total en Cola</span>
+                <span className="text-2xl font-black text-gray-900 mt-1 block">{totalPacientes || 56}</span>
+                <span className="text-[10px] text-gray-400">Distribuidos en 24 tandas</span>
               </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm bg-emerald-50/20">
-                <div className="flex items-center justify-between text-emerald-700 text-xs font-medium">
-                  <span>Confirmados (Tecla 1)</span>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                </div>
-                <p className="text-2xl font-black text-emerald-700 mt-2">{confirmados}</p>
-                <span className="text-[11px] text-emerald-600">Asistencia garantizada</span>
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                <span className="text-[11px] font-bold text-emerald-600 uppercase block">Confirmados (1)</span>
+                <span className="text-2xl font-black text-emerald-700 mt-1 block">{confirmados}</span>
+                <span className="text-[10px] text-emerald-600/80">Asistencia garantizada</span>
               </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm bg-blue-50/20">
-                <div className="flex items-center justify-between text-blue-700 text-xs font-medium">
-                  <span>Reagendados (Tecla 2)</span>
-                  <PhoneCall className="w-4 h-4 text-blue-600" />
-                </div>
-                <p className="text-2xl font-black text-blue-700 mt-2">{reagendados}</p>
-                <span className="text-[11px] text-blue-600">Piden nueva fecha</span>
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                <span className="text-[11px] font-bold text-blue-600 uppercase block">Reagendados (2)</span>
+                <span className="text-2xl font-black text-blue-700 mt-1 block">{reagendados}</span>
+                <span className="text-[10px] text-blue-600/80">Piden nueva fecha</span>
               </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm bg-amber-50/20">
-                <div className="flex items-center justify-between text-amber-700 text-xs font-medium">
-                  <span>En Reintento (Tanda Sig.)</span>
-                  <RotateCw className="w-4 h-4 text-amber-600" />
-                </div>
-                <p className="text-2xl font-black text-amber-700 mt-2">{enReintento}</p>
-                <span className="text-[11px] text-amber-600">Pasan a próx. intervalo</span>
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                <span className="text-[11px] font-bold text-amber-600 uppercase block">En Reintento</span>
+                <span className="text-2xl font-black text-amber-700 mt-1 block">{enReintento}</span>
+                <span className="text-[10px] text-amber-600/80">Pasar a próx. intervalo</span>
               </div>
-
-              <div 
-                onClick={() => setActiveTab('casos_humanos')}
-                className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm bg-red-50/30 cursor-pointer hover:border-red-300 transition-colors"
-              >
-                <div className="flex items-center justify-between text-red-700 text-xs font-medium">
-                  <span>Casos Aislados (Humano)</span>
-                  <UserX className="w-4 h-4 text-red-600" />
-                </div>
-                <p className="text-2xl font-black text-red-700 mt-2">{casosHumanos}</p>
-                <span className="text-[11px] text-red-600 font-bold flex items-center gap-1">
-                  Requieren llamada manual <ChevronRight className="w-3 h-3" />
-                </span>
+              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+                <span className="text-[11px] font-bold text-red-600 uppercase block">Casos Aislados</span>
+                <span className="text-2xl font-black text-red-700 mt-1 block">{casosHumanos}</span>
+                <span className="text-[10px] text-red-600/80">Requieren llamada manual</span>
               </div>
             </div>
 
-            {/* CARRUSEL DE HORARIOS DE TANDAS (24 INTERVALOS DE 30 MIN) */}
-            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-gray-800">
-                    Seleccionar Tanda Operativa (24 Intervalos de 30 min • 08:30 AM a 08:00 PM):
-                  </span>
-                  <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-                    Tanda seleccionada: {selectedSlot.hora}
-                  </span>
-                </div>
-
-                {/* BOTÓN / SWITCH DE REINTENTAR HASTA QUE CONTESTE */}
-                <button
-                  type="button"
-                  onClick={handleToggleRetryUntilAnswered}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
-                    config.retryUntilAnswered
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
-                  }`}
-                  title="Si está activo, las llamadas no contestadas pasan a la siguiente tanda disponible del día."
-                >
-                  <RotateCw className={`w-3.5 h-3.5 ${config.retryUntilAnswered ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }} />
-                  <span>{config.retryUntilAnswered ? '✓ Reintentar hasta que conteste (Por tandas)' : 'Reintento limitado'}</span>
-                </button>
-              </div>
-
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
-                {IVR_TIME_SLOTS.map((slot) => {
-                  const slotItems = items.filter(i => i.slotId === slot.id);
-                  const isSelected = selectedSlotId === slot.id;
-
-                  return (
-                    <button
-                      key={slot.id}
-                      onClick={() => setSelectedSlotId(slot.id)}
-                      className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl text-left border transition-all ${
-                        isSelected
-                          ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-500/20'
-                          : 'bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className={`text-xs font-bold ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
-                          {slot.hora}
-                        </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
-                          slotItems.length >= MAX_PATIENTS_PER_BATCH 
-                            ? 'bg-purple-100 text-purple-700' 
-                            : slotItems.length > 0 
-                            ? 'bg-blue-100 text-blue-700' 
-                            : 'bg-gray-200 text-gray-600'
-                        }`}>
-                          {slotItems.length}/{MAX_PATIENTS_PER_BATCH}
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-gray-500 block mt-1">
-                        {slot.label.split(' ')[0]} {slot.label.split(' ')[1]}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* TABLA DE PACIENTES DE LA TANDA SELECCIONADA */}
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/50">
+            {/* Selector Visual de las 24 Tandas de 30 min (08:30 AM a 08:00 PM) */}
+            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-black text-gray-900">
-                    Pacientes Asignados a la Tanda de las {selectedSlot.hora}
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-blue-600" />
+                    Seleccionar Tanda Operativa (24 Intervalos de 30 min: 08:30 AM a 08:00 PM)
                   </h3>
                   <p className="text-[11px] text-gray-500">
-                    {currentSlotPatients.length} paciente(s) en esta franja horaria • Canal: Gateway GSM OpenVox 32 Canales
+                    Aforo del Gateway: 32 canales GSM simultáneos por intervalo.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
+                    variant="outline"
                     onClick={() => handleSimulateBatch(selectedSlotId)}
                     disabled={isSimulating}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
+                    className="text-xs font-bold rounded-xl gap-1.5"
                   >
-                    {isSimulating ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Play className="w-3.5 h-3.5" />
-                    )}
-                    <span>Lanzar Tanda ({selectedSlot.hora})</span>
+                    {isSimulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                    Simular Ejecución Tanda
                   </Button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-900 text-white font-bold text-[11px] uppercase">
-                    <tr>
-                      <th className="p-3">Paciente / Cédula</th>
-                      <th className="p-3">Teléfono</th>
-                      <th className="p-3">Curso de Vida & Ruta 3280</th>
-                      <th className="p-3">Estado</th>
-                      <th className="p-3">Intentos</th>
-                      <th className="p-3 text-right">Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {currentSlotPatients.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="text-center py-8 text-gray-400">
-                          No hay llamadas programadas para la tanda de las {selectedSlot.hora}.
-                        </td>
-                      </tr>
-                    ) : (
-                      currentSlotPatients.map((p) => (
-                        <tr key={p.id} className="hover:bg-blue-50/30">
-                          <td className="p-3">
-                            <span className="font-bold text-gray-900 block">{p.nombre}</span>
-                            <span className="text-[10px] text-gray-400 font-mono">CC {p.documento}</span>
-                          </td>
-                          <td className="p-3 font-mono text-gray-700">{p.telefono}</td>
-                          <td className="p-3">
-                            <span className="font-semibold text-gray-800 block">{p.cursoVida}</span>
-                            <span className="text-[10px] text-gray-500">{p.programa3280}</span>
-                          </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              p.estado === 'confirmada' ? 'bg-emerald-100 text-emerald-800' :
-                              p.estado === 'reagendada' ? 'bg-blue-100 text-blue-800' :
-                              p.estado === 'en_reintento' ? 'bg-amber-100 text-amber-800' :
-                              p.estado === 'caso_aislado_humano' ? 'bg-red-100 text-red-800' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {p.estado}
-                            </span>
-                          </td>
-                          <td className="p-3 font-bold text-gray-700">{p.intentos || 0}</td>
-                          <td className="p-3 text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleMakeLiveCall(p)}
-                              disabled={callingId === p.id}
-                              className="text-xs font-bold rounded-xl"
-                            >
-                              {callingId === p.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PhoneCall className="w-3.5 h-3.5 mr-1 text-blue-600" />}
-                              Llamar
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              {/* Botones de 24 Tandas */}
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-1.5">
+                {IVR_TIME_SLOTS.map(slot => {
+                  const slotCount = items.filter(i => i.slotId === slot.id).length;
+                  const isSel = slot.id === selectedSlotId;
+                  return (
+                    <button
+                      key={slot.id}
+                      onClick={() => setSelectedSlotId(slot.id)}
+                      className={`p-2 rounded-xl border text-center transition-all ${
+                        isSel
+                          ? 'bg-blue-600 text-white border-blue-700 shadow-sm ring-1 ring-blue-500'
+                          : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700'
+                      }`}
+                    >
+                      <div className="text-[11px] font-bold">{slot.hora}</div>
+                      <div className={`text-[9px] mt-0.5 ${isSel ? 'text-blue-100' : 'text-gray-400'}`}>
+                        {slotCount}/{MAX_PATIENTS_PER_BATCH}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+
+            {/* Listado de Pacientes en la Tanda Seleccionada */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-sm text-gray-800">
+                    Pacientes Asignados a la Tanda de las {selectedSlot.hora}
+                  </h4>
+                  <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                    {currentSlotPatients.length} pacientes
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    placeholder="Buscar paciente en tanda..."
+                    value={batchSearchTerm}
+                    onChange={(e) => setBatchSearchTerm(e.target.value)}
+                    className="text-xs px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl"
+                  />
+                  <select
+                    value={batchFilterStatus}
+                    onChange={(e) => setBatchFilterStatus(e.target.value)}
+                    className="text-xs p-1.5 bg-gray-50 border border-gray-200 rounded-xl font-medium"
+                  >
+                    <option value="todos">Todos los Estados</option>
+                    <option value="programada">Programada</option>
+                    <option value="confirmada">Confirmada</option>
+                    <option value="reagendada">Reagendada</option>
+                    <option value="en_reintento">En Reintento</option>
+                  </select>
+                </div>
+              </div>
+
+              {currentSlotPatients.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 text-xs">
+                  No hay pacientes asignados en esta franja horaria.
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 max-h-[380px] overflow-y-auto">
+                  {currentSlotPatients.map(item => (
+                    <div key={item.id} className="p-3 hover:bg-gray-50 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="font-bold text-gray-800">{item.nombre}</div>
+                        <div className="text-gray-500">Doc: {item.documento} • Tel: {item.telefono}</div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          item.estado === 'confirmada' ? 'bg-emerald-100 text-emerald-700' :
+                          item.estado === 'reagendada' ? 'bg-blue-100 text-blue-700' :
+                          item.estado === 'en_reintento' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {item.estado}
+                        </span>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleCallSinglePatient(item)}
+                          disabled={callingId === item.id}
+                          className="text-xs font-bold rounded-xl gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+                        >
+                          {callingId === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneCall className="w-3 h-3" />}
+                          Llamar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* PESTAÑA 3: CASOS AISLADOS NO CONTACTADOS (GESTIÓN HUMANA)                  */}
+        {/* PESTAÑA 3: CASOS AISLADOS NO CONTACTADOS                                  */}
         {/* ========================================================================= */}
         {activeTab === 'casos_humanos' && (
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-base font-black text-gray-900 flex items-center gap-2">
-                  <ShieldAlert className="w-5 h-5 text-red-600" />
-                  Bandeja de Casos Aislados No Contactados
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Pacientes de campañas o rutas que agotaron las tandas del día sin responder y requieren gestión asistencial manual.
-                </p>
-              </div>
-              <span className="px-3 py-1 bg-red-50 text-red-700 rounded-full text-xs font-bold border border-red-200">
-                {items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').length} casos pendientes
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-xs text-red-900">
+              <strong className="block font-bold">Bandeja de Gestión Humana para Casos Aislados</strong>
+              <span>
+                Pacientes que no respondieron tras los reintentos automáticos de la campaña o presentaron inconvenientes de línea. Requieren intervención telefónica personalizada del personal de enfermería.
               </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-900 text-white font-bold text-[11px] uppercase">
-                  <tr>
-                    <th className="p-3">Paciente</th>
-                    <th className="p-3">Cédula</th>
-                    <th className="p-3">Teléfono</th>
-                    <th className="p-3">Campaña / Programa</th>
-                    <th className="p-3">Intentos Realizados</th>
-                    <th className="p-3 text-right">Acción</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-400">
-                        No hay casos aislados pendientes. Todos los pacientes fueron contactados o están en reintento programado.
-                      </td>
-                    </tr>
-                  ) : (
-                    items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').map((c) => (
-                      <tr key={c.id} className="hover:bg-red-50/20">
-                        <td className="p-3 font-bold text-gray-900">{c.nombre}</td>
-                        <td className="p-3 text-gray-600">{c.documento}</td>
-                        <td className="p-3 font-mono text-gray-700">{c.telefono}</td>
-                        <td className="p-3 text-gray-700">{c.programa3280 || c.programa}</td>
-                        <td className="p-3 text-red-600 font-bold">{c.intentos} intentos fallidos</td>
-                        <td className="p-3 text-right">
-                          <Button
-                            size="sm"
-                            onClick={() => setSelectedHumanCase(c)}
-                            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow-xs"
-                          >
-                            Registrar Gestión
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-xs text-gray-500">
+              No hay casos aislados pendientes en este momento. La plataforma ha procesado con éxito las confirmaciones.
             </div>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* PESTAÑA 4: CONFIGURACIÓN & PARÁMETROS DE AUTOMATIZACIÓN                     */}
+        {/* PESTAÑA 4: PARÁMETROS DE AUTOMATIZACIÓN                                   */}
         {/* ========================================================================= */}
         {activeTab === 'config' && (
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-6">
             <div>
-              <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-blue-600" />
-                Configuración del Motor de Automatización de Campañas & IVR
-              </h3>
+              <h3 className="text-base font-bold text-gray-900">Parámetros del Motor de Emisión</h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Ajustes de franjas de tandas (08:30 AM a 08:00 PM), política de reintentos continuos y control de aforo hospitalario.
+                Configuración del hardware GSM, franjas horarias y políticas de reintento.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
-                <span className="font-bold text-blue-950 block mb-1">Capacidad Instalada Hospitalaria:</span>
+                <span className="font-bold text-blue-950 block mb-1">Franjas de Operación:</span>
                 <span className="text-blue-800 leading-relaxed block">
                   <strong>24 Tandas de 30 minutos</strong> (08:30 AM a 08:00 PM). Capacidad de hasta <strong>768 llamadas/día</strong> con el Gateway GSM de 32 canales.
                 </span>
@@ -1249,411 +1207,180 @@ const CampaignsPage = () => {
         )}
 
         {/* ========================================================================= */}
-        {/* MODAL CREAR NUEVA CAMPAÑA                                                 */}
+        {/* MODAL EXCLUSIVO DE RELANZAMIENTO DE CAMPAÑA                               */}
+        {/* Solo permite editar: Fechas, Días, Semanas, Lugares y Frecuencia           */}
         {/* ========================================================================= */}
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogContent aria-describedby="create-campaign-description" className="max-w-xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-black text-gray-900 flex items-center gap-2">
-                <Send className="h-5 w-5 text-blue-600" />
-                Crear Nueva Campaña Automatizada SADI
+        <Dialog open={showRelaunchDialog} onOpenChange={setShowRelaunchDialog}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
+            <div className="bg-gradient-to-r from-emerald-900 to-slate-900 p-6 text-white rounded-t-2xl">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                Relanzamiento de Campaña SADI
+              </span>
+              <DialogTitle className="text-xl font-bold mt-2 flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-emerald-400" />
+                Relanzar Campaña: {selectedCampaign?.nombre}
               </DialogTitle>
-              <DialogDescription id="create-campaign-description">
-                Configura el calendario, los segmentos de edad de la Resolución 3280, el modo de reintento y las instrucciones personalizadas para el Agente IA.
+              <DialogDescription className="text-xs text-slate-300 mt-1">
+                La directriz clínica y segmentación original se conservan intactas. Configura el nuevo calendario de ejecución, frecuencia, lugar y horarios.
               </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleCreateCampaign} className="space-y-4 pt-2">
-              <div>
-                <Label htmlFor="nombre" className="text-xs font-bold text-gray-700">Nombre de la Campaña</Label>
-                <input
-                  id="nombre"
-                  type="text"
-                  placeholder="Ej: Jornada de Salud Infantil y Vacunación Noviembre"
-                  value={newCampaign.nombre}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, nombre: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500"
-                  required
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Información Fija de la Campaña Original */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2">
+                <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                  <span className="text-slate-500">Segmentación Original:</span>
+                  <strong className="text-slate-800">
+                    {selectedCampaign?.segmento_cursos?.join(', ') || selectedCampaign?.segmento_riesgos?.join(', ') || selectedCampaign?.origen_nombre || 'General'}
+                  </strong>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                  <span className="text-slate-500">Canales Autorizados:</span>
+                  <strong className="text-slate-800">
+                    {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 22), WhatsApp'}
+                  </strong>
+                </div>
+                {selectedCampaign?.directriz_ia && (
+                  <div className="text-[11px] text-slate-600 italic pt-1">
+                    "{selectedCampaign?.directriz_ia}"
+                  </div>
+                )}
+              </div>
+
+              {/* 1. SELECCIÓN DE FRECUENCIA & CALENDARIO (Diario, Semanal, Mensual) */}
+              <div className="space-y-3">
+                <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  1. Nuevo Calendario & Frecuencia de Lanzamiento
+                </Label>
+                <CampaignSchedulingCalendar
+                  onScheduleChange={(sched) => setRelaunchSchedule(sched)}
                 />
               </div>
 
-              {/* Calendario de Lanzamiento */}
-              <div className="bg-blue-50/60 p-3.5 rounded-2xl border border-blue-200/80 space-y-3">
-                <Label className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-blue-700" />
-                  Programación en el Calendario (Resolución 3280)
+              {/* 2. LUGAR / SEDE DE ATENCIÓN */}
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  2. Sede o Lugar de Atención Asignado
                 </Label>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label htmlFor="camp-anio" className="text-[11px] font-semibold text-gray-600">Año</Label>
-                    <select
-                      id="camp-anio"
-                      value={newCampaign.anio}
-                      onChange={(e) => setNewCampaign({ ...newCampaign, anio: e.target.value })}
-                      className="w-full mt-1 px-2.5 py-1.5 text-xs bg-white border border-gray-300 rounded-xl"
-                    >
-                      <option value={currentYear}>{currentYear}</option>
-                      <option value={currentYear + 1}>{currentYear + 1}</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="camp-mes" className="text-[11px] font-semibold text-gray-600">Mes</Label>
-                    <select
-                      id="camp-mes"
-                      value={newCampaign.mes}
-                      onChange={(e) => setNewCampaign({ ...newCampaign, mes: e.target.value })}
-                      className="w-full mt-1 px-2.5 py-1.5 text-xs bg-white border border-gray-300 rounded-xl"
-                    >
-                      {[
-                        { id: 1, label: 'Enero' },
-                        { id: 2, label: 'Febrero' },
-                        { id: 3, label: 'Marzo' },
-                        { id: 4, label: 'Abril' },
-                        { id: 5, label: 'Mayo' },
-                        { id: 6, label: 'Junio' },
-                        { id: 7, label: 'Julio' },
-                        { id: 8, label: 'Agosto' },
-                        { id: 9, label: 'Septiembre' },
-                        { id: 10, label: 'Octubre' },
-                        { id: 11, label: 'Noviembre' },
-                        { id: 12, label: 'Diciembre' }
-                      ].map(m => (
-                        <option key={m.id} value={m.id}>{m.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="camp-dia" className="text-[11px] font-semibold text-gray-600">Día en que Comienza</Label>
-                    <select
-                      id="camp-dia"
-                      value={newCampaign.diaInicio}
-                      onChange={(e) => setNewCampaign({ ...newCampaign, diaInicio: e.target.value })}
-                      className="w-full mt-1 px-2.5 py-1.5 text-xs bg-white border border-gray-300 rounded-xl"
-                    >
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
-                        <option key={d} value={d}>Día {d}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-gray-500 italic bg-white p-2 rounded-xl border border-gray-100">
-                  ℹ️ <strong>Horario Operativo de Tandas:</strong> El Agente IA procesará tandas de 32 pacientes cada 30 min entre 08:30 AM y 08:00 PM (24 intervalos diarios).
-                </p>
-              </div>
-
-              {/* Filtro: Edad de los Pacientes */}
-              <div className="bg-emerald-50/60 p-3.5 rounded-2xl border border-emerald-200/80 space-y-3">
-                <Label htmlFor="edadTipo" className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                  <span>🎯</span> Edad de los Pacientes (Segmento Res. 3280 / Personalizado)
-                </Label>
-                <select
-                  id="edadTipo"
-                  value={newCampaign.edadTipo}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, edadTipo: e.target.value })}
-                  className="w-full px-3 py-2 text-xs bg-white border border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="cualquiera">Cualquiera (Todos los rangos de edad)</option>
-                  <option value="curso_vida">Segmento de la Resolución 3280 (Cursos de Vida)</option>
-                  <option value="personalizado">Personalizado (Rango exacto en Años, Meses y Días)</option>
-                </select>
-
-                {newCampaign.edadTipo === 'curso_vida' && (
-                  <div className="pt-2">
-                    <Label className="text-[11px] font-semibold text-emerald-900">Curso de Vida de la Resolución 3280:</Label>
-                    <select
-                      value={newCampaign.edadCursoVida}
-                      onChange={(e) => setNewCampaign({ ...newCampaign, edadCursoVida: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 text-xs bg-white border border-emerald-300 rounded-xl font-medium"
-                    >
-                      <option value="primera_infancia">Primera Infancia (7 días a 5 años, 11 meses y 29 días)</option>
-                      <option value="infancia">Infancia (6 a 11 años)</option>
-                      <option value="adolescencia">Adolescencia (12 a 17 años)</option>
-                      <option value="juventud">Juventud (18 a 28 años)</option>
-                      <option value="adultez">Adultez (29 a 59 años)</option>
-                      <option value="vejez">Vejez (60 años o más)</option>
-                      <option value="materno_perinatal">Ruta Materno Perinatal (RIAMP)</option>
-                    </select>
-                  </div>
-                )}
-
-                {newCampaign.edadTipo === 'personalizado' && (
-                  <div className="pt-2 bg-white p-3 rounded-xl border border-emerald-200">
-                    <p className="text-[11px] font-bold text-gray-700 mb-2">
-                      Ingrese el rango límite de edad:
-                    </p>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-[10px] text-gray-500">Años</Label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="Ej: 5"
-                          value={newCampaign.edadCustom.anos}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '');
-                            setNewCampaign({
-                              ...newCampaign,
-                              edadCustom: { ...newCampaign.edadCustom, anos: val }
-                            });
-                          }}
-                          className="w-full mt-0.5 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-gray-500">Meses</Label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="Ej: 11"
-                          value={newCampaign.edadCustom.meses}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '');
-                            setNewCampaign({
-                              ...newCampaign,
-                              edadCustom: { ...newCampaign.edadCustom, meses: val }
-                            });
-                          }}
-                          className="w-full mt-0.5 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-gray-500">Días</Label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="Ej: 29"
-                          value={newCampaign.edadCustom.dias}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, '');
-                            setNewCampaign({
-                              ...newCampaign,
-                              edadCustom: { ...newCampaign.edadCustom, dias: val }
-                            });
-                          }}
-                          className="w-full mt-0.5 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Estrategia de Reintento */}
-              <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200/80 space-y-2">
-                <Label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                  <RotateCw className="w-3.5 h-3.5 text-amber-700" />
-                  Política de Contacto y Reintentos
-                </Label>
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <label className={`p-2.5 rounded-xl border text-xs cursor-pointer flex items-center gap-2 transition-all ${
-                    newCampaign.modoReintento === 'hasta_responder'
-                      ? 'bg-amber-100/90 border-amber-500 font-bold text-amber-950'
-                      : 'bg-white border-gray-200 text-gray-700'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="modoReintento"
-                      value="hasta_responder"
-                      checked={newCampaign.modoReintento === 'hasta_responder'}
-                      onChange={(e) => setNewCampaign({ ...newCampaign, modoReintento: e.target.value })}
-                      className="text-amber-600"
-                    />
-                    <span>Hasta responder (Por tandas)</span>
-                  </label>
-
-                  <label className={`p-2.5 rounded-xl border text-xs cursor-pointer flex items-center gap-2 transition-all ${
-                    newCampaign.modoReintento === 'solo_una_vez'
-                      ? 'bg-amber-100/90 border-amber-500 font-bold text-amber-950'
-                      : 'bg-white border-gray-200 text-gray-700'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="modoReintento"
-                      value="solo_una_vez"
-                      checked={newCampaign.modoReintento === 'solo_una_vez'}
-                      onChange={(e) => setNewCampaign({ ...newCampaign, modoReintento: e.target.value })}
-                      className="text-amber-600"
-                    />
-                    <span>Solo 1 vez</span>
-                  </label>
-                </div>
-                {newCampaign.modoReintento === 'hasta_responder' && (
-                  <p className="text-[10px] text-amber-800 bg-amber-100/60 p-2 rounded-xl mt-1">
-                    ✅ <strong>Reintentar hasta que conteste:</strong> Las llamadas no contestadas se reasignarán automáticamente a las siguientes tandas del día a lo largo de las 24 franjas.
-                  </p>
-                )}
-              </div>
-
-              {/* Contexto y Directrices para el Agente IA */}
-              <div>
-                <Label htmlFor="contextoAgente" className="text-xs font-bold text-gray-700 flex items-center justify-between">
-                  <span>💬 Contexto y Directrices para el Agente IA:</span>
-                  <span className="text-[10px] text-gray-400 font-normal">Protocolo clínico y tono</span>
-                </Label>
-                <textarea
-                  id="contextoAgente"
-                  rows={3}
-                  value={newCampaign.contextoAgente}
-                  onChange={(e) => setNewCampaign({ ...newCampaign, contextoAgente: e.target.value })}
-                  placeholder="Escribe las directrices clínicas: qué debe preguntar el agente, cómo debe formular las preguntas, tono cordial y protocolo de agendamiento..."
-                  className="w-full mt-1 p-2.5 text-xs border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 leading-relaxed font-sans"
-                  required
-                />
-              </div>
-
-              <Button 
-                type="submit" 
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md" 
-                disabled={submitting}
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Programando Campaña en Supabase...
-                  </>
-                ) : (
-                  '🚀 Guardar y Programar Campaña'
-                )}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* ========================================================================= */}
-        {/* MODAL EDITAR CAMPAÑA                                                      */}
-        {/* ========================================================================= */}
-        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-          <DialogContent className="max-w-md" aria-describedby="edit-campaign-description">
-            <DialogHeader>
-              <DialogTitle>Editar Campaña</DialogTitle>
-              <DialogDescription id="edit-campaign-description">
-                Actualiza los datos de tu campaña programada
-              </DialogDescription>
-            </DialogHeader>
-            
-            {selectedCampaign && (
-              <form onSubmit={handleEditCampaign} className="space-y-4">
-                <div>
-                  <Label htmlFor="edit-nombre">Nombre de la Campaña</Label>
-                  <input
-                    id="edit-nombre"
-                    type="text"
-                    value={selectedCampaign.nombre}
-                    onChange={(e) =>
-                      setSelectedCampaign({ ...selectedCampaign, nombre: e.target.value })
-                    }
-                    className="w-full mt-1 px-3 py-2 text-xs border border-gray-300 rounded-xl"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="edit-fecha">Fecha Programada</Label>
-                  <input
-                    id="edit-fecha"
-                    type="date"
-                    value={selectedCampaign.fecha_programada}
-                    onChange={(e) =>
-                      setSelectedCampaign({ ...selectedCampaign, fecha_programada: e.target.value })
-                    }
-                    className="w-full mt-1 px-3 py-2 text-xs border border-gray-300 rounded-xl"
-                    required
-                  />
-                </div>
-
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowEditDialog(false)}
-                    disabled={submitting}
-                    className="text-xs font-bold rounded-xl"
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-slate-400" />
+                  <select
+                    value={relaunchLugar}
+                    onChange={(e) => setRelaunchLugar(e.target.value)}
+                    className="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white font-medium"
                   >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" disabled={submitting} className="bg-blue-600 text-white text-xs font-bold rounded-xl">
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Guardar Cambios'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            )}
+                    <option value="Sede Principal - Manizales (Caldas)">Sede Principal - Manizales (Caldas)</option>
+                    <option value="Sede Ambulatoria - Chinchiná">Sede Ambulatoria - Chinchiná</option>
+                    <option value="Sede Villamaría - Centro Materno">Sede Villamaría - Centro Materno</option>
+                    <option value="Sede La Dorada - Especialidades">Sede La Dorada - Especialidades</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 3. HORARIOS DE TANDA (08:30 AM a 08:00 PM) */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    3. Horarios Permitidos (24 Intervalos de 30 min)
+                  </Label>
+                  <span className="text-xs text-slate-500">{relaunchFranjas.length} franjas</span>
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-32 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                  {FRANJAS_HORARIAS_24.map(franja => {
+                    const isSel = relaunchFranjas.includes(franja);
+                    return (
+                      <button
+                        key={franja}
+                        type="button"
+                        onClick={() => {
+                          setRelaunchFranjas(prev => 
+                            isSel ? prev.filter(f => f !== franja) : [...prev, franja]
+                          );
+                        }}
+                        className={`py-1 px-1.5 rounded-lg text-xs font-medium transition-all ${
+                          isSel
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {franja}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. REINTENTAR HASTA QUE CONTESTE */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="w-4 h-4 text-amber-600" />
+                    <span className="font-bold text-xs text-amber-900">
+                      Reintentar automáticamente hasta que conteste
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={relaunchRetryUntilAnswer}
+                    onChange={(e) => setRelaunchRetryUntilAnswer(e.target.checked)}
+                    className="w-4 h-4 text-emerald-600 rounded"
+                  />
+                </div>
+                {relaunchRetryUntilAnswer && (
+                  <div className="flex items-center gap-3 text-xs text-amber-800 pt-1.5 border-t border-amber-200">
+                    <span>Máximo de reintentos por paciente:</span>
+                    <select
+                      value={relaunchMaxRetries}
+                      onChange={(e) => setRelaunchMaxRetries(Number(e.target.value))}
+                      className="bg-white border border-amber-300 rounded px-2 py-0.5 font-bold text-slate-800"
+                    >
+                      <option value={1}>1 reintento</option>
+                      <option value={2}>2 reintentos</option>
+                      <option value={3}>3 reintentos (Recomendado)</option>
+                      <option value={5}>5 reintentos</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="p-6 pt-0">
+              <Button
+                variant="outline"
+                onClick={() => setShowRelaunchDialog(false)}
+                className="text-xs rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleConfirmRelaunch}
+                disabled={submitting}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md gap-1.5"
+              >
+                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                Confirmar y Relanzar Campaña
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* ========================================================================= */}
-        {/* MODAL ELIMINAR CAMPAÑA                                                    */}
-        {/* ========================================================================= */}
+        {/* MODAL ELIMINAR CAMPAÑA */}
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>¿Deseas eliminar esta campaña?</AlertDialogTitle>
+              <AlertDialogTitle>¿Eliminar esta campaña?</AlertDialogTitle>
               <AlertDialogDescription>
-                Esta acción no se puede deshacer. Se removerá la campaña "{selectedCampaign?.nombre}" de las tandas programadas.
+                Esta acción retirará la campaña "{selectedCampaign?.nombre}" del panel operativo.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={submitting}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDeleteCampaign}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold"
-                disabled={submitting}
-              >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Eliminar'}
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteCampaign} className="bg-red-600 hover:bg-red-700">
+                Eliminar
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        {/* ========================================================================= */}
-        {/* MODAL GESTIÓN HUMANA                                                      */}
-        {/* ========================================================================= */}
-        {selectedHumanCase && (
-          <Dialog open={!!selectedHumanCase} onOpenChange={() => setSelectedHumanCase(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="text-base font-bold text-gray-900">
-                  Registrar Gestión Asistencial para {selectedHumanCase.nombre}
-                </DialogTitle>
-                <DialogDescription>
-                  Paciente no contactado tras agotar las tandas operativas.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSaveHumanIntervention} className="space-y-4 pt-2">
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Resultado del Contacto Asistencial:</label>
-                  <select
-                    value={humanOutcome}
-                    onChange={(e) => setHumanOutcome(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl bg-white"
-                  >
-                    <option value="contactado_exitoso">Contactado y Cita Confirmada</option>
-                    <option value="reagendado_manual">Reagendado Manualmente para otra fecha</option>
-                    <option value="visita_domiciliaria_requerida">Requiere Visita Domiciliaria</option>
-                    <option value="numero_erroneo">Número Erróneo o Inexistente</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-gray-700 block mb-1">Notas Clínicas / Enfermería:</label>
-                  <textarea
-                    rows={3}
-                    value={humanNotes}
-                    onChange={(e) => setHumanNotes(e.target.value)}
-                    placeholder="Detalles de la gestión humana con el paciente o acudiente..."
-                    className="w-full text-xs p-2.5 border border-gray-300 rounded-xl"
-                    required
-                  />
-                </div>
-
-                <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bold text-xs py-2.5 rounded-xl">
-                  Guardar y Cerrar Caso Aislado
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
 
       </div>
     </Layout>
