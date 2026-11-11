@@ -218,6 +218,17 @@ export const authService = {
       if (!rpcError && rpcData) {
         const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
         if (row?.success) {
+          // Consultar permisos y Cursos de Vida reales desde la tabla staff
+          let staffDoc = null;
+          try {
+            const { data: staffData } = await supabase
+              .from('staff')
+              .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id')
+              .eq('doctor_id', row.doctor_id)
+              .maybeSingle();
+            staffDoc = staffData;
+          } catch (_) {}
+
           return {
             success: true,
             user: {
@@ -225,10 +236,17 @@ export const authService = {
               doctor_id: row.doctor_id,
               email: row.doctor_email,
               role: 'doctor',
+              rol: staffDoc?.rol || row.rol || 'Enfermera',
               nombre: row.doctor_name,
               doctor_specialty: row.doctor_specialty,
-              hospitalId: row.hospital_id || null,
-              hospital_name: row.hospital_name || null
+              cursos_vida_asignados: Array.isArray(staffDoc?.cursos_vida_asignados) ? staffDoc.cursos_vida_asignados : [],
+              solo_lectura: staffDoc?.solo_lectura !== undefined ? Boolean(staffDoc.solo_lectura) : true,
+              puede_lanzar_llamadas: Boolean(staffDoc?.puede_lanzar_llamadas),
+              puede_enviar_mensajes: Boolean(staffDoc?.puede_enviar_mensajes),
+              puede_crear_campanas: Boolean(staffDoc?.puede_crear_campanas),
+              puede_editar_pacientes: Boolean(staffDoc?.puede_editar_pacientes),
+              hospitalId: row.hospital_id || staffDoc?.hospital_id || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
+              hospital_name: row.hospital_name || 'Hospital Central SADI (Caldas)'
             }
           };
         } else if (row?.message && !row.message.toLowerCase().includes('no encontrado')) {

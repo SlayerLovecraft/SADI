@@ -219,3 +219,4 @@ export function formatCursosVidaLabel(cursosAsignados) {
     })
     .join(', ');
 }
+

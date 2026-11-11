@@ -49,6 +49,20 @@ const ROLES_PERSONAL = [
   { value: 'Especialista', label: 'Médico Especialista (Pediatría, Gineco, etc.)' }
 ];
 
+// Lista oficial de IDs de los 10 Cursos de Vida de la Resolución 3280
+const ALL_10_CURSOS_IDS = [
+  'primera_infancia',
+  'infancia',
+  'adolescencia',
+  'juventud',
+  'adultez',
+  'vejez',
+  'preventivo_mujer',
+  'planificacion_familiar',
+  'vacunacion',
+  'salud_oral'
+];
+
 export default function DoctorsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -231,14 +245,18 @@ export default function DoctorsPage() {
   const openPermissionsModal = (staff) => {
     setSelectedStaff(staff);
     const raw = staff.cursos_vida_asignados;
-    const cursos = Array.isArray(raw) ? raw : [];
+    let cursos = Array.isArray(raw) ? [...raw] : [];
+    // Si contiene 'todos', expandir explícitamente a los 10 cursos para que se visualicen todos seleccionados
+    if (cursos.includes('todos')) {
+      cursos = ['todos', ...ALL_10_CURSOS_IDS];
+    }
     setPermissionsForm({
       cursos_vida_asignados: cursos,
       solo_lectura: staff.solo_lectura !== undefined ? staff.solo_lectura : true,
-      puede_lanzar_llamadas: staff.puede_lanzar_llamadas || false,
-      puede_enviar_mensajes: staff.puede_enviar_mensajes || false,
-      puede_crear_campanas: staff.puede_crear_campanas || false,
-      puede_editar_pacientes: staff.puede_editar_pacientes || false
+      puede_lanzar_llamadas: Boolean(staff.puede_lanzar_llamadas),
+      puede_enviar_mensajes: Boolean(staff.puede_enviar_mensajes),
+      puede_crear_campanas: Boolean(staff.puede_crear_campanas),
+      puede_editar_pacientes: Boolean(staff.puede_editar_pacientes)
     });
     setShowPermissionsDialog(true);
   };
@@ -247,8 +265,13 @@ export default function DoctorsPage() {
     if (!selectedStaff) return;
     setSavingAction(true);
     try {
+      let toSave = [...permissionsForm.cursos_vida_asignados];
+      if (toSave.includes('todos') || ALL_10_CURSOS_IDS.every(id => toSave.includes(id))) {
+        toSave = ['todos', ...ALL_10_CURSOS_IDS];
+      }
+
       const res = await staffService.update(selectedStaff.id, {
-        cursos_vida_asignados: permissionsForm.cursos_vida_asignados,
+        cursos_vida_asignados: toSave,
         grupos_riesgo_asignados: [],
         solo_lectura: permissionsForm.solo_lectura,
         puede_lanzar_llamadas: permissionsForm.puede_lanzar_llamadas,
@@ -258,6 +281,19 @@ export default function DoctorsPage() {
       });
 
       if (res.success) {
+        // Actualizar de inmediato en el estado local React para retroalimentación instantánea
+        const updatedStaff = res.data || {
+          ...selectedStaff,
+          cursos_vida_asignados: toSave,
+          solo_lectura: permissionsForm.solo_lectura,
+          puede_lanzar_llamadas: permissionsForm.puede_lanzar_llamadas,
+          puede_enviar_mensajes: permissionsForm.puede_enviar_mensajes,
+          puede_crear_campanas: permissionsForm.puede_crear_campanas,
+          puede_editar_pacientes: permissionsForm.puede_editar_pacientes
+        };
+
+        setStaffList(prev => prev.map(s => (s.id === selectedStaff.id || s.doctor_id === selectedStaff.id) ? { ...s, ...updatedStaff } : s));
+
         toast({
           title: "🛡️ Permisos y Asignaciones actualizados",
           description: `Se han configurado las restricciones de Cursos de Vida para ${selectedStaff.nombre}.`
@@ -281,6 +317,7 @@ export default function DoctorsPage() {
     try {
       const res = await staffService.delete(personToDelete.id);
       if (res.success) {
+        setStaffList(prev => prev.filter(s => s.id !== personToDelete.id && s.doctor_id !== personToDelete.id));
         toast({ title: "🗑️ Personal eliminado", description: "Se ha removido el registro del sistema." });
         setPersonToDelete(null);
         await loadData(false);
@@ -295,14 +332,27 @@ export default function DoctorsPage() {
   // Toggle de Cursos de Vida en el formulario
   const toggleCursoVida = (cursoId, formState, setFormState) => {
     let current = Array.isArray(formState.cursos_vida_asignados) ? [...formState.cursos_vida_asignados] : [];
+    const hasTodos = current.includes('todos');
+
     if (cursoId === 'todos') {
-      current = current.includes('todos') ? [] : ['todos'];
+      const next = hasTodos ? [] : ['todos', ...ALL_10_CURSOS_IDS];
+      setFormState({ ...formState, cursos_vida_asignados: next });
+      return;
+    }
+
+    // Si tenía 'todos', expandir a todos los 10 cursos antes de alternar
+    if (hasTodos) {
+      current = ALL_10_CURSOS_IDS.filter(id => id !== cursoId);
+      setFormState({ ...formState, cursos_vida_asignados: current });
+      return;
+    }
+
+    if (current.includes(cursoId)) {
+      current = current.filter(c => c !== cursoId);
     } else {
-      current = current.filter(c => c !== 'todos');
-      if (current.includes(cursoId)) {
-        current = current.filter(c => c !== cursoId);
-      } else {
-        current.push(cursoId);
+      current.push(cursoId);
+      if (ALL_10_CURSOS_IDS.every(id => current.includes(id))) {
+        current = ['todos', ...ALL_10_CURSOS_IDS];
       }
     }
     setFormState({ ...formState, cursos_vida_asignados: current });
@@ -313,7 +363,7 @@ export default function DoctorsPage() {
   };
 
   const setAllCursosVida = (formState, setFormState) => {
-    setFormState({ ...formState, cursos_vida_asignados: ['todos'] });
+    setFormState({ ...formState, cursos_vida_asignados: ['todos', ...ALL_10_CURSOS_IDS] });
   };
 
   // Filtros de tabla de personal
@@ -622,12 +672,12 @@ export default function DoctorsPage() {
                   <DialogTitle className="text-lg font-black text-gray-900 flex items-center gap-2">
                     Llamadas e Interacciones de {viewingPatientsStaff?.nombre}
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
-                      viewingPatientsStaff?.rol === 'Enfermera Jefe'
-                        ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-xs'
+                      assignedPatients.length === 0
+                        ? 'bg-slate-100 text-slate-700 border-slate-300'
                         : 'bg-blue-100 text-blue-800 border-blue-200'
                     }`}>
-                      {viewingPatientsStaff?.rol === 'Enfermera Jefe'
-                        ? '56 pacientes asignados (Supervisión Total Institucional)'
+                      {assignedPatients.length === 0
+                        ? '0 pacientes asignados (Sin Asignación)'
                         : `${assignedPatients.length} pacientes asignados`}
                     </span>
                   </DialogTitle>
@@ -742,7 +792,7 @@ export default function DoctorsPage() {
 
               <div className="grid grid-cols-2 gap-2 pt-1">
                 {CURSOS_VIDA_LIST.filter(c => c.id !== 'todos' && c.id !== 'sin_asignacion').map(c => {
-                  const isChecked = newStaff.cursos_vida_asignados.includes(c.id);
+                  const isChecked = newStaff.cursos_vida_asignados.includes('todos') || newStaff.cursos_vida_asignados.includes(c.id);
                   return (
                     <div
                       key={c.id}
@@ -920,7 +970,7 @@ export default function DoctorsPage() {
               {/* Cuadrícula de Cursos de Vida */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 {CURSOS_VIDA_LIST.filter(c => c.id !== 'todos' && c.id !== 'sin_asignacion').map(c => {
-                  const isChecked = permissionsForm.cursos_vida_asignados.includes(c.id);
+                  const isChecked = permissionsForm.cursos_vida_asignados.includes('todos') || permissionsForm.cursos_vida_asignados.includes(c.id);
                   return (
                     <div
                       key={c.id}

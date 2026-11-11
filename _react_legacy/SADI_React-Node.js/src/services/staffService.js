@@ -56,78 +56,76 @@ export const staffService = {
     try {
       const { role, hospitalId } = getCurrentUserContext();
 
-      const makeQuery = () => {
-        let query = supabase
-          .from('staff')
-          .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
-          .not('doctor_name', 'is', null)
-          .order('created_at', { ascending: false });
-
-        if (role !== 'super_admin') {
-          if (!hospitalId) {
-            return null;
-          }
-          query = query.eq('hospital_id', hospitalId);
-        }
-
-        return query;
-      };
-
-      const query = makeQuery();
-      if (!query) return { success: false, error: 'No se pudo identificar el hospital del usuario', data: [] };
-
-      const run = async () => withTimeout(makeQuery(), 12000, 'Tiempo de espera agotado al cargar doctores');
-      let { data, error } = await run();
-      if (error && isSupabaseAuthError(error)) {
-        await supabase.auth.refreshSession().catch(() => null);
-        ({ data, error } = await run());
-      }
-
       const mapFallbackDoctor = (d, defaultHospId) => {
-        const isJefe = (d.name || '').toLowerCase().includes('sandra') || (d.rol === 'Enfermera Jefe');
         return {
           id: d.id,
           doctor_id: d.id,
           nombre: d.name,
           email: d.email,
           especialidad: d.specialty,
-          rol: isJefe ? 'Enfermera Jefe' : (d.rol || (d.name.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General')),
-          cursos_vida_asignados: isJefe ? ['todos'] : (Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : []),
+          rol: d.rol || (d.name?.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General'),
+          cursos_vida_asignados: Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : [],
           grupos_riesgo_asignados: [],
           solo_lectura: true,
           puede_lanzar_llamadas: true,
           puede_enviar_mensajes: true,
-          puede_crear_campanas: isJefe,
-          puede_editar_pacientes: isJefe,
+          puede_crear_campanas: false,
+          puede_editar_pacientes: false,
           hospitalId: defaultHospId,
           is_active: true,
           created_at: new Date().toISOString()
         };
       };
 
-      if (error || !data || data.length === 0) {
-        try {
-          const { data: allStaff, error: allErr } = await supabase
-            .from('staff')
-            .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
-            .not('doctor_name', 'is', null)
-            .order('created_at', { ascending: false });
-          if (!allErr && allStaff && allStaff.length > 0) {
-            return { success: true, data: allStaff.map(mapSupabaseToFrontend) };
-          }
-        } catch (_) {}
+      // 1. Consulta principal directa a Supabase (obteniendo todo el personal con nombre registrado)
+      try {
+        const { data: allStaff, error: allErr } = await supabase
+          .from('staff')
+          .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+          .not('doctor_name', 'is', null)
+          .order('created_at', { ascending: false });
 
-        return {
-          success: true,
-          data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8'))
-        };
+        if (!allErr && allStaff && allStaff.length > 0) {
+          // Si el usuario tiene hospitalId y existen doctores específicamente con ese hospitalId,
+          // filtramos por hospitalId; si no, devolvemos todo el personal disponible
+          if (role !== 'super_admin' && hospitalId && hospitalId !== 'a0000000-0000-0000-0000-000000000001') {
+            const filteredByHosp = allStaff.filter(s => s.hospital_id === hospitalId);
+            if (filteredByHosp.length > 0) {
+              return { success: true, data: filteredByHosp.map(mapSupabaseToFrontend) };
+            }
+          }
+          return { success: true, data: allStaff.map(mapSupabaseToFrontend) };
+        }
+      } catch (err) {
+        console.warn('Error al consultar tabla staff en Supabase:', err);
       }
 
-      return { success: true, data: (data || []).map(mapSupabaseToFrontend) };
+      // 2. Fallback de resiliencia solo si la base de datos no responde
+      return {
+        success: true,
+        data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8'))
+      };
     } catch (error) {
       return {
         success: true,
-        data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8'))
+        data: SEED_DOCTORS_3280.map(d => ({
+          id: d.id,
+          doctor_id: d.id,
+          nombre: d.name,
+          email: d.email,
+          especialidad: d.specialty,
+          rol: d.rol || 'Enfermera',
+          cursos_vida_asignados: Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : [],
+          grupos_riesgo_asignados: [],
+          solo_lectura: true,
+          puede_lanzar_llamadas: true,
+          puede_enviar_mensajes: true,
+          puede_crear_campanas: false,
+          puede_editar_pacientes: false,
+          hospitalId: 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
+          is_active: true,
+          created_at: new Date().toISOString()
+        }))
       };
     }
   },

@@ -1115,7 +1115,11 @@ export const telemonitoringService = {
   // Obtener todos los doctores
   async getDoctors() {
     try {
-      const { data, error } = await supabase.from('staff').select('*');
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .not('doctor_name', 'is', null)
+        .order('created_at', { ascending: false });
       if (!error && data && data.length > 0) {
         return data.map(d => ({
           id: d.doctor_id,
