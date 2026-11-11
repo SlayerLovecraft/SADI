@@ -202,7 +202,20 @@ export function validateCampaignCallCapacity(selectedDates, totalDestinatarios, 
   for (const dateISO of selectedDates) {
     const dayData = roadmap365[dateISO];
     if (!dayData) {
-      conflicts.push(`Fecha ${dateISO} fuera del rango del calendario anual.`);
+      // Si la fecha no está pre-mapeada (ej. fechas de meses siguientes o año siguiente), validar que no sea domingo
+      const parsedDate = new Date(dateISO + 'T12:00:00');
+      if (parsedDate.getDay() === 0) {
+        conflicts.push(`El día ${dateISO} es domingo. La operación del Gateway GSM solo opera de Lunes a Sábado.`);
+        continue;
+      }
+      balanceSummary.push({
+        dateISO,
+        resolucionCalls: 0,
+        otherCampaignsCalls: 0,
+        solicitadas: callsPerDay,
+        saldoDisponible: DAILY_CALL_CAPACITY,
+        restanteFinal: DAILY_CALL_CAPACITY - callsPerDay
+      });
       continue;
     }
 

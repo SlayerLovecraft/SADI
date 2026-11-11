@@ -323,7 +323,34 @@ export default function ResolutionAnnualMatrix({
   // Manejo del Wizard con Control de Aforo Diario (3.500 llamadas)
   const handleNextStep = () => {
     if (wizardStep === 1) {
-      if (!campaignSchedule.selectedDates || campaignSchedule.selectedDates.length === 0) {
+      let datesToValidate = campaignSchedule?.selectedDates || [];
+
+      // Si por alguna razón el arreglo de fechas aún no se ha poblado, calcular el primer día hábil
+      if (datesToValidate.length === 0) {
+        const targetMonth = selectedContext?.monthIndex ?? CURRENT_REAL_MONTH;
+        const targetYear = activeYear || CURRENT_REAL_YEAR;
+        const isCurrentM = targetYear === CURRENT_REAL_YEAR && targetMonth === CURRENT_REAL_MONTH;
+        let startD = isCurrentM ? new Date().getDate() : 1;
+        const daysInM = new Date(targetYear, targetMonth + 1, 0).getDate();
+        for (let d = startD; d <= daysInM; d++) {
+          const dt = new Date(targetYear, targetMonth, d, 12, 0, 0);
+          if (dt.getDay() !== 0) {
+            const padM = String(targetMonth + 1).padStart(2, '0');
+            const padD = String(d).padStart(2, '0');
+            const calculatedDate = `${targetYear}-${padM}-${padD}`;
+            datesToValidate = [calculatedDate];
+            setCampaignSchedule(prev => ({
+              ...prev,
+              selectedDates: [calculatedDate],
+              fechaInicio: calculatedDate,
+              fechaFin: calculatedDate
+            }));
+            break;
+          }
+        }
+      }
+
+      if (datesToValidate.length === 0) {
         toast({
           title: 'Fecha requerida',
           description: 'Por favor selecciona al menos una fecha hábil en el calendario antes de continuar.',
@@ -335,8 +362,8 @@ export default function ResolutionAnnualMatrix({
       // Validar capacidad si incluye llamadas
       if (selectedChannels.call) {
         const check = validateCampaignCallCapacity(
-          campaignSchedule.selectedDates,
-          activeCellPatients.length,
+          datesToValidate,
+          activeCellPatients.length || 56,
           roadmap365,
           existingCampaigns
         );
@@ -1153,6 +1180,26 @@ export default function ResolutionAnnualMatrix({
 
                     <CampaignSchedulingCalendar
                       initialFrequency="diaria"
+                      initialConfig={{
+                        mes: selectedContext?.monthIndex ?? CURRENT_REAL_MONTH,
+                        year: activeYear || CURRENT_REAL_YEAR,
+                        fechaInicio: (() => {
+                          const targetMonth = selectedContext?.monthIndex ?? CURRENT_REAL_MONTH;
+                          const targetYear = activeYear || CURRENT_REAL_YEAR;
+                          const isCurrentM = targetYear === CURRENT_REAL_YEAR && targetMonth === CURRENT_REAL_MONTH;
+                          let startD = isCurrentM ? new Date().getDate() : 1;
+                          const daysInM = new Date(targetYear, targetMonth + 1, 0).getDate();
+                          for (let d = startD; d <= daysInM; d++) {
+                            const dt = new Date(targetYear, targetMonth, d, 12, 0, 0);
+                            if (dt.getDay() !== 0) {
+                              const padM = String(targetMonth + 1).padStart(2, '0');
+                              const padD = String(d).padStart(2, '0');
+                              return `${targetYear}-${padM}-${padD}`;
+                            }
+                          }
+                          return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`;
+                        })()
+                      }}
                       onScheduleChange={(sched) => setCampaignSchedule(sched)}
                     />
                   </div>

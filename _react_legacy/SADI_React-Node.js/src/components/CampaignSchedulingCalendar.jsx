@@ -35,27 +35,76 @@ export default function CampaignSchedulingCalendar({
     return f;
   };
 
+  // Helper: Formato YYYY-MM-DD
+  const formatDateISO = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  // Calcular fecha de inicio por defecto
+  const computeDefaultStartDate = () => {
+    if (initialConfig?.fechaInicio) return initialConfig.fechaInicio;
+    const targetY = initialConfig?.year || today.getFullYear();
+    const targetM = initialConfig?.mes !== undefined ? initialConfig.mes : today.getMonth();
+    const isCurrentM = targetY === today.getFullYear() && targetM === today.getMonth();
+    let startD = isCurrentM ? today.getDate() : 1;
+    const daysInTargetM = new Date(targetY, targetM + 1, 0).getDate();
+    for (let d = startD; d <= daysInTargetM; d++) {
+      const dt = new Date(targetY, targetM, d, 12, 0, 0);
+      if (dt.getDay() !== 0) {
+        return formatDateISO(dt);
+      }
+    }
+    return formatDateISO(new Date(targetY, targetM, Math.min(startD, daysInTargetM), 12, 0, 0));
+  };
+
+  const defaultDateStr = computeDefaultStartDate();
+  const defaultDateObj = new Date(defaultDateStr + 'T12:00:00');
+  const defaultDayNum = defaultDateObj.getDate();
+  const defaultDayOfWeek = defaultDateObj.getDay() === 0 ? 7 : defaultDateObj.getDay();
+
   // Frecuencia: 'diaria' | 'semanal' | 'mensual'
   const [frecuencia, setFrecuencia] = useState(normalizeFreq(initialConfig?.frecuencia || initialFrequency));
 
   // Navegación de mes en el calendario visual
-  const [viewYear, setViewYear] = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-11
+  const [viewYear, setViewYear] = useState(initialConfig?.year || defaultDateObj.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialConfig?.mes !== undefined ? initialConfig.mes : defaultDateObj.getMonth()); // 0-11
 
   // Estado para modo DIARIO
-  const [dailyStartDate, setDailyStartDate] = useState(initialConfig?.fechaInicio || null);
+  const [dailyStartDate, setDailyStartDate] = useState(defaultDateStr);
   const [dailyEndDate, setDailyEndDate] = useState(initialConfig?.fechaFin || null);
 
   // Estado para modo SEMANAL
   const [semanasCount, setSemanasCount] = useState(initialConfig?.semanas || 4);
-  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState(initialConfig?.diaSemana || 2); // 1 = Lunes, 2 = Martes
-  const [weeklyStartDate, setWeeklyStartDate] = useState(initialConfig?.fechaInicio || null);
+  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState(initialConfig?.diaSemana || defaultDayOfWeek);
+  const [weeklyStartDate, setWeeklyStartDate] = useState(defaultDateStr);
 
   // Estado para modo MENSUAL
   const [mesesCount, setMesesCount] = useState(initialConfig?.meses || 3);
-  const [monthlyDay, setMonthlyDay] = useState(initialConfig?.diaMes || null);
-  const [monthlyStartMonth, setMonthlyStartMonth] = useState(today.getMonth());
-  const [monthlyStartYear, setMonthlyStartYear] = useState(today.getFullYear());
+  const [monthlyDay, setMonthlyDay] = useState(initialConfig?.diaMes || defaultDayNum);
+  const [monthlyStartMonth, setMonthlyStartMonth] = useState(initialConfig?.mes !== undefined ? initialConfig.mes : defaultDateObj.getMonth());
+  const [monthlyStartYear, setMonthlyStartYear] = useState(initialConfig?.year || defaultDateObj.getFullYear());
+
+  // Actualizar cuando cambie initialConfig
+  useEffect(() => {
+    if (initialConfig?.fechaInicio) {
+      setDailyStartDate(initialConfig.fechaInicio);
+      setWeeklyStartDate(initialConfig.fechaInicio);
+      const dt = new Date(initialConfig.fechaInicio + 'T12:00:00');
+      setViewYear(dt.getFullYear());
+      setViewMonth(dt.getMonth());
+      setMonthlyStartYear(dt.getFullYear());
+      setMonthlyStartMonth(dt.getMonth());
+      setMonthlyDay(dt.getDate());
+      setSelectedDayOfWeek(dt.getDay() === 0 ? 7 : dt.getDay());
+    } else if (initialConfig?.mes !== undefined) {
+      const targetY = initialConfig.year || today.getFullYear();
+      setViewYear(targetY);
+      setViewMonth(initialConfig.mes);
+    }
+  }, [initialConfig]);
 
   // Helper: Saber si una fecha es domingo
   const isSunday = (date) => date.getDay() === 0;
@@ -65,14 +114,6 @@ export default function CampaignSchedulingCalendar({
     const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const targetZero = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     return targetZero < todayZero;
-  };
-
-  // Helper: Formato YYYY-MM-DD
-  const formatDateISO = (date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
   };
 
   // Calcular fechas programadas según la frecuencia
@@ -252,10 +293,9 @@ export default function CampaignSchedulingCalendar({
         }
       }
     } else if (frecuencia === 'semanal') {
-      // En modo semanal, solo se permiten los días que coinciden con el día de la semana elegido
-      if (dayItem.dayOfWeek === selectedDayOfWeek) {
-        setWeeklyStartDate(dayItem.isoStr);
-      }
+      // En modo semanal, al hacer clic en cualquier día hábil se actualiza el día de la semana y la fecha de inicio
+      setSelectedDayOfWeek(dayItem.dayOfWeek);
+      setWeeklyStartDate(dayItem.isoStr);
     } else if (frecuencia === 'mensual') {
       setMonthlyDay(dayItem.dayNum);
       setMonthlyStartMonth(viewMonth);
