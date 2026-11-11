@@ -213,8 +213,11 @@ export default function CampaignSchedulingCalendar({
     return list;
   }, [viewYear, viewMonth]);
 
-  // Navegar mes
+  // Navegar mes (bloqueando retroceder a meses pasados)
+  const isAtCurrentOrPastMonth = viewYear < today.getFullYear() || (viewYear === today.getFullYear() && viewMonth <= today.getMonth());
+
   const handlePrevMonth = () => {
+    if (isAtCurrentOrPastMonth) return;
     if (viewMonth === 0) {
       setViewMonth(11);
       setViewYear(viewYear - 1);
@@ -429,7 +432,9 @@ export default function CampaignSchedulingCalendar({
               variant="outline"
               size="sm"
               onClick={handlePrevMonth}
-              className="h-8 w-8 p-0 rounded-lg"
+              disabled={isAtCurrentOrPastMonth}
+              className={`h-8 w-8 p-0 rounded-lg ${isAtCurrentOrPastMonth ? 'opacity-30 cursor-not-allowed' : ''}`}
+              title={isAtCurrentOrPastMonth ? "No se pueden seleccionar meses anteriores al actual" : "Mes anterior"}
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>

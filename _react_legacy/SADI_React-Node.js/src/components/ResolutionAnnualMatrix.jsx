@@ -120,10 +120,34 @@ export default function ResolutionAnnualMatrix({
     loadInitialData();
   }, []);
 
+  // Constantes de Fecha Real
+  const CURRENT_REAL_YEAR = 2026;
+  const CURRENT_REAL_MONTH = 10; // Noviembre (0 = Ene ... 10 = Nov, 11 = Dic)
+
+  // Año activo (soporta únicamente: 2025 Año Pasado, 2026 Año Actual, 2027 Año Siguiente)
+  const [internalYear, setInternalYear] = useState(selectedYear || CURRENT_REAL_YEAR);
+  const activeYear = selectedYear || internalYear;
+
+  const handleYearChange = (newYear) => {
+    // Restricción del usuario: año actual, pasado o siguiente ("no mas que eso")
+    if (newYear < CURRENT_REAL_YEAR - 1 || newYear > CURRENT_REAL_YEAR + 1) return;
+    setInternalYear(newYear);
+    if (typeof onYearChange === 'function') {
+      onYearChange(newYear);
+    }
+  };
+
+  // Helper para saber si un mes es anterior a la fecha actual (Noviembre 2026)
+  const isMonthPast = (year, mIdx) => {
+    if (year < CURRENT_REAL_YEAR) return true;
+    if (year === CURRENT_REAL_YEAR && mIdx < CURRENT_REAL_MONTH) return true;
+    return false;
+  };
+
   // 2. Generar la Ruta Anual de 365 días repartiendo por ventana de oportunidad clínica
   const roadmap365 = useMemo(() => {
-    return generateAnnualResolutionRoadmap(patients, selectedYear);
-  }, [patients, selectedYear]);
+    return generateAnnualResolutionRoadmap(patients, activeYear);
+  }, [patients, activeYear]);
 
   // Modal de Detalle de Día de la Ruta 3280 y Prompt IA
   const [selectedRoadmapDay, setSelectedRoadmapDay] = useState(null);
@@ -132,17 +156,17 @@ export default function ResolutionAnnualMatrix({
 
   // Helper para obtener los días del mes en roadmap365
   const getDaysForMonth = (mIdx) => {
-    const daysInMonth = new Date(selectedYear, mIdx + 1, 0).getDate();
+    const daysInMonth = new Date(activeYear, mIdx + 1, 0).getDate();
     const days = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const padD = String(d).padStart(2, '0');
       const padM = String(mIdx + 1).padStart(2, '0');
-      const iso = `${selectedYear}-${padM}-${padD}`;
+      const iso = `${activeYear}-${padM}-${padD}`;
       const dayData = roadmap365[iso] || {
         isoDate: iso,
         dayIndex: d,
         dayOfMonth: d,
-        isSunday: new Date(selectedYear, mIdx, d, 12, 0, 0).getDay() === 0,
+        isSunday: new Date(activeYear, mIdx, d, 12, 0, 0).getDay() === 0,
         callsResolucion: [],
         cursosVidaPresentes: new Set(),
         gruposRiesgoPresentes: new Set(),
@@ -252,6 +276,16 @@ export default function ResolutionAnnualMatrix({
     const mObj = MESES_TITULOS[monthIndex];
     const monthName = typeof mObj === 'string' ? mObj : (mObj?.nombre || `Mes ${monthIndex + 1}`);
 
+    // Bloqueo estricto: NO permitir programar campañas en meses pasados
+    if (mode === 'wizard' && isMonthPast(activeYear, monthIndex)) {
+      toast({
+        title: "⚠️ Periodo Histórico Finalizado",
+        description: `No es posible crear campañas en meses anteriores (${monthName} ${activeYear}). Ya nos encontramos en Noviembre de ${CURRENT_REAL_YEAR}; solo puedes programar campañas para el mes en curso o periodos futuros.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     setSelectedContext({
       type, // 'curso_vida' | 'grupo_riesgo'
       item,
@@ -260,8 +294,8 @@ export default function ResolutionAnnualMatrix({
     });
 
     const defaultName = type === 'curso_vida'
-      ? `Campaña ${item.nombre} - ${monthName} ${selectedYear}`
-      : `Campaña Control: ${item.nombre} - ${monthName} ${selectedYear}`;
+      ? `Campaña ${item.nombre} - ${monthName} ${activeYear}`
+      : `Campaña Control: ${item.nombre} - ${monthName} ${activeYear}`;
 
     setCampaignName(defaultName);
     setWizardStep(1);
@@ -427,7 +461,51 @@ export default function ResolutionAnnualMatrix({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          {/* 1. Selector de Año: Pasado (2025), Actual (2026), Siguiente (2027) */}
+          <div className="bg-slate-800/90 p-1 rounded-2xl border border-slate-700 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => handleYearChange(CURRENT_REAL_YEAR - 1)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                activeYear === CURRENT_REAL_YEAR - 1
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              }`}
+              title="Ver Cronograma del Año Pasado (2025)"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>2025 (Año Pasado)</span>
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => handleYearChange(CURRENT_REAL_YEAR)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
+                activeYear === CURRENT_REAL_YEAR
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              }`}
+              title="Ver Cronograma del Año Actual (2026)"
+            >
+              <span>2026 (Año Actual)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleYearChange(CURRENT_REAL_YEAR + 1)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                activeYear === CURRENT_REAL_YEAR + 1
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+              }`}
+              title="Ver Cronograma del Año Siguiente (2027)"
+            >
+              <span>2027 (Año Siguiente)</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Selector de pestañas */}
           <div className="bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700 flex items-center text-xs font-bold">
             <button
@@ -652,32 +730,48 @@ export default function ResolutionAnnualMatrix({
                         const cellPatients = matrixCursosData[prog.id]?.[mIdx] || [];
                         const count = cellPatients.length;
                         const hitoClinico = prog.hitosMeses?.[mIdx] || 'Tamizaje preventivo';
+                        const isPast = isMonthPast(activeYear, mIdx);
 
                         return (
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('curso_vida', prog, mIdx, 'wizard')}
-                            className="p-1 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-blue-50/50 transition-colors relative group overflow-hidden"
+                            className={`p-1 text-center border-r border-slate-100 last:border-r-0 relative group overflow-hidden transition-colors ${
+                              isPast 
+                                ? 'cursor-pointer hover:bg-slate-100/80' 
+                                : 'cursor-pointer hover:bg-blue-50/50'
+                            }`}
                           >
                             <div 
                               className={`p-1.5 rounded-xl border text-[10px] transition-all flex flex-col justify-between min-h-[58px] overflow-hidden ${
-                                count > 0 
-                                  ? 'border-blue-200 text-slate-900 group-hover:border-blue-500 group-hover:shadow-sm'
-                                  : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
+                                isPast
+                                  ? 'bg-slate-100/70 border-slate-200 text-slate-400 opacity-60'
+                                  : count > 0 
+                                    ? 'border-blue-200 text-slate-900 group-hover:border-blue-500 group-hover:shadow-sm'
+                                    : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
                               }`}
-                              style={count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
+                              style={!isPast && count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
+                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : undefined}
                             >
                               <div className="text-[8.5px] line-clamp-2 text-slate-600 text-left font-medium leading-tight overflow-hidden">
                                 {hitoClinico}
                               </div>
                               <div className="flex items-center justify-between mt-1 pt-0.5 border-t border-slate-200/40">
                                 <span 
-                                  className="text-[9px] font-black px-1 py-0.2 rounded-full text-white truncate max-w-[70%]"
-                                  style={{ backgroundColor: count > 0 ? pal.colorHex : '#94a3b8' }}
+                                  className={`text-[9px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
+                                    isPast 
+                                      ? 'bg-slate-200 text-slate-500' 
+                                      : count > 0 ? 'text-white' : 'text-white bg-slate-400'
+                                  }`}
+                                  style={!isPast && count > 0 ? { backgroundColor: pal.colorHex } : {}}
                                 >
                                   {count} pac.
                                 </span>
-                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600 shrink-0" />
+                                {isPast ? (
+                                  <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Mes finalizado" />
+                                ) : (
+                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600 shrink-0" />
+                                )}
                               </div>
                             </div>
                           </td>
@@ -878,32 +972,48 @@ export default function ResolutionAnnualMatrix({
                         const count = cellPatients.length;
                         const milestone = rg.milestones?.[mIdx];
                         const hitoClinico = milestone?.hito || 'Control clínico';
+                        const isPast = isMonthPast(activeYear, mIdx);
 
                         return (
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('grupo_riesgo', rg, mIdx, 'wizard')}
-                            className="p-1 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-purple-50/50 transition-colors relative group overflow-hidden"
+                            className={`p-1 text-center border-r border-slate-100 last:border-r-0 relative group overflow-hidden transition-colors ${
+                              isPast 
+                                ? 'cursor-pointer hover:bg-slate-100/80' 
+                                : 'cursor-pointer hover:bg-purple-50/50'
+                            }`}
                           >
                             <div 
                               className={`p-1.5 rounded-xl border text-[10px] transition-all flex flex-col justify-between min-h-[58px] overflow-hidden ${
-                                count > 0 
-                                  ? 'border-purple-200 text-slate-900 group-hover:border-purple-500 group-hover:shadow-sm'
-                                  : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
+                                isPast
+                                  ? 'bg-slate-100/70 border-slate-200 text-slate-400 opacity-60'
+                                  : count > 0 
+                                    ? 'border-purple-200 text-slate-900 group-hover:border-purple-500 group-hover:shadow-sm'
+                                    : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
                               }`}
-                              style={count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
+                              style={!isPast && count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
+                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : undefined}
                             >
                               <div className="text-[8.5px] line-clamp-2 text-slate-600 text-left font-medium leading-tight overflow-hidden">
                                 {hitoClinico}
                               </div>
                               <div className="flex items-center justify-between mt-1 pt-0.5 border-t border-purple-200/40">
                                 <span 
-                                  className="text-[9px] font-black px-1 py-0.2 rounded-full text-white truncate max-w-[70%]"
-                                  style={{ backgroundColor: count > 0 ? pal.colorHex : '#94a3b8' }}
+                                  className={`text-[9px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
+                                    isPast 
+                                      ? 'bg-slate-200 text-slate-500' 
+                                      : count > 0 ? 'text-white' : 'text-white bg-slate-400'
+                                  }`}
+                                  style={!isPast && count > 0 ? { backgroundColor: pal.colorHex } : {}}
                                 >
                                   {count} pac.
                                 </span>
-                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700 shrink-0" />
+                                {isPast ? (
+                                  <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Mes finalizado" />
+                                ) : (
+                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700 shrink-0" />
+                                )}
                               </div>
                             </div>
                           </td>

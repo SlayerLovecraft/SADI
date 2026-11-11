@@ -221,72 +221,65 @@ const Layout = ({ children }) => {
         )}
       </AnimatePresence>
 
-      {/* BOTÓN BURGER FLOTANTE FIJO TODO EL TIEMPO EN CUALQUIER LADO DE LA PANTALLA */}
-      {!sidebarOpen && (
-        <div className="fixed left-3.5 top-2.5 z-40">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setSidebarOpen(true)}
-            className="rounded-xl border-blue-200 bg-white/95 hover:bg-blue-50 text-blue-700 shadow-md shadow-blue-500/10 backdrop-blur-md shrink-0 h-9 w-9 transition-all hover:scale-105 active:scale-95"
-            aria-label="Abrir Menú de Navegación"
-            title="Abrir Menú SADI (Fijo)"
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
-        </div>
-      )}
+      {/* CABECERA SUPERIOR FIJA TODO EL TIEMPO EN TODA LA PANTALLA */}
+      <header className="fixed top-0 left-0 right-0 w-full z-40 h-14 border-b border-gray-200/90 bg-white/95 backdrop-blur-md shadow-sm">
+        <div className="flex items-center justify-between px-3 sm:px-6 h-full w-full max-w-full">
+          {/* Izquierda: Botón Burger Menú (Fijo) + Hospital + Título */}
+          <div className="flex items-center gap-3 min-w-0">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-xl border-blue-200 bg-white hover:bg-blue-50 text-blue-700 shadow-xs shrink-0 h-9 w-9 transition-all hover:scale-105 active:scale-95"
+              aria-label="Abrir Menú de Navegación"
+              title="Abrir Menú SADI"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
 
-      {/* CONTENEDOR PRINCIPAL - 100% ANCHO DE PANTALLA */}
-      <main className="w-full min-h-screen min-w-0 flex flex-col">
-        {/* Cabecera superior compacta */}
-        <header className="sticky top-0 z-30 border-b border-gray-200/80 bg-white/95 backdrop-blur-md shadow-xs">
-          <div className="flex items-center justify-between px-3 sm:px-5 py-2.5 pl-14 sm:pl-16">
-            {/* Título de la sección */}
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 hidden sm:inline-block">
-                    {user?.hospital_name || 'Hospital SADI'}
-                  </span>
-                  <span className="text-[11px] text-gray-400 hidden sm:inline-block">•</span>
-                  <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
-                    {getPageTitle()}
-                  </h2>
-                </div>
-              </div>
-            </div>
-
-            {/* Acciones de Cabecera (Usuario & Salida) */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="hidden md:flex flex-col text-right">
-                <span className="text-xs font-bold text-gray-900 truncate max-w-[180px]">
-                  {user?.nombre || 'Personal Médico'}
-                </span>
-                <span className="text-[10px] text-gray-500 capitalize">
-                  {user?.role?.replace('_', ' ') || 'Coordinador'}
-                </span>
-              </div>
-
-              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-xs shrink-0">
-                {initials}
-              </div>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 sm:h-9 sm:w-9"
-                aria-label="Cerrar sesión"
-                title="Cerrar Sesión"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 hidden sm:inline-block shrink-0">
+                {user?.hospital_name || 'Hospital SADI'}
+              </span>
+              <span className="text-[11px] text-gray-400 hidden sm:inline-block">•</span>
+              <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
+                {getPageTitle()}
+              </h2>
             </div>
           </div>
-        </header>
 
+          {/* Derecha: Acciones de Usuario & Salida */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="hidden md:flex flex-col text-right">
+              <span className="text-xs font-bold text-gray-900 truncate max-w-[180px]">
+                {user?.nombre || 'Personal Médico'}
+              </span>
+              <span className="text-[10px] text-gray-500 capitalize">
+                {user?.role?.replace('_', ' ') || 'Coordinador'}
+              </span>
+            </div>
+
+            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-xs shrink-0">
+              {initials}
+            </div>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 h-8 w-8 sm:h-9 sm:w-9"
+              aria-label="Cerrar sesión"
+              title="Cerrar Sesión"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* CONTENEDOR PRINCIPAL - Con padding superior para compensar el header fijo */}
+      <main className="w-full min-h-screen min-w-0 flex flex-col pt-14">
         {/* CONTENIDO DE LA PÁGINA: Ocupa todo el ancho disponible */}
         <div className="flex-1 w-full min-w-0 p-2 sm:p-4 lg:p-6">
           {children}
