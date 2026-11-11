@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { 
+import {
   Send, Plus, Clock, CheckCircle, AlertCircle, Edit, Trash2, Loader2,
   Calendar, Layers, ShieldAlert, Settings, RotateCw, CheckCircle2,
   PhoneCall, UserX, ChevronRight, FileSpreadsheet, Eye, Play, Sparkles,
@@ -34,18 +34,18 @@ import { campaignService } from '@/services/campaignService';
 import { templateService } from '@/services/templateService';
 import { segmentService } from '@/services/segmentService';
 import { supabase } from '@/lib/supabase';
-import { 
-  ivrScheduleService, 
-  IVR_TIME_SLOTS, 
-  MAX_PATIENTS_PER_BATCH 
+import {
+  ivrScheduleService,
+  IVR_TIME_SLOTS,
+  MAX_PATIENTS_PER_BATCH
 } from '@/services/ivrScheduleService';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
-import { 
-  validateCampaignCallCapacity, 
-  generateAnnualResolutionRoadmap, 
-  DAILY_CALL_CAPACITY 
+import {
+  validateCampaignCallCapacity,
+  generateAnnualResolutionRoadmap,
+  DAILY_CALL_CAPACITY
 } from '@/services/callCapacityService';
 import { patientService } from '@/services/patientService';
 
@@ -114,10 +114,10 @@ const CampaignsPage = () => {
   const initializePage = async () => {
     try {
       setLoading(true);
-      
+
       let hId = null;
       const storedUser = localStorage.getItem('sadi_user');
-      
+
       if (storedUser) {
         try {
           const user = JSON.parse(storedUser);
@@ -126,25 +126,25 @@ const CampaignsPage = () => {
           console.error('Error parseando usuario:', e);
         }
       }
-      
+
       if (!hId) {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         if (!userError && user) {
           hId = user.user_metadata?.hospital_id || user.app_metadata?.hospital_id;
         }
       }
-      
+
       if (!hId) {
         hId = 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
       }
-      
+
       setHospitalId(hId);
-      
+
       await Promise.all([
         loadCampaigns(hId),
         loadDailySchedule()
       ]);
-      
+
     } catch (error) {
       console.error('Error inicializando página:', error);
       toast({
@@ -246,7 +246,7 @@ const CampaignsPage = () => {
     if (rawTipo === 'curso_vida' || rawTipo === 'cursos_vida' || rawTipo.includes('curso') || rawTipo.includes('vida')) {
       return 'curso_vida';
     }
-    
+
     // Fallback por texto del nombre o contexto
     const txt = `${c.nombre || ''} ${c.contexto_agente || ''} ${c.edad_curso_vida || ''} ${c.origen_nombre || ''}`.toLowerCase();
     if (txt.includes('materno') || txt.includes('cardio') || txt.includes('hipertens') || txt.includes('riesgo') || txt.includes('cancer') || txt.includes('mental') || txt.includes('oral') || txt.includes('respirat')) {
@@ -379,7 +379,7 @@ const CampaignsPage = () => {
           const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
           const filtered = localData.filter(c => c.id !== selectedCampaign.id);
           localStorage.setItem('sadi_campaigns_v2', JSON.stringify(filtered));
-        } catch (e) {}
+        } catch (e) { }
       } else {
         await campaignService.delete(selectedCampaign.id);
       }
@@ -529,7 +529,7 @@ const CampaignsPage = () => {
       return i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano';
     }
     const matchSlot = i.slotId === selectedSlotId;
-    const matchSearch = batchSearchTerm === '' || 
+    const matchSearch = batchSearchTerm === '' ||
       (i.nombre || '').toLowerCase().includes(batchSearchTerm.toLowerCase()) ||
       (i.documento || '').includes(batchSearchTerm) ||
       (i.telefono || '').includes(batchSearchTerm);
@@ -585,11 +585,10 @@ const CampaignsPage = () => {
           <div className="flex flex-wrap items-center gap-3">
             {/* BADGE DE MODO DE EMISIÓN */}
             <div className="text-right">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
-                config.isLiveEnabled 
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' 
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${config.isLiveEnabled
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-              }`}>
+                }`}>
                 <span className={`w-2 h-2 rounded-full ${config.isLiveEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
                 {config.isLiveEnabled ? 'EN VIVO AUTOMÁTICO' : 'MODO STANDBY SEGURO'}
               </span>
@@ -601,15 +600,14 @@ const CampaignsPage = () => {
         {/* NAVEGACIÓN PRINCIPAL: 4 PASOS IDÉNTICOS AL CRONOGRAMA                     */}
         {/* ========================================================================= */}
         <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
-          
+
           {/* PASO 1: CAMPAÑAS Y ROADMAP ANUAL */}
           <button
             onClick={() => setActiveTab('campanas')}
-            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
-              activeTab === 'campanas'
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'campanas'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-            }`}
+              }`}
           >
             <Layers className="w-4 h-4" />
             Campañas Organizadas en 2 Paquetes
@@ -621,11 +619,10 @@ const CampaignsPage = () => {
           {/* PASO 2: MONITOR DE TANDAS DIARIAS */}
           <button
             onClick={() => setActiveTab('tandas')}
-            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
-              activeTab === 'tandas'
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'tandas'
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-            }`}
+              }`}
           >
             <Clock className="w-4 h-4" />
             Monitor de Tandas Diarias (30 min)
@@ -637,11 +634,10 @@ const CampaignsPage = () => {
           {/* PASO 3: CASOS AISLADOS NO CONTACTADOS */}
           <button
             onClick={() => setActiveTab('casos_humanos')}
-            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
-              activeTab === 'casos_humanos'
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'casos_humanos'
                 ? 'bg-red-600 text-white shadow-md'
                 : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-            }`}
+              }`}
           >
             <ShieldAlert className="w-4 h-4" />
             Casos Aislados No Contactados
@@ -655,11 +651,10 @@ const CampaignsPage = () => {
           {/* PASO 4: PARÁMETROS DE AUTOMATIZACIÓN */}
           <button
             onClick={() => setActiveTab('config')}
-            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
-              activeTab === 'config'
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'config'
                 ? 'bg-gray-900 text-white shadow-md'
                 : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-            }`}
+              }`}
           >
             <Settings className="w-4 h-4" />
             Parámetros de Automatización
@@ -710,17 +705,15 @@ const CampaignsPage = () => {
                 <button
                   type="button"
                   onClick={() => setCampaignPackageFilter('cursos_vida')}
-                  className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${
-                    campaignPackageFilter === 'cursos_vida'
+                  className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${campaignPackageFilter === 'cursos_vida'
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                    }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
                   <span>📁 Paquete: Cursos de Vida</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                    campaignPackageFilter === 'cursos_vida' ? 'bg-blue-800 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${campaignPackageFilter === 'cursos_vida' ? 'bg-blue-800 text-white' : 'bg-gray-200 text-gray-700'
+                    }`}>
                     {countCursosVida}
                   </span>
                 </button>
@@ -728,17 +721,15 @@ const CampaignsPage = () => {
                 <button
                   type="button"
                   onClick={() => setCampaignPackageFilter('grupos_riesgo')}
-                  className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${
-                    campaignPackageFilter === 'grupos_riesgo'
+                  className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${campaignPackageFilter === 'grupos_riesgo'
                       ? 'bg-purple-700 text-white shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                    }`}
                 >
                   <HeartPulse className="w-3.5 h-3.5" />
                   <span>📁 Paquete: Grupos de Riesgo</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                    campaignPackageFilter === 'grupos_riesgo' ? 'bg-purple-900 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${campaignPackageFilter === 'grupos_riesgo' ? 'bg-purple-900 text-white' : 'bg-gray-200 text-gray-700'
+                    }`}>
                     {countGruposRiesgo}
                   </span>
                 </button>
@@ -746,11 +737,10 @@ const CampaignsPage = () => {
                 <button
                   type="button"
                   onClick={() => setCampaignPackageFilter('todos')}
-                  className={`px-3 py-2 rounded-lg transition-all ${
-                    campaignPackageFilter === 'todos'
+                  className={`px-3 py-2 rounded-lg transition-all ${campaignPackageFilter === 'todos'
                       ? 'bg-gray-800 text-white shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                    }`}
                 >
                   Todas ({campaigns.length})
                 </button>
@@ -792,7 +782,7 @@ const CampaignsPage = () => {
                 <p className="text-xs text-gray-500 mb-4 max-w-md mx-auto">
                   Para crear nuevas campañas con segmentación clínica, accede al Cronograma y haz clic en la celda del mes deseado.
                 </p>
-                <Button 
+                <Button
                   onClick={() => { window.location.hash = '#/cronograma'; }}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md gap-1.5"
                 >
@@ -819,11 +809,10 @@ const CampaignsPage = () => {
                         {/* Cabecera de la Tarjeta */}
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center space-x-3">
-                            <div className={`p-2.5 rounded-2xl border ${
-                              isGrupoRiesgo 
-                                ? 'bg-purple-50 border-purple-100 text-purple-700' 
+                            <div className={`p-2.5 rounded-2xl border ${isGrupoRiesgo
+                                ? 'bg-purple-50 border-purple-100 text-purple-700'
                                 : 'bg-blue-50 border-blue-100 text-blue-700'
-                            }`}>
+                              }`}>
                               {isGrupoRiesgo ? (
                                 <HeartPulse className="h-5 w-5 text-purple-600" />
                               ) : (
@@ -832,11 +821,10 @@ const CampaignsPage = () => {
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                  isGrupoRiesgo 
-                                    ? 'bg-purple-100 text-purple-800' 
+                                <span className={`px-2 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${isGrupoRiesgo
+                                    ? 'bg-purple-100 text-purple-800'
                                     : 'bg-blue-100 text-blue-800'
-                                }`}>
+                                  }`}>
                                   {isGrupoRiesgo ? 'Paquete Grupos de Riesgo' : 'Paquete Cursos de Vida'}
                                 </span>
                               </div>
@@ -861,7 +849,7 @@ const CampaignsPage = () => {
                             </span>
                             <span className="font-bold text-slate-800 text-right">
                               {campaign.config_frecuencia?.summary || campaign.fecha_programada || 'Fechas múltiples'}
-                              {campaign.fechas_ejecucion?.length > 1 && (
+                              {Array.isArray(campaign.fechas_ejecucion) && campaign.fechas_ejecucion.length > 1 && (
                                 <span className="ml-1 text-[10px] text-blue-600 font-semibold">
                                   ({campaign.fechas_ejecucion.length} días)
                                 </span>
@@ -884,7 +872,11 @@ const CampaignsPage = () => {
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-gray-500">Segmentación:</span>
                             <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
-                              {campaign.segmento_cursos?.join(', ') || campaign.segmento_riesgos?.join(', ') || campaign.origen_nombre || 'Resolución 3280'}
+                              {Array.isArray(campaign.segmento_cursos) && campaign.segmento_cursos.length > 0 
+                                ? campaign.segmento_cursos.join(', ') 
+                                : (Array.isArray(campaign.segmento_riesgos) && campaign.segmento_riesgos.length > 0 
+                                    ? campaign.segmento_riesgos.join(', ') 
+                                    : (campaign.origen_nombre || 'Resolución 3280'))}
                             </span>
                           </div>
 
@@ -921,7 +913,7 @@ const CampaignsPage = () => {
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
-                            <div 
+                            <div
                               className={`h-2 rounded-full transition-all ${isGrupoRiesgo ? 'bg-purple-600' : 'bg-blue-600'}`}
                               style={{ width: effectiveEstado === 'Completada' ? '100%' : effectiveEstado === 'Activa' ? '45%' : '5%' }}
                             />
@@ -945,7 +937,7 @@ const CampaignsPage = () => {
 
                         <div className="flex items-center gap-1.5">
                           {(effectiveEstado === 'Programada' || effectiveEstado === 'No Enviada') && (
-                            <Button 
+                            <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleSendNow(campaign)}
@@ -1050,11 +1042,10 @@ const CampaignsPage = () => {
                     <button
                       key={slot.id}
                       onClick={() => setSelectedSlotId(slot.id)}
-                      className={`p-2 rounded-xl border text-center transition-all ${
-                        isSel
+                      className={`p-2 rounded-xl border text-center transition-all ${isSel
                           ? 'bg-blue-600 text-white border-blue-700 shadow-sm ring-1 ring-blue-500'
                           : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700'
-                      }`}
+                        }`}
                     >
                       <div className="text-[11px] font-bold">{slot.hora}</div>
                       <div className={`text-[9px] mt-0.5 ${isSel ? 'text-blue-100' : 'text-gray-400'}`}>
@@ -1113,11 +1104,10 @@ const CampaignsPage = () => {
                         <div className="text-gray-500">Doc: {item.documento} • Tel: {item.telefono}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          item.estado === 'confirmada' ? 'bg-emerald-100 text-emerald-700' :
-                          item.estado === 'reagendada' ? 'bg-blue-100 text-blue-700' :
-                          item.estado === 'en_reintento' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.estado === 'confirmada' ? 'bg-emerald-100 text-emerald-700' :
+                            item.estado === 'reagendada' ? 'bg-blue-100 text-blue-700' :
+                              item.estado === 'en_reintento' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
                           {item.estado}
                         </span>
 
@@ -1184,15 +1174,14 @@ const CampaignsPage = () => {
                   <button
                     type="button"
                     onClick={handleToggleRetryUntilAnswered}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${
-                      config.retryUntilAnswered ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
-                    }`}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${config.retryUntilAnswered ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
                   >
                     {config.retryUntilAnswered ? 'ACTIVO' : 'LIMITADO'}
                   </button>
                 </div>
                 <span className="text-emerald-800 leading-relaxed block">
-                  {config.retryUntilAnswered 
+                  {config.retryUntilAnswered
                     ? 'Reintentar hasta que conteste: El motor reasigna las llamadas no contestadas a la siguiente tanda disponible durante el día.'
                     : 'Reintentos fijados a un límite manual de llamadas por paciente.'}
                 </span>
@@ -1313,15 +1302,14 @@ const CampaignsPage = () => {
                           key={franja}
                           type="button"
                           onClick={() => {
-                            setRelaunchFranjas(prev => 
+                            setRelaunchFranjas(prev =>
                               isSel ? prev.filter(f => f !== franja) : [...prev, franja]
                             );
                           }}
-                          className={`py-1 px-1.5 rounded-lg text-xs font-medium transition-all ${
-                            isSel
+                          className={`py-1 px-1.5 rounded-lg text-xs font-medium transition-all ${isSel
                               ? 'bg-emerald-600 text-white shadow-sm'
                               : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                          }`}
+                            }`}
                         >
                           {franja}
                         </button>

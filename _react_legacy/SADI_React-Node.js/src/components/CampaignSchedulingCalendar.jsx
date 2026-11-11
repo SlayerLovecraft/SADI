@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, 
   CheckCircle2, AlertCircle, Info, Sparkles 
@@ -87,24 +87,38 @@ export default function CampaignSchedulingCalendar({
   const [monthlyStartMonth, setMonthlyStartMonth] = useState(initialConfig?.mes !== undefined ? initialConfig.mes : defaultDateObj.getMonth());
   const [monthlyStartYear, setMonthlyStartYear] = useState(initialConfig?.year || defaultDateObj.getFullYear());
 
-  // Actualizar cuando cambie initialConfig
+  // Refs para prevenir loops infinitos de re-renderizado
+  const lastFechaInicioRef = useRef(initialConfig?.fechaInicio);
+  const lastMesRef = useRef(initialConfig?.mes);
+  const lastYearRef = useRef(initialConfig?.year);
+
+  // Actualizar cuando cambie initialConfig asegurando comparación por valor y no por referencia
   useEffect(() => {
-    if (initialConfig?.fechaInicio) {
-      setDailyStartDate(initialConfig.fechaInicio);
-      setWeeklyStartDate(initialConfig.fechaInicio);
-      const dt = new Date(initialConfig.fechaInicio + 'T12:00:00');
-      setViewYear(dt.getFullYear());
-      setViewMonth(dt.getMonth());
-      setMonthlyStartYear(dt.getFullYear());
-      setMonthlyStartMonth(dt.getMonth());
-      setMonthlyDay(dt.getDate());
-      setSelectedDayOfWeek(dt.getDay() === 0 ? 7 : dt.getDay());
-    } else if (initialConfig?.mes !== undefined) {
-      const targetY = initialConfig.year || today.getFullYear();
+    const newFecha = initialConfig?.fechaInicio;
+    const newMes = initialConfig?.mes;
+    const newYear = initialConfig?.year;
+
+    if (newFecha && newFecha !== lastFechaInicioRef.current) {
+      lastFechaInicioRef.current = newFecha;
+      setDailyStartDate(newFecha);
+      setWeeklyStartDate(newFecha);
+      const dt = new Date(newFecha + 'T12:00:00');
+      if (!isNaN(dt.getTime())) {
+        setViewYear(dt.getFullYear());
+        setViewMonth(dt.getMonth());
+        setMonthlyStartYear(dt.getFullYear());
+        setMonthlyStartMonth(dt.getMonth());
+        setMonthlyDay(dt.getDate());
+        setSelectedDayOfWeek(dt.getDay() === 0 ? 7 : dt.getDay());
+      }
+    } else if (newMes !== undefined && (newMes !== lastMesRef.current || newYear !== lastYearRef.current)) {
+      lastMesRef.current = newMes;
+      lastYearRef.current = newYear;
+      const targetY = newYear || today.getFullYear();
       setViewYear(targetY);
-      setViewMonth(initialConfig.mes);
+      setViewMonth(newMes);
     }
-  }, [initialConfig]);
+  }, [initialConfig?.fechaInicio, initialConfig?.mes, initialConfig?.year]);
 
   // Helper: Saber si una fecha es domingo
   const isSunday = (date) => date.getDay() === 0;
@@ -198,6 +212,9 @@ export default function CampaignSchedulingCalendar({
     return '';
   }, [frecuencia, scheduledDates, selectedDayOfWeek, semanasCount, monthlyDay, mesesCount]);
 
+  // Ref para evitar loops de notificación al padre si los datos son idénticos
+  const lastEmittedPayloadRef = useRef('');
+
   // Emitir cambios hacia el componente padre
   useEffect(() => {
     const isValid = scheduledDates.length > 0;
@@ -219,11 +236,20 @@ export default function CampaignSchedulingCalendar({
       esValido: isValid
     };
 
-    if (typeof onScheduleChange === 'function') {
-      onScheduleChange(payload);
-    }
-    if (typeof onChange === 'function') {
-      onChange(payload);
+    const signature = JSON.stringify({
+      f: frecuencia,
+      d: scheduledDates,
+      r: resumenTexto
+    });
+
+    if (signature !== lastEmittedPayloadRef.current) {
+      lastEmittedPayloadRef.current = signature;
+      if (typeof onScheduleChange === 'function') {
+        onScheduleChange(payload);
+      }
+      if (typeof onChange === 'function') {
+        onChange(payload);
+      }
     }
   }, [frecuencia, scheduledDates, resumenTexto]);
 

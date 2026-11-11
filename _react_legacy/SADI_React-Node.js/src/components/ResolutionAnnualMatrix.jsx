@@ -173,27 +173,38 @@ export default function ResolutionAnnualMatrix({
 
   // Helper: Campañas asociadas a una celda específica (por programa, mes y año)
   const getCellCampaigns = (type, item, monthIndex) => {
+    if (!Array.isArray(existingCampaigns)) return [];
     return existingCampaigns.filter(c => {
+      if (!c) return false;
+
       // 1. Coincidencia de tipo y programa
       let matchesItem = false;
       if (type === 'curso_vida') {
-        matchesItem = (c.tipo_origen === 'curso_vida' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
-          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item.nombre));
+        matchesItem = (c.tipo_origen === 'curso_vida' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
+          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item?.nombre));
       } else {
-        matchesItem = (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
-          (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item.nombre));
+        matchesItem = (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
+          (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item?.nombre));
       }
       if (!matchesItem) return false;
 
-      // 2. Coincidencia de año y mes
-      const dates = c.fechas_ejecucion || c.config_frecuencia?.selectedDates || [];
+      // 2. Coincidencia de año y mes de forma segura
+      const rawDates = Array.isArray(c.fechas_ejecucion)
+        ? c.fechas_ejecucion
+        : (Array.isArray(c.config_frecuencia?.selectedDates) ? c.config_frecuencia.selectedDates : []);
+      const dates = rawDates.filter(d => typeof d === 'string');
+
       const padM = String(monthIndex + 1).padStart(2, '0');
       const monthPrefix = `${activeYear}-${padM}`;
       const hasDateInMonth = dates.some(d => d.startsWith(monthPrefix));
 
+      const mTitle = typeof MESES_TITULOS[monthIndex] === 'string'
+        ? MESES_TITULOS[monthIndex]
+        : (MESES_TITULOS[monthIndex]?.nombre || '');
+
       const matchesYear = Number(c.ano) === Number(activeYear);
       const matchesMonth = c.mes_index === monthIndex ||
-        (typeof c.mes_objetivo === 'string' && c.mes_objetivo.toLowerCase().startsWith(MESES_TITULOS[monthIndex]?.slice(0, 3).toLowerCase()));
+        (typeof c.mes_objetivo === 'string' && mTitle && c.mes_objetivo.toLowerCase().startsWith(mTitle.slice(0, 3).toLowerCase()));
 
       return hasDateInMonth || (matchesYear && matchesMonth);
     });
@@ -204,24 +215,27 @@ export default function ResolutionAnnualMatrix({
     const iso = dayData.isoDate;
     
     // Filtrar llamadas de resolución si se abre desde una fila específica
-    let resCalls = dayData.callsResolucion || [];
+    let resCalls = Array.isArray(dayData.callsResolucion) ? dayData.callsResolucion : [];
     if (item && type === 'curso_vida') {
-      resCalls = resCalls.filter(c => c.cursoVidaId === item.id);
+      resCalls = resCalls.filter(c => c.cursoVidaId === item?.id);
     } else if (item && type === 'grupo_riesgo') {
-      resCalls = resCalls.filter(c => c.grupoRiesgoId === item.id);
+      resCalls = resCalls.filter(c => c.grupoRiesgoId === item?.id);
     }
 
-    // Filtrar campañas que tengan programada esta fecha
-    let dayCampaigns = existingCampaigns.filter(c => {
-      const dates = c.fechas_ejecucion || c.config_frecuencia?.selectedDates || [];
-      if (!dates.includes(iso)) return false;
+    // Filtrar campañas que tengan programada esta fecha de forma segura
+    let dayCampaigns = (Array.isArray(existingCampaigns) ? existingCampaigns : []).filter(c => {
+      if (!c) return false;
+      const rawDates = Array.isArray(c.fechas_ejecucion)
+        ? c.fechas_ejecucion
+        : (Array.isArray(c.config_frecuencia?.selectedDates) ? c.config_frecuencia.selectedDates : []);
+      if (!rawDates.includes(iso)) return false;
       if (!item) return true;
       if (type === 'curso_vida') {
-        return (c.tipo_origen === 'curso_vida' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
-          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item.nombre));
+        return (c.tipo_origen === 'curso_vida' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
+          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item?.nombre));
       } else {
-        return (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
-          (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item.nombre));
+        return (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
+          (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item?.nombre));
       }
     });
 
@@ -402,6 +416,37 @@ export default function ResolutionAnnualMatrix({
       return matrixRiesgosData[selectedContext.item.id]?.[selectedContext.monthIndex] || [];
     }
   }, [selectedContext, matrixCursosData, matrixRiesgosData]);
+
+  // Configuración estable memorizada para el calendario del Wizard
+  const initialCalendarConfig = useMemo(() => {
+    const targetMonth = selectedContext?.monthIndex ?? CURRENT_REAL_MONTH;
+    const targetYear = activeYear || CURRENT_REAL_YEAR;
+    let targetDate = selectedContext?.targetDateISO;
+
+    if (!targetDate) {
+      const isCurrentM = targetYear === CURRENT_REAL_YEAR && targetMonth === CURRENT_REAL_MONTH;
+      let startD = isCurrentM ? new Date().getDate() : 1;
+      const daysInM = new Date(targetYear, targetMonth + 1, 0).getDate();
+      for (let d = startD; d <= daysInM; d++) {
+        const dt = new Date(targetYear, targetMonth, d, 12, 0, 0);
+        if (dt.getDay() !== 0) {
+          const padM = String(targetMonth + 1).padStart(2, '0');
+          const padD = String(d).padStart(2, '0');
+          targetDate = `${targetYear}-${padM}-${padD}`;
+          break;
+        }
+      }
+      if (!targetDate) {
+        targetDate = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`;
+      }
+    }
+
+    return {
+      mes: targetMonth,
+      year: targetYear,
+      fechaInicio: targetDate
+    };
+  }, [selectedContext?.monthIndex, selectedContext?.targetDateISO, activeYear]);
 
   // Manejo del Wizard con Control de Aforo Diario (3.500 llamadas)
   const handleNextStep = () => {
@@ -1429,26 +1474,7 @@ export default function ResolutionAnnualMatrix({
 
                     <CampaignSchedulingCalendar
                       initialFrequency="diaria"
-                      initialConfig={{
-                        mes: selectedContext?.monthIndex ?? CURRENT_REAL_MONTH,
-                        year: activeYear || CURRENT_REAL_YEAR,
-                        fechaInicio: selectedContext?.targetDateISO || (() => {
-                          const targetMonth = selectedContext?.monthIndex ?? CURRENT_REAL_MONTH;
-                          const targetYear = activeYear || CURRENT_REAL_YEAR;
-                          const isCurrentM = targetYear === CURRENT_REAL_YEAR && targetMonth === CURRENT_REAL_MONTH;
-                          let startD = isCurrentM ? new Date().getDate() : 1;
-                          const daysInM = new Date(targetYear, targetMonth + 1, 0).getDate();
-                          for (let d = startD; d <= daysInM; d++) {
-                            const dt = new Date(targetYear, targetMonth, d, 12, 0, 0);
-                            if (dt.getDay() !== 0) {
-                              const padM = String(targetMonth + 1).padStart(2, '0');
-                              const padD = String(d).padStart(2, '0');
-                              return `${targetYear}-${padM}-${padD}`;
-                            }
-                          }
-                          return `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-01`;
-                        })()
-                      }}
+                      initialConfig={initialCalendarConfig}
                       onScheduleChange={(sched) => setCampaignSchedule(sched)}
                     />
                   </div>

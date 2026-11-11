@@ -23,6 +23,58 @@ import {
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
+class PageErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('⚠️ Error capturado por PageErrorBoundary de SADI:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-[50vh] flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl border border-red-200 shadow-lg p-8 max-w-lg text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Shield className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">
+              Se detectó una discrepancia en los datos clínicos
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              El sistema protegió la interfaz para evitar visualizaciones incompletas. Puedes recargar la sección de forma segura.
+            </p>
+            {this.state.error?.message && (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[10px] font-mono text-slate-600 text-left overflow-x-auto max-h-24">
+                {this.state.error.message}
+              </div>
+            )}
+            <div className="pt-2 flex justify-center gap-3">
+              <Button
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                  window.location.reload();
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs"
+              >
+                Recargar Sección
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const Layout = ({ children }) => {
   // Por requerimiento expreso del usuario, el menú es un burger plegable oculto (hide) por defecto
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -282,7 +334,9 @@ const Layout = ({ children }) => {
       <main className="w-full min-h-screen min-w-0 flex flex-col pt-14">
         {/* CONTENIDO DE LA PÁGINA: Ocupa todo el ancho disponible */}
         <div className="flex-1 w-full min-w-0 p-2 sm:p-4 lg:p-6">
-          {children}
+          <PageErrorBoundary>
+            {children}
+          </PageErrorBoundary>
         </div>
       </main>
     </div>
