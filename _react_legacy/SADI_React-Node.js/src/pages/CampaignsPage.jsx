@@ -42,14 +42,21 @@ import {
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
+import { 
+  validateCampaignCallCapacity, 
+  generateAnnualResolutionRoadmap, 
+  DAILY_CALL_CAPACITY 
+} from '@/services/callCapacityService';
+import { patientService } from '@/services/patientService';
 
-// 24 Franjas Horarias de 30 min (08:30 AM a 08:00 PM)
-const FRANJAS_HORARIAS_24 = [
-  '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM',
-  '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM',
-  '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM',
-  '05:30 PM', '06:00 PM', '06:30 PM', '07:00 PM', '07:30 PM', '08:00 PM'
+// Horarios autorizados: 10 Horas (08:00 AM a 06:00 PM • 350 llamadas/hora = 3.500/día)
+const FRANJAS_HORARIAS_OPERATIVAS = [
+  '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM',
+  '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM',
+  '05:00 PM', '05:30 PM', '06:00 PM'
 ];
+const FRANJAS_HORARIAS_24 = FRANJAS_HORARIAS_OPERATIVAS;
 
 const CampaignsPage = () => {
   const { toast } = useToast();
@@ -63,10 +70,16 @@ const CampaignsPage = () => {
 
   // Estados de Campañas
   const [campaigns, setCampaigns] = useState([]);
+  const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [campaignStatusFilter, setCampaignStatusFilter] = useState('todos');
   const [campaignSearchTerm, setCampaignSearchTerm] = useState('');
+
+  // Roadmap 365 días para validar aforo GSM conjunto (Resolución 3280 + Campañas)
+  const roadmap365 = useMemo(() => {
+    return generateAnnualResolutionRoadmap(patients);
+  }, [patients]);
 
   // Modales
   const [showRelaunchDialog, setShowRelaunchDialog] = useState(false);
@@ -136,10 +149,20 @@ const CampaignsPage = () => {
       
       setHospitalId(hId);
       
-      await Promise.all([
+      const [,, ptsResult] = await Promise.all([
         loadCampaigns(hId),
-        loadDailySchedule()
+        loadDailySchedule(),
+        patientService.getAll(hId).catch(err => {
+          console.error('Error cargando pacientes:', err);
+          return [];
+        })
       ]);
+
+      if (ptsResult && Array.isArray(ptsResult)) {
+        setPatients(ptsResult);
+      } else if (ptsResult?.data && Array.isArray(ptsResult.data)) {
+        setPatients(ptsResult.data);
+      }
       
     } catch (error) {
       console.error('Error inicializando página:', error);
@@ -296,6 +319,24 @@ const CampaignsPage = () => {
       toast({
         title: "Fechas requeridas",
         description: "Por favor selecciona al menos una fecha en el calendario antes de relanzar.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validación estricta de cupo diario acumulado (3.500 llamadas/día • 08:00 AM - 06:00 PM)
+    const patientCount = selectedCampaign.pacientes_asignados || (selectedCampaign.segment_ids?.length) || 56;
+    const capacityCheck = validateCampaignCallCapacity(
+      relaunchSchedule.selectedDates,
+      patientCount,
+      roadmap365,
+      campaigns
+    );
+
+    if (!capacityCheck.allowed) {
+      toast({
+        title: "⚠️ Aforo GSM Excedido",
+        description: capacityCheck.message,
         variant: "destructive"
       });
       return;
@@ -1154,9 +1195,9 @@ const CampaignsPage = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
-                <span className="font-bold text-blue-950 block mb-1">Franjas de Operación:</span>
+                <span className="font-bold text-blue-950 block mb-1">Franjas y Aforo Operativo GSM:</span>
                 <span className="text-blue-800 leading-relaxed block">
-                  <strong>24 Tandas de 30 minutos</strong> (08:30 AM a 08:00 PM). Capacidad de hasta <strong>768 llamadas/día</strong> con el Gateway GSM de 32 canales.
+                  <strong>10 Horas Operativas</strong> (08:00 AM a 06:00 PM). Capacidad máxima autorizada: <strong>350 llamadas/hora</strong> = <strong>3.500 llamadas/día</strong> con Gateway GSM OpenVox (32 puertos).
                 </span>
               </div>
 
@@ -1283,7 +1324,7 @@ const CampaignsPage = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      3. Horarios Permitidos (24 Intervalos de 30 min)
+                      3. Horarios Permitidos (08:00 AM - 06:00 PM • 350 llam/h)
                     </Label>
                     <span className="text-xs text-slate-500">{relaunchFranjas.length} franjas</span>
                   </div>

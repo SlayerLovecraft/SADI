@@ -3,8 +3,9 @@
 // 1. Cronograma Anual por Cursos de Vida (Res. 3280 de 2018) con iconos SVG dedicados
 // 2. Cronograma Anual por Grupos de Riesgo Priorizados con iconos SVG dedicados
 // - Conectado exclusivamente a los 56 pacientes REALES de Supabase (sin mocks)
-// - Wizard de Campañas con Paso 1: Calendario & Frecuencia (Diario, Semanal, Mensual)
-// - Segmentación cruzada (Cursos -> Riesgos | Riesgos -> Cursos)
+// - Regleta de 365 Días (365 cajones) por ventana clínica y código de colores
+// - Limitador de Capacidad GSM: 8:00 AM a 6:00 PM (10h x 350/h = 3.500 llamadas/día)
+// - Control de saldo residual y prevención de sobrecarga del Gateway OpenVox
 // ==============================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -15,14 +16,24 @@ import {
 } from '@/services/census400kService';
 import { GRUPOS_RIESGO_10 } from '@/services/gruposRiesgoCatalog';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
+import { CURSOS_VIDA_PALETTE, GRUPOS_RIESGO_PALETTE } from '@/services/clinicalPalettes';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
+import AnnualTimelineRuler from '@/components/AnnualTimelineRuler';
+import { 
+  generateAnnualResolutionRoadmap, 
+  validateCampaignCallCapacity, 
+  DAILY_CALL_CAPACITY,
+  OPERATING_HOURS_START,
+  OPERATING_HOURS_END 
+} from '@/services/callCapacityService';
 import { patientService } from '@/services/patientService';
 import { 
   Users, Calendar, Phone, Mail, MessageSquare, Send, 
   CheckCircle2, Clock, ChevronRight, X, AlertCircle,
   Activity, Stethoscope, RefreshCw, Download, Sparkles,
   ChevronLeft, ArrowRight, UserCheck, Layers, Eye, Plus,
-  Tag, Info, Zap, AlertTriangle, Building2, RotateCcw
+  Tag, Info, Zap, AlertTriangle, Building2, RotateCcw,
+  Gauge, ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -34,12 +45,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 
-// Horarios de salida autorizados: 8:30 AM a 8:00 PM (24 franjas de 30 min)
-const FRANJAS_HORARIAS_24 = [
-  '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM',
-  '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM',
-  '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM',
-  '05:30 PM', '06:00 PM', '06:30 PM', '07:00 PM', '07:30 PM', '08:00 PM'
+// Horarios de salida autorizados: 08:00 AM a 06:00 PM (10 Horas Operativas = 350/h = 3.500/día)
+const FRANJAS_HORARIAS_10H = [
+  '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
+  '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'
 ];
 
 export default function ResolutionAnnualMatrix({
@@ -52,6 +61,9 @@ export default function ResolutionAnnualMatrix({
   // Estados de datos reales
   const [patients, setPatients] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(true);
+
+  // Campañas existentes en localStorage para validar aforo acumulado
+  const [existingCampaigns, setExistingCampaigns] = useState([]);
 
   // Navegación entre pestañas de vista del cronograma
   const [activeTab, setActiveTab] = useState('ambos'); // 'ambos' | 'cursos_vida' | 'grupos_riesgo'
@@ -75,46 +87,52 @@ export default function ResolutionAnnualMatrix({
     summary: 'Diario (Lunes a Sábado)'
   });
   const [campaignName, setCampaignName] = useState('');
-  const [crossSegmentSelection, setCrossSegmentSelection] = useState([]); // Si viene de curso -> array de grupos de riesgo; si viene de grupo -> array de cursos
+  const [crossSegmentSelection, setCrossSegmentSelection] = useState([]);
   const [selectedChannels, setSelectedChannels] = useState({
     call: true,
     whatsapp: true,
     sms: false,
     email: false
   });
-  const [selectedFranjas, setSelectedFranjas] = useState(['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
+  const [selectedFranjas, setSelectedFranjas] = useState(['08:00 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
   const [retryUntilAnswer, setRetryUntilAnswer] = useState(true);
   const [maxRetries, setMaxRetries] = useState(3);
   const [sedeLugar, setSedeLugar] = useState('Sede Principal - Manizales (Caldas)');
   const [promptDirectriz, setPromptDirectriz] = useState('');
 
-  // 1. Cargar los 56 pacientes reales desde Supabase
+  // 1. Cargar los 56 pacientes reales desde Supabase y campañas previas
   useEffect(() => {
-    async function loadRealPatients() {
+    async function loadInitialData() {
       setLoadingPatients(true);
       try {
         const data = await patientService.getAll();
         setPatients(Array.isArray(data) ? data : []);
+
+        const stored = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+        setExistingCampaigns(Array.isArray(stored) ? stored : []);
       } catch (err) {
-        console.error('Error cargando pacientes reales para cronograma:', err);
+        console.error('Error cargando datos para cronograma:', err);
         setPatients([]);
       } finally {
         setLoadingPatients(false);
       }
     }
-    loadRealPatients();
+    loadInitialData();
   }, []);
 
-  // 2. Mapeo de pacientes a Cursos de Vida y Meses
+  // 2. Generar la Ruta Anual de 365 días repartiendo por ventana de oportunidad clínica
+  const roadmap365 = useMemo(() => {
+    return generateAnnualResolutionRoadmap(patients, selectedYear);
+  }, [patients, selectedYear]);
+
+  // 3. Mapeo de pacientes a Cursos de Vida y Meses
   const matrixCursosData = useMemo(() => {
-    // Inicializar matriz: 10 programas x 12 meses
     const grid = {};
     PROGRAMAS_3280.forEach(prog => {
       grid[prog.id] = Array.from({ length: 12 }, () => []);
     });
 
     patients.forEach(pat => {
-      // Determinar curso de vida
       const cvText = (pat.ciclo_vida || pat.curso_vida || '').toLowerCase();
       const edad = Number(pat.edad) || 0;
       let matchedProgId = 'E'; // Default Adultez
@@ -126,10 +144,10 @@ export default function ResolutionAnnualMatrix({
       else if (cvText.includes('adultez') || (edad >= 29 && edad <= 59)) matchedProgId = 'E';
       else if (cvText.includes('vejez') || edad >= 60) matchedProgId = 'F';
 
-      // Mes de nacimiento (0 a 11) o mes asignado
       let birthMonth = 0;
-      if (pat.fecha_nacimiento) {
-        const parts = pat.fecha_nacimiento.split('-');
+      const fn = pat.fechaNacimiento || pat.fecha_nacimiento;
+      if (fn) {
+        const parts = fn.split('-');
         if (parts.length >= 2) {
           const m = parseInt(parts[1], 10);
           if (m >= 1 && m <= 12) birthMonth = m - 1;
@@ -146,7 +164,7 @@ export default function ResolutionAnnualMatrix({
     return grid;
   }, [patients]);
 
-  // 3. Mapeo de pacientes a Grupos de Riesgo y Meses
+  // 4. Mapeo de pacientes a Grupos de Riesgo y Meses
   const matrixRiesgosData = useMemo(() => {
     const grid = {};
     GRUPOS_RIESGO_10.forEach(rg => {
@@ -154,38 +172,27 @@ export default function ResolutionAnnualMatrix({
     });
 
     patients.forEach(pat => {
-      const cond = (pat.condicion || pat.grupo_riesgo || pat.diagnostico || '').toLowerCase();
-      let matchedRgId = 'cardiovascular'; // Default predominante
+      const gr = (pat.grupo_riesgo || pat.condicion || pat.diagnostico || '').toLowerCase();
+      let matchedRgId = 2; // Cardiovascular default
 
-      if (cond.includes('materno') || cond.includes('gestan') || cond.includes('perinatal') || cond.includes('embarazo')) {
-        matchedRgId = 'materno_perinatal';
-      } else if (cond.includes('cardio') || cond.includes('hipertens') || cond.includes('diabet') || cond.includes('hta')) {
-        matchedRgId = 'cardiovascular';
-      } else if (cond.includes('respirat') || cond.includes('epoc') || cond.includes('asma')) {
-        matchedRgId = 'respiratorio';
-      } else if (cond.includes('cancer') || cond.includes('oncol') || cond.includes('tumor')) {
-        matchedRgId = 'cancer';
-      } else if (cond.includes('mental') || cond.includes('depres') || cond.includes('ansiedad')) {
-        matchedRgId = 'mental';
-      } else if (cond.includes('infecc') || cond.includes('tbc') || cond.includes('vih') || cond.includes('chagas')) {
-        matchedRgId = 'infecciosas';
-      } else if (cond.includes('huerfan') || cond.includes('rara')) {
-        matchedRgId = 'huerfanas';
-      } else if (cond.includes('nutric') || cond.includes('desnutr') || cond.includes('obesidad')) {
-        matchedRgId = 'nutricional';
-      } else if (cond.includes('musculo') || cond.includes('artrit') || cond.includes('osteo')) {
-        matchedRgId = 'musculoesqueletico';
-      } else if (cond.includes('oral') || cond.includes('caries') || cond.includes('periodon')) {
-        matchedRgId = 'salud_oral';
-      } else {
-        // Asignación ponderada según ID del paciente para cobertura clínica balanceada
-        const modulo = (pat.id || 1) % 10;
-        matchedRgId = GRUPOS_RIESGO_10[modulo].id;
+      if (gr.includes('materno') || gr.includes('gestan')) matchedRgId = 1;
+      else if (gr.includes('cardio') || gr.includes('hipertens') || gr.includes('diabet')) matchedRgId = 2;
+      else if (gr.includes('respira') || gr.includes('epoc') || gr.includes('asma')) matchedRgId = 3;
+      else if (gr.includes('cáncer') || gr.includes('cancer') || gr.includes('tumor')) matchedRgId = 4;
+      else if (gr.includes('mental') || gr.includes('depres') || gr.includes('sustanc')) matchedRgId = 5;
+      else if (gr.includes('infec') || gr.includes('tbc') || gr.includes('vih')) matchedRgId = 6;
+      else if (gr.includes('huerfa') || gr.includes('rara')) matchedRgId = 7;
+      else if (gr.includes('nutric') || gr.includes('desnutr') || gr.includes('obesi')) matchedRgId = 8;
+      else if (gr.includes('musculo') || gr.includes('artrit') || gr.includes('osteo')) matchedRgId = 9;
+      else if (gr.includes('oral') || gr.includes('caries') || gr.includes('bucal')) matchedRgId = 10;
+      else {
+        matchedRgId = ((pat.id || 1) % 10) + 1;
       }
 
       let birthMonth = 0;
-      if (pat.fecha_nacimiento) {
-        const parts = pat.fecha_nacimiento.split('-');
+      const fn = pat.fechaNacimiento || pat.fecha_nacimiento;
+      if (fn) {
+        const parts = fn.split('-');
         if (parts.length >= 2) {
           const m = parseInt(parts[1], 10);
           if (m >= 1 && m <= 12) birthMonth = m - 1;
@@ -241,18 +248,38 @@ export default function ResolutionAnnualMatrix({
     }
   }, [selectedContext, matrixCursosData, matrixRiesgosData]);
 
-  // Manejo del Wizard
+  // Manejo del Wizard con Control de Aforo Diario (3.500 llamadas)
   const handleNextStep = () => {
     if (wizardStep === 1) {
-      if (campaignSchedule.selectedDates.length === 0) {
+      if (!campaignSchedule.selectedDates || campaignSchedule.selectedDates.length === 0) {
         toast({
           title: 'Fecha requerida',
-          description: 'Por favor selecciona al menos una fecha en el calendario antes de continuar.',
+          description: 'Por favor selecciona al menos una fecha hábil en el calendario antes de continuar.',
           variant: 'destructive'
         });
         return;
       }
+
+      // Validar capacidad si incluye llamadas
+      if (selectedChannels.call) {
+        const check = validateCampaignCallCapacity(
+          campaignSchedule.selectedDates,
+          activeCellPatients.length,
+          roadmap365,
+          existingCampaigns
+        );
+
+        if (!check.allowed) {
+          toast({
+            title: '⚠️ Límite de Capacidad GSM Excedido',
+            description: check.message,
+            variant: 'destructive'
+          });
+          return;
+        }
+      }
     }
+
     if (wizardStep === 2) {
       if (crossSegmentSelection.length === 0) {
         toast({
@@ -265,6 +292,7 @@ export default function ResolutionAnnualMatrix({
         return;
       }
     }
+
     if (wizardStep < 5) {
       setWizardStep(prev => prev + 1);
     }
@@ -278,6 +306,25 @@ export default function ResolutionAnnualMatrix({
 
   // Guardar y Lanzar Campaña
   const handleLaunchCampaign = () => {
+    // Validación final estricta de saldo residual
+    if (selectedChannels.call) {
+      const check = validateCampaignCallCapacity(
+        campaignSchedule.selectedDates,
+        activeCellPatients.length,
+        roadmap365,
+        existingCampaigns
+      );
+
+      if (!check.allowed) {
+        toast({
+          title: 'Aforo GSM Bloqueado',
+          description: check.message,
+          variant: 'destructive'
+        });
+        return;
+      }
+    }
+
     const newCampaign = {
       id: `camp_${Date.now()}`,
       tipo_origen: selectedContext.type, // 'curso_vida' | 'grupo_riesgo'
@@ -294,10 +341,8 @@ export default function ResolutionAnnualMatrix({
       directriz_ia: promptDirectriz,
       estado: 'programada',
       fecha_creacion: new Date().toISOString(),
-      // Configuración cronológica
       config_frecuencia: campaignSchedule,
       fechas_ejecucion: campaignSchedule.selectedDates,
-      // Segmentación cruzada
       segmento_cursos: selectedContext.type === 'curso_vida' ? [selectedContext.item.nombre] : crossSegmentSelection,
       segmento_riesgos: selectedContext.type === 'grupo_riesgo' ? [selectedContext.item.nombre] : crossSegmentSelection,
       pacientes_asignados: activeCellPatients.length,
@@ -305,51 +350,51 @@ export default function ResolutionAnnualMatrix({
       entregados: 0
     };
 
-    // Guardar en localStorage para persistencia y lectura en CampaignsPage.jsx
     try {
-      const existing = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
-      existing.unshift(newCampaign);
-      localStorage.setItem('sadi_campaigns_v2', JSON.stringify(existing));
+      const updated = [newCampaign, ...existingCampaigns];
+      setExistingCampaigns(updated);
+      localStorage.setItem('sadi_campaigns_v2', JSON.stringify(updated));
     } catch (e) {
-      console.error('Error guardando campaña en localStorage:', e);
+      console.error('Error guardando campaña:', e);
     }
 
     toast({
-      title: '¡Campaña Programada con Éxito!',
-      description: `"${campaignName}" iniciará el ${campaignSchedule.selectedDates[0] || 'pronto'} en ${sedeLugar}.`,
+      title: '¡Campaña Programada y Saldo Reservado!',
+      description: `"${campaignName}" agendada dentro de la capacidad de 3.500 llamadas/día (08:00 AM - 06:00 PM).`,
     });
 
     setIsModalOpen(false);
   };
 
   return (
-    <div className="space-y-8 animate-fadeIn">
+    <div className="space-y-10 animate-fadeIn">
       {/* HEADER PRINCIPAL */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-300 border border-blue-400/30">
               Resolución 3280 de 2018 • Cronograma Operativo Anual
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-              56 Pacientes Reales en Supabase
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5">
+              <Gauge className="w-3.5 h-3.5 text-emerald-400" />
+              Capacidad GSM: 3.500 llamadas/día (350/h • 08:00 AM a 06:00 PM)
             </span>
           </div>
-          <h2 className="text-2xl font-bold tracking-tight flex items-center gap-3">
-            <Calendar className="w-7 h-7 text-blue-400" />
-            Matriz Anual de Demanda Inducida y Citas Preventivas
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-3">
+            <Calendar className="w-8 h-8 text-blue-400" />
+            Matriz Anual y Regleta Longitudinal de Demanda Inducida
           </h2>
-          <p className="text-sm text-slate-300 mt-1 max-w-3xl">
-            Monitoreo clínico estructurado en dos dimensiones: <strong>Cursos de Vida</strong> (A-J) y <strong>Grupos de Riesgo Priorizados</strong> (1-10). Haz clic en cualquier celda para desplegar el cohort de pacientes o programar campañas automatizadas con reintentos.
+          <p className="text-xs md:text-sm text-slate-300 mt-1 max-w-3xl">
+            Monitoreo clínico estructurado en dos dimensiones con <strong>separación visual reforzada</strong>: Cursos de Vida (A-J) y Grupos de Riesgo Priorizados (1-10). Incluye la <strong>Regleta de 365 días</strong> para trazabilidad de cada llamada programada por ventana de resolución.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Selector de pestañas */}
-          <div className="bg-slate-800/80 p-1 rounded-xl border border-slate-700 flex items-center text-xs font-medium">
+          <div className="bg-slate-800/80 p-1.5 rounded-2xl border border-slate-700 flex items-center text-xs font-bold">
             <button
               onClick={() => setActiveTab('ambos')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
+              className={`px-3 py-1.5 rounded-xl transition-all ${
                 activeTab === 'ambos' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -357,7 +402,7 @@ export default function ResolutionAnnualMatrix({
             </button>
             <button
               onClick={() => setActiveTab('cursos_vida')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
+              className={`px-3 py-1.5 rounded-xl transition-all ${
                 activeTab === 'cursos_vida' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -365,7 +410,7 @@ export default function ResolutionAnnualMatrix({
             </button>
             <button
               onClick={() => setActiveTab('grupos_riesgo')}
-              className={`px-3 py-1.5 rounded-lg transition-all ${
+              className={`px-3 py-1.5 rounded-xl transition-all ${
                 activeTab === 'grupos_riesgo' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -376,7 +421,7 @@ export default function ResolutionAnnualMatrix({
           <Button
             variant="outline"
             onClick={onDownloadExcel}
-            className="bg-slate-800 hover:bg-slate-700 text-white border-slate-700 text-xs gap-1.5"
+            className="bg-slate-800 hover:bg-slate-700 text-white border-slate-700 text-xs gap-1.5 rounded-xl"
           >
             <Download className="w-3.5 h-3.5" />
             Exportar Excel
@@ -385,71 +430,86 @@ export default function ResolutionAnnualMatrix({
       </div>
 
       {/* ========================================================================= */}
-      {/* 1. CALENDARIO: CURSOS DE VIDA (A a J) */}
+      {/* 1. CALENDARIO: CURSOS DE VIDA (A a J) CON SEPARACIÓN VISUAL REFORZADA     */}
       {/* ========================================================================= */}
       {(activeTab === 'ambos' || activeTab === 'cursos_vida') && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-6">
+          <div className="p-6 border-b border-slate-200 bg-slate-50/70 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+              <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
                 1
               </div>
               <div>
-                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                  <span>Cronograma por Cursos de Vida (Res. 3280)</span>
-                  <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
+                <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                  <span>Cronograma por Cursos de Vida (Resolución 3280 de 2018)</span>
+                  <span className="text-xs font-semibold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-md">
                     10 Rutas Integrales de Atención
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Segmentación etaria obligatoria con hitos de tamizaje, laboratorio y citas médicas programadas por mes de nacimiento.
+                  Líneas separadas claramente por programa etario con colores unificados y badges clínicos.
                 </p>
               </div>
             </div>
-            <div className="text-xs text-slate-500 bg-blue-50/80 border border-blue-200/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <div className="text-xs text-blue-900 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl flex items-center gap-2">
               <Info className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>Haz clic en cualquier celda para activar el <strong>Wizard de Campaña</strong>.</span>
+              <span>Haz clic en cualquier celda para activar el <strong>Wizard con límite de aforo</strong>.</span>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto px-4">
             <table className="w-full text-left border-collapse min-w-[1100px]">
               <thead>
-                <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-600 font-semibold">
-                  <th className="p-3 w-64 sticky left-0 bg-slate-100 z-10 border-r border-slate-200">
+                <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
+                  <th className="p-3.5 w-64 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300">
                     Curso de Vida & Rango Etario
                   </th>
                   {MESES_TITULOS.map((mObj, idx) => {
                     const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
                     const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
                     return (
-                      <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
-                        <div>{abrev}</div>
-                        <div className="text-[9px] font-normal text-slate-400 capitalize">{nombreMes}</div>
+                      <th key={idx} className="p-2 text-center border-r border-slate-200 last:border-r-0">
+                        <div className="font-black text-slate-800">{abrev}</div>
+                        <div className="text-[9px] font-normal text-slate-500 capitalize">{nombreMes}</div>
                       </th>
                     );
                   })}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
+              <tbody className="divide-y-4 divide-slate-100 text-xs">
                 {PROGRAMAS_3280.map(prog => {
+                  const pal = CURSOS_VIDA_PALETTE[prog.id] || CURSOS_VIDA_PALETTE['E'];
                   const IconComponent = getCursoVidaIcon(prog.id);
+
                   return (
-                    <tr key={prog.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Columna Fija: Curso de Vida con Icono SVG */}
-                      <td className="p-3 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
-                        <div className="flex items-center gap-2.5">
-                          <div className="shrink-0 p-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700">
-                            <IconComponent className="w-5 h-5 text-blue-600" />
+                    <tr 
+                      key={prog.id} 
+                      className="hover:bg-slate-50/80 transition-colors border-b-4 border-slate-100 group/row"
+                    >
+                      {/* Columna Fija: Curso de Vida con Icono SVG en su color oficial */}
+                      <td className="p-3.5 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-[3px_0_6px_rgba(0,0,0,0.03)]">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="shrink-0 p-2.5 rounded-xl border flex items-center justify-center shadow-xs"
+                            style={{ 
+                              backgroundColor: `${pal.colorHex}18`, 
+                              borderColor: `${pal.colorHex}40`,
+                              color: pal.colorHex 
+                            }}
+                          >
+                            <IconComponent className="w-5 h-5" />
                           </div>
                           <div>
-                            <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                            <div className="font-black text-slate-900 text-xs flex items-center gap-1.5">
                               <span>{prog.nombre}</span>
-                              <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                              <span 
+                                className="text-[10px] font-black px-1.5 py-0.2 rounded text-white"
+                                style={{ backgroundColor: pal.colorHex }}
+                              >
                                 {prog.id}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-medium">
+                            <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
                               {prog.edad}
                             </div>
                           </div>
@@ -457,7 +517,7 @@ export default function ResolutionAnnualMatrix({
                       </td>
 
                       {/* 12 Meses */}
-                      {MESES_TITULOS.map((mes, mIdx) => {
+                      {MESES_TITULOS.map((mObj, mIdx) => {
                         const cellPatients = matrixCursosData[prog.id]?.[mIdx] || [];
                         const count = cellPatients.length;
                         const hitoClinico = prog.hitosMeses?.[mIdx] || 'Tamizaje preventivo';
@@ -466,23 +526,27 @@ export default function ResolutionAnnualMatrix({
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('curso_vida', prog, mIdx, 'wizard')}
-                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-blue-50/60 transition-colors relative group"
+                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-blue-50/50 transition-colors relative group"
                           >
-                            <div className={`p-1.5 rounded-lg border text-[11px] transition-all flex flex-col justify-between min-h-[58px] ${
-                              count > 0 
-                                ? 'bg-blue-50/70 border-blue-200 text-blue-900 group-hover:border-blue-400 group-hover:shadow-sm'
-                                : 'bg-slate-50/40 border-slate-100 text-slate-400 group-hover:border-slate-300'
-                            }`}>
-                              <div className="text-[9px] line-clamp-2 text-slate-500 text-left font-medium leading-tight">
+                            <div 
+                              className={`p-2 rounded-xl border text-[11px] transition-all flex flex-col justify-between min-h-[62px] ${
+                                count > 0 
+                                  ? 'border-blue-200 text-slate-900 group-hover:border-blue-500 group-hover:shadow-sm'
+                                  : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
+                              }`}
+                              style={count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
+                            >
+                              <div className="text-[9px] line-clamp-2 text-slate-600 text-left font-medium leading-tight">
                                 {hitoClinico}
                               </div>
-                              <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/50">
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                  count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'
-                                }`}>
+                              <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/40">
+                                <span 
+                                  className="text-[10px] font-black px-1.5 py-0.5 rounded-full text-white"
+                                  style={{ backgroundColor: count > 0 ? pal.colorHex : '#94a3b8' }}
+                                >
                                   {count} pac.
                                 </span>
-                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600" />
+                                <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600" />
                               </div>
                             </div>
                           </td>
@@ -494,75 +558,102 @@ export default function ResolutionAnnualMatrix({
               </tbody>
             </table>
           </div>
+
+          {/* ======================================================================= */}
+          {/* REGLETA ANUAL DE 365 DÍAS DEBAJO DE LOS MESES DE CURSOS DE VIDA         */}
+          {/* ======================================================================= */}
+          <div className="p-6 pt-2">
+            <AnnualTimelineRuler
+              type="cursos_vida"
+              year={selectedYear}
+              roadmap365={roadmap365}
+              onSelectDay={(day) => console.log('Día seleccionado:', day.isoDate)}
+            />
+          </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 2. CALENDARIO: GRUPOS DE RIESGO PRIORIZADOS (Debajo de Cursos de Vida) */}
+      {/* 2. CALENDARIO: GRUPOS DE RIESGO CON SEPARACIÓN VISUAL REFORZADA           */}
       {/* ========================================================================= */}
       {(activeTab === 'ambos' || activeTab === 'grupos_riesgo') && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-6">
+          <div className="p-6 border-b border-slate-200 bg-slate-50/70 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+              <div className="w-11 h-11 rounded-2xl bg-purple-700 text-white flex items-center justify-center font-black text-lg shadow-sm">
                 2
               </div>
               <div>
-                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
                   <span>Cronograma por Grupos de Riesgo Priorizados</span>
-                  <span className="text-xs font-normal text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-md">
+                  <span className="text-xs font-semibold text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-md">
                     10 Cohortes Clínicas Crónicas y Específicas
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Planes de intervención longitudinal y control clínico mensual de patologías crónicas, gestantes y salud mental.
+                  Líneas separadas de forma nítida con sus hitos inamovibles de control mensual y códigos CUPS.
                 </p>
               </div>
             </div>
-            <div className="text-xs text-purple-800 bg-purple-50/80 border border-purple-200/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <div className="text-xs text-purple-900 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl flex items-center gap-2">
               <Zap className="w-4 h-4 text-purple-600 shrink-0" />
               <span>Al crear campaña desde aquí, <strong>el Paso 1 te permitirá seleccionar los Cursos de Vida</strong> a intervenir.</span>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto px-4">
             <table className="w-full text-left border-collapse min-w-[1100px]">
               <thead>
-                <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-600 font-semibold">
-                  <th className="p-3 w-64 sticky left-0 bg-slate-100 z-10 border-r border-slate-200">
+                <tr className="bg-slate-100 border-b-2 border-slate-300 text-[11px] uppercase tracking-wider text-slate-700 font-bold">
+                  <th className="p-3.5 w-64 sticky left-0 bg-slate-100 z-10 border-r-2 border-slate-300">
                     Grupo de Riesgo Priorizado
                   </th>
                   {MESES_TITULOS.map((mObj, idx) => {
                     const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
                     const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
                     return (
-                      <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
-                        <div>{abrev}</div>
-                        <div className="text-[9px] font-normal text-slate-400 capitalize">{nombreMes}</div>
+                      <th key={idx} className="p-2 text-center border-r border-slate-200 last:border-r-0">
+                        <div className="font-black text-slate-800">{abrev}</div>
+                        <div className="text-[9px] font-normal text-slate-500 capitalize">{nombreMes}</div>
                       </th>
                     );
                   })}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
+              <tbody className="divide-y-4 divide-slate-100 text-xs">
                 {GRUPOS_RIESGO_10.map(rg => {
+                  const pal = GRUPOS_RIESGO_PALETTE[rg.id] || GRUPOS_RIESGO_PALETTE[2];
                   const IconComponent = getGrupoRiesgoIcon(rg.id);
+
                   return (
-                    <tr key={rg.id} className="hover:bg-purple-50/30 transition-colors">
-                      {/* Columna Fija: Grupo de Riesgo con Icono SVG */}
-                      <td className="p-3 sticky left-0 bg-white hover:bg-purple-50/30 z-10 border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
-                        <div className="flex items-center gap-2.5">
-                          <div className="shrink-0 p-1.5 rounded-lg bg-purple-50 border border-purple-100 text-purple-700">
-                            <IconComponent className="w-5 h-5 text-purple-600" />
+                    <tr 
+                      key={rg.id} 
+                      className="hover:bg-purple-50/30 transition-colors border-b-4 border-slate-100 group/row"
+                    >
+                      {/* Columna Fija: Grupo de Riesgo con Icono SVG en su color oficial */}
+                      <td className="p-3.5 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r-2 border-slate-200 shadow-[3px_0_6px_rgba(0,0,0,0.03)]">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="shrink-0 p-2.5 rounded-xl border flex items-center justify-center shadow-xs"
+                            style={{ 
+                              backgroundColor: `${pal.colorHex}18`, 
+                              borderColor: `${pal.colorHex}40`,
+                              color: pal.colorHex 
+                            }}
+                          >
+                            <IconComponent className="w-5 h-5" />
                           </div>
                           <div>
-                            <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                            <div className="font-black text-slate-900 text-xs flex items-center gap-1.5">
                               <span>{rg.nombre}</span>
-                              <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700">
-                                #{rg.numero}
+                              <span 
+                                className="text-[10px] font-black px-1.5 py-0.2 rounded text-white"
+                                style={{ backgroundColor: pal.colorHex }}
+                              >
+                                #{rg.id}
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-medium line-clamp-1">
+                            <div className="text-[11px] text-slate-500 font-semibold line-clamp-1 mt-0.5">
                               {rg.descripcion}
                             </div>
                           </div>
@@ -570,32 +661,37 @@ export default function ResolutionAnnualMatrix({
                       </td>
 
                       {/* 12 Meses */}
-                      {MESES_TITULOS.map((mes, mIdx) => {
+                      {MESES_TITULOS.map((mObj, mIdx) => {
                         const cellPatients = matrixRiesgosData[rg.id]?.[mIdx] || [];
                         const count = cellPatients.length;
-                        const hitoClinico = rg.hitosMeses?.[mIdx] || 'Control clínico';
+                        const milestone = rg.milestones?.[mIdx];
+                        const hitoClinico = milestone?.hito || 'Control clínico';
 
                         return (
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('grupo_riesgo', rg, mIdx, 'wizard')}
-                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-purple-50/60 transition-colors relative group"
+                            className="p-1.5 text-center border-r border-slate-100 last:border-r-0 cursor-pointer hover:bg-purple-50/50 transition-colors relative group"
                           >
-                            <div className={`p-1.5 rounded-lg border text-[11px] transition-all flex flex-col justify-between min-h-[58px] ${
-                              count > 0 
-                                ? 'bg-purple-50/70 border-purple-200 text-purple-900 group-hover:border-purple-400 group-hover:shadow-sm'
-                                : 'bg-slate-50/40 border-slate-100 text-slate-400 group-hover:border-slate-300'
-                            }`}>
+                            <div 
+                              className={`p-2 rounded-xl border text-[11px] transition-all flex flex-col justify-between min-h-[62px] ${
+                                count > 0 
+                                  ? 'border-purple-200 text-slate-900 group-hover:border-purple-500 group-hover:shadow-sm'
+                                  : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
+                              }`}
+                              style={count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
+                            >
                               <div className="text-[9px] line-clamp-2 text-slate-600 text-left font-medium leading-tight">
                                 {hitoClinico}
                               </div>
                               <div className="flex items-center justify-between mt-1 pt-1 border-t border-purple-200/40">
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                  count > 0 ? 'bg-purple-700 text-white' : 'bg-slate-200 text-slate-500'
-                                }`}>
+                                <span 
+                                  className="text-[10px] font-black px-1.5 py-0.5 rounded-full text-white"
+                                  style={{ backgroundColor: count > 0 ? pal.colorHex : '#94a3b8' }}
+                                >
                                   {count} pac.
                                 </span>
-                                <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700" />
+                                <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-purple-700" />
                               </div>
                             </div>
                           </td>
@@ -607,33 +703,35 @@ export default function ResolutionAnnualMatrix({
               </tbody>
             </table>
           </div>
+
+          {/* ======================================================================= */}
+          {/* REGLETA ANUAL DE 365 DÍAS DEBAJO DE LOS MESES DE GRUPOS DE RIESGO       */}
+          {/* ======================================================================= */}
+          <div className="p-6 pt-2">
+            <AnnualTimelineRuler
+              type="grupos_riesgo"
+              year={selectedYear}
+              roadmap365={roadmap365}
+              onSelectDay={(day) => console.log('Día de riesgo seleccionado:', day.isoDate)}
+            />
+          </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL PRINCIPAL: WIZARD DE CAMPAÑA (5 PASOS) O COHORTE DE PACIENTES */}
+      {/* MODAL PRINCIPAL: WIZARD DE CAMPAÑA (5 PASOS) O COHORTE DE PACIENTES       */}
       {/* ========================================================================= */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 rounded-3xl">
           {/* Header del Modal */}
-          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-6 text-white rounded-t-2xl">
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 text-white rounded-t-3xl">
             <div className="flex justify-between items-start">
               <div>
-                <span className="text-xs uppercase tracking-wider font-semibold px-2.5 py-1 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                <span className="text-xs uppercase tracking-wider font-bold px-2.5 py-1 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30">
                   {selectedContext?.type === 'curso_vida' ? 'Campaña desde Curso de Vida' : 'Campaña desde Grupo de Riesgo'}
                 </span>
                 <DialogTitle className="text-xl font-bold mt-2 flex items-center gap-2">
-                  {selectedContext?.type === 'curso_vida' ? (
-                    <>
-                      {React.createElement(getCursoVidaIcon(selectedContext.item.id), { className: 'w-6 h-6 text-blue-400' })}
-                      {selectedContext.item.nombre} ({selectedContext.monthName} {selectedYear})
-                    </>
-                  ) : (
-                    <>
-                      {React.createElement(getGrupoRiesgoIcon(selectedContext?.item.id), { className: 'w-6 h-6 text-purple-400' })}
-                      {selectedContext?.item.nombre} ({selectedContext?.monthName} {selectedYear})
-                    </>
-                  )}
+                  {selectedContext?.item?.nombre} ({selectedContext?.monthName} {selectedYear})
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-300 mt-1">
                   Cohorte objetivo: <strong>{activeCellPatients.length} pacientes reales</strong> en este corte mensual.
@@ -641,10 +739,10 @@ export default function ResolutionAnnualMatrix({
               </div>
 
               {/* Selector de modo: Wizard vs Pacientes */}
-              <div className="flex bg-slate-800 p-1 rounded-xl text-xs border border-slate-700">
+              <div className="flex bg-slate-800 p-1.5 rounded-2xl text-xs font-bold border border-slate-700">
                 <button
                   onClick={() => setModalMode('wizard')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-xl transition-all ${
                     modalMode === 'wizard' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -652,7 +750,7 @@ export default function ResolutionAnnualMatrix({
                 </button>
                 <button
                   onClick={() => setModalMode('cohort')}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-xl transition-all ${
                     modalMode === 'cohort' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -665,15 +763,15 @@ export default function ResolutionAnnualMatrix({
             {modalMode === 'wizard' && (
               <div className="mt-6 pt-4 border-t border-slate-800 grid grid-cols-5 gap-2 text-center text-xs">
                 {[
-                  { step: 1, label: '1. Calendario & Frecuencia' },
+                  { step: 1, label: '1. Calendario & Aforo' },
                   { step: 2, label: selectedContext?.type === 'curso_vida' ? '2. Grupos de Riesgo' : '2. Cursos de Vida' },
                   { step: 3, label: '3. Canales & Horarios' },
                   { step: 4, label: '4. Directriz & Sede' },
-                  { step: 5, label: '5. Resumen & Lanzamiento' }
+                  { step: 5, label: '5. Resumen & Saldo' }
                 ].map(s => (
                   <div 
                     key={s.step}
-                    className={`py-1.5 px-2 rounded-lg font-medium transition-all ${
+                    className={`py-1.5 px-2 rounded-xl font-bold transition-all ${
                       wizardStep === s.step 
                         ? 'bg-blue-500 text-white shadow-md' 
                         : wizardStep > s.step 
@@ -701,23 +799,23 @@ export default function ResolutionAnnualMatrix({
                 </div>
 
                 {activeCellPatients.length === 0 ? (
-                  <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
                     <p className="text-sm text-slate-500">No hay pacientes con fecha de nacimiento o cita fijada en este mes.</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto border border-slate-200 rounded-xl">
+                  <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto border border-slate-200 rounded-2xl">
                     {activeCellPatients.map(pat => (
-                      <div key={pat.id} className="p-3 hover:bg-slate-50 flex items-center justify-between text-xs">
+                      <div key={pat.id} className="p-3.5 hover:bg-slate-50 flex items-center justify-between text-xs">
                         <div>
-                          <div className="font-bold text-slate-800">{pat.nombre_completo || pat.nombre}</div>
-                          <div className="text-slate-500">CC: {pat.numero_documento} • Tel: {pat.telefono}</div>
+                          <div className="font-bold text-slate-800">{pat.nombre}</div>
+                          <div className="text-slate-500">CC: {pat.cc || pat.numero_documento} • Tel: {pat.telefono}</div>
                         </div>
                         <div className="text-right">
-                          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-medium border border-blue-200">
-                            {pat.ciclo_vida || pat.curso_vida || 'General'}
+                          <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                            {pat.curso_vida || pat.ciclo_vida || 'General'}
                           </span>
-                          <div className="text-[11px] text-slate-400 mt-0.5">
-                            Nacimiento: {pat.fecha_nacimiento || 'N/A'}
+                          <div className="text-[11px] text-slate-400 mt-1">
+                            Riesgo: {pat.grupo_riesgo || 'General'}
                           </div>
                         </div>
                       </div>
@@ -726,38 +824,36 @@ export default function ResolutionAnnualMatrix({
                 )}
               </div>
             ) : (
-              /* WIZARD DE CAMPAÑA - PASOS 1 A 5 */
+              /* WIZARD DE CAMPAÑA - PASOS 1 A 5 CON LIMITADOR DE 3.500 LLAMADAS */
               <div className="space-y-6">
                 {/* =================================================================== */}
-                {/* PASO 1: CALENDARIO & FRECUENCIA (PRIMERO QUE SE VE) */}
+                {/* PASO 1: CALENDARIO & FRECUENCIA CON VALIDACIÓN DE AFORO             */}
                 {/* =================================================================== */}
                 {wizardStep === 1 && (
                   <div className="space-y-4">
-                    <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 flex items-start gap-3">
-                      <Calendar className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-950 flex items-start gap-3">
+                      <Gauge className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                       <div>
-                        <strong>Paso 1: Planificación de Calendario y Frecuencia de Lanzamiento</strong>
+                        <strong>Paso 1: Planificación de Calendario & Control de Capacidad GSM</strong>
                         <p className="mt-0.5 text-blue-800">
-                          Selecciona si la campaña se ejecutará de forma <strong>Diaria</strong> (rango continuo), <strong>Semanal</strong> (día hábil fijo durante N semanas) o <strong>Mensual</strong> (día fijo durante N meses). Solo se habilitan días hábiles (Lunes a Sábado, sin domingos ni fechas pasadas).
+                          Horario de emisión: <strong>08:00 AM a 06:00 PM (10 horas)</strong>. Capacidad máxima: <strong>3.500 llamadas diarias</strong>. Las llamadas de la Resolución 3280 tienen prioridad inamovible y se descuentan del saldo disponible para campañas.
                         </p>
                       </div>
                     </div>
 
-                    {/* Selector de Calendario Integrado */}
                     <CampaignSchedulingCalendar
+                      initialFrequency="diaria"
                       onScheduleChange={(sched) => setCampaignSchedule(sched)}
                     />
                   </div>
                 )}
 
                 {/* =================================================================== */}
-                {/* PASO 2: SEGMENTACIÓN CRUZADA */}
-                {/* Si viene de Curso -> Selecciona Grupos de Riesgo */}
-                {/* Si viene de Riesgo -> Selecciona Cursos de Vida */}
+                {/* PASO 2: SEGMENTACIÓN CRUZADA                                        */}
                 {/* =================================================================== */}
                 {wizardStep === 2 && (
                   <div className="space-y-4">
-                    <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 text-xs text-purple-900">
+                    <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4 text-xs text-purple-950">
                       <strong>
                         {selectedContext?.type === 'curso_vida' 
                           ? 'Paso 2: Cruce con Grupos de Riesgo Priorizados' 
@@ -765,15 +861,15 @@ export default function ResolutionAnnualMatrix({
                       </strong>
                       <p className="mt-0.5 text-purple-800">
                         {selectedContext?.type === 'curso_vida'
-                          ? `Para el curso "${selectedContext.item.nombre}", selecciona qué grupos de riesgo priorizados recibirán esta campaña específica.`
+                          ? `Para el curso "${selectedContext.item.nombre}", selecciona qué grupos de riesgo priorizados recibirán esta campaña.`
                           : `Para el grupo de riesgo "${selectedContext.item.nombre}", selecciona a qué cursos de vida se aplicará esta campaña (un grupo de riesgo abarca varios cursos de vida).`}
                       </p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto p-1">
                       {selectedContext?.type === 'curso_vida' ? (
-                        /* MOSTRAR GRUPOS DE RIESGO */
                         GRUPOS_RIESGO_10.map(rg => {
+                          const pal = GRUPOS_RIESGO_PALETTE[rg.id] || GRUPOS_RIESGO_PALETTE[2];
                           const IconComponent = getGrupoRiesgoIcon(rg.id);
                           const isSelected = crossSegmentSelection.includes(rg.nombre);
                           return (
@@ -784,15 +880,16 @@ export default function ResolutionAnnualMatrix({
                                   isSelected ? prev.filter(x => x !== rg.nombre) : [...prev, rg.nombre]
                                 );
                               }}
-                              className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 ${
                                 isSelected
                                   ? 'bg-purple-50 border-purple-500 shadow-sm ring-1 ring-purple-500'
                                   : 'bg-white border-slate-200 hover:border-slate-300'
                               }`}
                             >
-                              <div className={`p-2 rounded-lg shrink-0 ${
-                                isSelected ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'
-                              }`}>
+                              <div 
+                                className="p-2.5 rounded-xl shrink-0 text-white"
+                                style={{ backgroundColor: pal.colorHex }}
+                              >
                                 <IconComponent className="w-5 h-5" />
                               </div>
                               <div className="flex-1">
@@ -808,8 +905,8 @@ export default function ResolutionAnnualMatrix({
                           );
                         })
                       ) : (
-                        /* MOSTRAR CURSOS DE VIDA */
                         PROGRAMAS_3280.map(cv => {
+                          const pal = CURSOS_VIDA_PALETTE[cv.id] || CURSOS_VIDA_PALETTE['E'];
                           const IconComponent = getCursoVidaIcon(cv.id);
                           const isSelected = crossSegmentSelection.includes(cv.nombre);
                           return (
@@ -820,15 +917,16 @@ export default function ResolutionAnnualMatrix({
                                   isSelected ? prev.filter(x => x !== cv.nombre) : [...prev, cv.nombre]
                                 );
                               }}
-                              className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                              className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 ${
                                 isSelected
                                   ? 'bg-blue-50 border-blue-500 shadow-sm ring-1 ring-blue-500'
                                   : 'bg-white border-slate-200 hover:border-slate-300'
                               }`}
                             >
-                              <div className={`p-2 rounded-lg shrink-0 ${
-                                isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
-                              }`}>
+                              <div 
+                                className="p-2.5 rounded-xl shrink-0 text-white"
+                                style={{ backgroundColor: pal.colorHex }}
+                              >
                                 <IconComponent className="w-5 h-5" />
                               </div>
                               <div className="flex-1">
@@ -849,18 +947,17 @@ export default function ResolutionAnnualMatrix({
                 )}
 
                 {/* =================================================================== */}
-                {/* PASO 3: CANALES, REINTENTOS Y HORARIOS (8:30 AM A 8:00 PM) */}
+                {/* PASO 3: CANALES, REINTENTOS Y HORARIOS (8:00 AM A 6:00 PM)          */}
                 {/* =================================================================== */}
                 {wizardStep === 3 && (
                   <div className="space-y-5">
-                    {/* Canales */}
                     <div>
                       <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-2">
                         Canales de Envío Autorizados
                       </label>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         {[
-                          { key: 'call', label: 'Llamada IA Vapi', sub: 'Puerto GSM 22', icon: Phone, color: 'blue' },
+                          { key: 'call', label: 'Llamada IA Vapi', sub: 'Gateway OpenVox GSM', icon: Phone, color: 'blue' },
                           { key: 'whatsapp', label: 'WhatsApp', sub: 'Plantilla Meta', icon: MessageSquare, color: 'emerald' },
                           { key: 'sms', label: 'Mensaje SMS', sub: 'Pasarela Móvil', icon: Send, color: 'purple' },
                           { key: 'email', label: 'Correo E-mail', sub: 'Notificación', icon: Mail, color: 'slate' }
@@ -872,7 +969,7 @@ export default function ResolutionAnnualMatrix({
                               key={c.key}
                               type="button"
                               onClick={() => setSelectedChannels(prev => ({ ...prev, [c.key]: !prev[c.key] }))}
-                              className={`p-3 rounded-xl border text-left transition-all ${
+                              className={`p-3 rounded-2xl border text-left transition-all ${
                                 isAct 
                                   ? 'bg-blue-50 border-blue-500 shadow-sm ring-1 ring-blue-500' 
                                   : 'bg-white border-slate-200 opacity-60'
@@ -887,13 +984,12 @@ export default function ResolutionAnnualMatrix({
                       </div>
                     </div>
 
-                    {/* Reintentar hasta que conteste */}
-                    <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
+                    <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <RotateCcw className="w-4 h-4 text-amber-600" />
                           <span className="font-bold text-xs text-amber-900">
-                            Reintentar automáticamente hasta que conteste
+                            Reintentar automáticamente hasta que conteste durante el día
                           </span>
                         </div>
                         <input
@@ -909,7 +1005,7 @@ export default function ResolutionAnnualMatrix({
                           <select
                             value={maxRetries}
                             onChange={(e) => setMaxRetries(Number(e.target.value))}
-                            className="bg-white border border-amber-300 rounded px-2 py-1 font-bold text-slate-800"
+                            className="bg-white border border-amber-300 rounded-xl px-2.5 py-1 font-bold text-slate-800"
                           >
                             <option value={1}>1 reintento</option>
                             <option value={2}>2 reintentos</option>
@@ -917,22 +1013,22 @@ export default function ResolutionAnnualMatrix({
                             <option value={5}>5 reintentos</option>
                           </select>
                           <span className="text-[11px] text-slate-500">
-                            (Se espaciarán automáticamente en las franjas horarias siguientes)
+                            (Se espaciarán automáticamente dentro de las 10 horas operativas)
                           </span>
                         </div>
                       )}
                     </div>
 
-                    {/* Horarios de Operación: 8:30 AM a 8:00 PM (24 Intervalos de 30 min) */}
+                    {/* Horarios de Operación: 8:00 AM a 6:00 PM */}
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                          Horarios Permitidos (24 Intervalos: 8:30 AM - 8:00 PM)
+                          Horarios Permitidos (10 Horas: 08:00 AM - 06:00 PM • 350 llamadas/hora)
                         </label>
                         <span className="text-xs text-slate-500">{selectedFranjas.length} franjas seleccionadas</span>
                       </div>
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-36 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
-                        {FRANJAS_HORARIAS_24.map(franja => {
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                        {FRANJAS_HORARIAS_10H.map(franja => {
                           const isSel = selectedFranjas.includes(franja);
                           return (
                             <button
@@ -943,7 +1039,7 @@ export default function ResolutionAnnualMatrix({
                                   isSel ? prev.filter(f => f !== franja) : [...prev, franja]
                                 );
                               }}
-                              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
+                              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all ${
                                 isSel
                                   ? 'bg-blue-600 text-white shadow-sm'
                                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -959,7 +1055,7 @@ export default function ResolutionAnnualMatrix({
                 )}
 
                 {/* =================================================================== */}
-                {/* PASO 4: DIRECTRIZ IA & LUGAR / SEDE */}
+                {/* PASO 4: DIRECTRIZ IA & LUGAR / SEDE                                 */}
                 {/* =================================================================== */}
                 {wizardStep === 4 && (
                   <div className="space-y-4">
@@ -971,7 +1067,7 @@ export default function ResolutionAnnualMatrix({
                         type="text"
                         value={campaignName}
                         onChange={(e) => setCampaignName(e.target.value)}
-                        className="w-full text-sm font-semibold p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-sm font-semibold p-3 border border-slate-300 rounded-2xl focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
@@ -984,7 +1080,7 @@ export default function ResolutionAnnualMatrix({
                         <select
                           value={sedeLugar}
                           onChange={(e) => setSedeLugar(e.target.value)}
-                          className="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white font-medium"
+                          className="w-full text-xs p-3 border border-slate-300 rounded-2xl bg-white font-medium"
                         >
                           <option value="Sede Principal - Manizales (Caldas)">Sede Principal - Manizales (Caldas)</option>
                           <option value="Sede Ambulatoria - Chinchiná">Sede Ambulatoria - Chinchiná</option>
@@ -1002,7 +1098,7 @@ export default function ResolutionAnnualMatrix({
                         rows={4}
                         value={promptDirectriz}
                         onChange={(e) => setPromptDirectriz(e.target.value)}
-                        className="w-full text-xs p-3 border border-slate-300 rounded-xl font-mono text-slate-800 focus:ring-2 focus:ring-blue-500"
+                        className="w-full text-xs p-3.5 border border-slate-300 rounded-2xl font-mono text-slate-800 focus:ring-2 focus:ring-blue-500"
                         placeholder="Ejemplo: Indicar al paciente que debe acudir en ayunas para la toma de glicemia y perfil lipídico..."
                       />
                     </div>
@@ -1010,21 +1106,21 @@ export default function ResolutionAnnualMatrix({
                 )}
 
                 {/* =================================================================== */}
-                {/* PASO 5: RESUMEN Y LANZAMIENTO */}
+                {/* PASO 5: RESUMEN, SALDO RESIDUAL Y LANZAMIENTO                       */}
                 {/* =================================================================== */}
                 {wizardStep === 5 && (
                   <div className="space-y-4">
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-900 space-y-2">
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs text-emerald-950 space-y-2">
                       <div className="flex items-center gap-2 font-bold text-sm text-emerald-900">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                        Campaña Lista para Programación Automatizada
+                        <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                        Campaña Validada Dentro del Cupo GSM Autorizado
                       </div>
                       <p>
-                        Revisa los parámetros antes de confirmar. La campaña será visible en la sección de Campañas y gestionada por el cronograma diario.
+                        El aforo diario no sobrepasa las 3.500 llamadas en ninguna fecha programada. Se garantizará la emisión fluida sin colapsar el Gateway GSM OpenVox.
                       </p>
                     </div>
 
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs space-y-3">
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-3">
                       <div className="flex justify-between border-b border-slate-200 pb-2">
                         <span className="text-slate-500">Campaña:</span>
                         <strong className="text-slate-800">{campaignName}</strong>
@@ -1034,13 +1130,17 @@ export default function ResolutionAnnualMatrix({
                         <strong className="text-slate-800">{campaignSchedule.summary} ({campaignSchedule.selectedDates.length} fechas hábiles)</strong>
                       </div>
                       <div className="flex justify-between border-b border-slate-200 pb-2">
+                        <span className="text-slate-500">Capacidad Máxima Diaria:</span>
+                        <strong className="text-emerald-700">3.500 llamadas/día (08:00 AM - 06:00 PM)</strong>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 pb-2">
                         <span className="text-slate-500">Segmentación Cruzada:</span>
                         <strong className="text-slate-800">
                           {crossSegmentSelection.join(', ') || 'Todo el segmento'}
                         </strong>
                       </div>
                       <div className="flex justify-between border-b border-slate-200 pb-2">
-                        <span className="text-slate-500">Horarios (8:30 AM - 8:00 PM):</span>
+                        <span className="text-slate-500">Horarios (08:00 AM - 06:00 PM):</span>
                         <strong className="text-slate-800">{selectedFranjas.length} franjas seleccionadas</strong>
                       </div>
                       <div className="flex justify-between border-b border-slate-200 pb-2">
@@ -1063,7 +1163,7 @@ export default function ResolutionAnnualMatrix({
                     <Button
                       variant="outline"
                       onClick={handlePrevStep}
-                      className="text-xs gap-1.5"
+                      className="text-xs gap-1.5 rounded-xl"
                     >
                       <ChevronLeft className="w-4 h-4" />
                       Anterior
@@ -1075,7 +1175,7 @@ export default function ResolutionAnnualMatrix({
                   {wizardStep < 5 ? (
                     <Button
                       onClick={handleNextStep}
-                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5"
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs gap-1.5 rounded-xl shadow-xs"
                     >
                       Siguiente
                       <ChevronRight className="w-4 h-4" />
@@ -1083,10 +1183,10 @@ export default function ResolutionAnnualMatrix({
                   ) : (
                     <Button
                       onClick={handleLaunchCampaign}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-md"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow-md rounded-xl font-bold"
                     >
                       <Sparkles className="w-4 h-4" />
-                      Confirmar y Programar Campaña
+                      Confirmar y Reservar Cupo GSM
                     </Button>
                   )}
                 </div>
