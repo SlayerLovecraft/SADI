@@ -53,128 +53,116 @@ export const AdultezIcon = ({ className = "w-5 h-5" }) => (
 
 export const VejezIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Bastón Geriátrico con Corazón de Longevidad */}
-    <path d="M14 4a3 3 0 1 0-6 0v16" />
-    <path d="M8 8h6" />
-    <path d="M18 10a2.5 2.5 0 0 0-3.5 0l-.5.5-.5-.5a2.5 2.5 0 0 0-3.5 3.5l4 4 4-4a2.5 2.5 0 0 0 0-3.5z" fill="currentColor" fillOpacity="0.2" />
+    {/* Bastón de Apoyo / Adulto Mayor */}
+    <path d="M18 5a3 3 0 0 0-6 0v14a2 2 0 0 0 4 0V11" fill="currentColor" fillOpacity="0.15" />
+    <circle cx="9" cy="6" r="3" stroke="currentColor" />
+    <path d="M6 19a4 4 0 0 1 6-3.5" />
   </svg>
 );
 
 export const PreventivoMujerIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Lazo Rosa de Prevención Ca Cuello / Mama */}
-    <path d="M12 2C8 2 7 6 7 9c0 4 5 11 5 13s5-9 5-13c0-3-1-7-5-7z" fill="currentColor" fillOpacity="0.15" />
-    <path d="M9 11l6 6M15 11l-6 6" />
+    {/* Símbolo Femenino / Cinta de Prevención Cáncer Rosa */}
+    <circle cx="12" cy="9" r="6" stroke="currentColor" fill="currentColor" fillOpacity="0.15" />
+    <path d="M12 15v7M9 19h6" />
   </svg>
 );
 
 export const PlanificacionFamiliarIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Escudo con Pareja / Salud Reproductiva */}
+    {/* Pareja / Escudo Familia */}
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="currentColor" fillOpacity="0.15" />
-    <circle cx="9" cy="10" r="1.5" />
-    <circle cx="15" cy="10" r="1.5" />
-    <path d="M7 15c0-1.5 1-2.5 2-2.5h6c1 0 2 1 2 2.5" />
+    <path d="M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0" />
+    <path d="M12 15v3" />
   </svg>
 );
 
 export const VacunacionIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Jeringa Médica PAI */}
-    <path d="m18 2 4 4" />
-    <path d="m17 7 3-3" />
-    <path d="M19 9 8.7 19.3c-1 1-2.5 1-3.4 0l-.6-.6c-1-1-1-2.5 0-3.4L15 5" fill="currentColor" fillOpacity="0.15" />
-    <path d="m9 11 4 4" />
-    <path d="m5 19-3 3" />
-    <path d="m14 4 6 6" />
+    {/* Jeringa / Vacuna PAI */}
+    <path d="m18 2 4 4-2 2-4-4 2-2zM15 5l-8 8v4h4l8-8-4-4zM2 22l4-4M10 10l-3 3" />
   </svg>
 );
 
 export const SaludOralIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Diente Molar con Brillo */}
+    {/* Diente Molar / Odontología */}
     <path d="M12 3c-3 0-5.5 1.5-6 4.5C5 12 7 19 8.5 21c1.5 2 2.5-1 3.5-3 1 2 2 5 3.5 3C17 19 19 12 18 7.5 17.5 4.5 15 3 12 3z" fill="currentColor" fillOpacity="0.15" />
-    <path d="M18 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z" fill="currentColor" />
   </svg>
 );
 
 /**
- * Iconos SVG para los 10 Grupos de Riesgo Priorizados
+ * Iconos SVG de alta definición para los 10 Grupos de Riesgo Priorizados
  */
 
 export const MaternoPerinatalIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Madre y Bebé */}
-    <circle cx="12" cy="6" r="3" fill="currentColor" fillOpacity="0.15" />
-    <path d="M8 21v-4a4 4 0 0 1 4-4h1a4 4 0 0 1 4 4v4" />
-    <circle cx="17" cy="13" r="2" fill="currentColor" />
+    {/* Gestante / Corazón Materno */}
+    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" fill="currentColor" fillOpacity="0.15" />
+    <circle cx="12" cy="11" r="2.5" fill="currentColor" />
   </svg>
 );
 
 export const CardiovascularIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Corazón con ECG */}
-    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" fill="currentColor" fillOpacity="0.15" />
-    <path d="M3.22 12H7l2-4 3 8 2-5 1.5 3h4.28" stroke="currentColor" strokeWidth="2.5" />
+    {/* Electrocardiograma / Pulso Cardíaco */}
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
   </svg>
 );
 
 export const RespiratorioIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     {/* Pulmones */}
-    <path d="M12 4v8" />
-    <path d="M12 8c-3-2-8-1-8 5 0 5 4 8 8 7" fill="currentColor" fillOpacity="0.15" />
-    <path d="M12 8c3-2 8-1 8 5 0 5-4 8-8 7" fill="currentColor" fillOpacity="0.15" />
+    <path d="M12 4v8M12 7c-2-2-5-3-7-3a5 5 0 0 0-5 5c0 6 5 11 9 11h3c4 0 9-5 9-11a5 5 0 0 0-5-5c-2 0-5 1-7 3" fill="currentColor" fillOpacity="0.15" />
   </svg>
 );
 
 export const CancerIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Lazo de Prevención Oncológica */}
-    <path d="M12 2C8 2 7 6 7 9c0 4 5 11 5 13s5-9 5-13c0-3-1-7-5-7z" fill="currentColor" fillOpacity="0.15" />
-    <circle cx="12" cy="9" r="2" />
+    {/* Lazo Oncológico */}
+    <path d="M12 2a5 5 0 0 0-5 5c0 2 1.5 4 3 6l-4 9h3l3-7 3 7h3l-4-9c1.5-2 3-4 3-6a5 5 0 0 0-5-5z" fill="currentColor" fillOpacity="0.15" />
   </svg>
 );
 
 export const MentalIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     {/* Cerebro / Salud Mental */}
-    <path d="M9.5 2A4.5 4.5 0 0 0 5 6.5c0 .77.2 1.5.55 2.14A4 4 0 0 0 4 12a4 4 0 0 0 2 3.46A4.5 4.5 0 0 0 10.5 20c.5 0 1-.08 1.5-.24" />
-    <path d="M14.5 2A4.5 4.5 0 0 1 19 6.5c0 .77-.2 1.5-.55 2.14A4 4 0 0 1 20 12a4 4 0 0 1-2 3.46A4.5 4.5 0 0 1 13.5 20c-.5 0-1-.08-1.5-.24" fill="currentColor" fillOpacity="0.15" />
-    <path d="M12 4v16" />
+    <path d="M9.5 2A4.5 4.5 0 0 0 5 6.5c0 .77.2 1.5.54 2.14A4.5 4.5 0 0 0 3 12.5a4.5 4.5 0 0 0 2.54 4.02C5.2 17.15 5 17.8 5 18.5A3.5 3.5 0 0 0 8.5 22h3V2h-2z" fill="currentColor" fillOpacity="0.15" />
+    <path d="M14.5 2A4.5 4.5 0 0 1 19 6.5c0 .77-.2 1.5-.54 2.14A4.5 4.5 0 0 1 21 12.5a4.5 4.5 0 0 1-2.54 4.02c.34.63.54 1.28.54 1.98A3.5 3.5 0 0 1 15.5 22h-3V2h2z" fill="currentColor" fillOpacity="0.15" />
   </svg>
 );
 
 export const InfecciosasIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Escudo con Microorganismo / Virus */}
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="currentColor" fillOpacity="0.15" />
-    <circle cx="12" cy="11" r="3" />
-    <path d="M12 7v1M12 14v1M8 11h1M15 11h1" />
+    {/* Microbio / Virus / Bacteria */}
+    <circle cx="12" cy="12" r="5" stroke="currentColor" fill="currentColor" fillOpacity="0.15" />
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12" />
   </svg>
 );
 
 export const HuerfanasIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Doble Hélice ADN */}
-    <path d="M4 18c6-2 10-6 16-8" />
-    <path d="M4 6c6 2 10 6 16 8" />
-    <path d="M7 7.5v9M12 9.5v5M17 11.5v5" />
+    {/* Cadena de ADN / Genética Rara */}
+    <path d="m2 15 5-5M9 8l5-5M2 9l5 5M9 16l5 5M15 2l5 5M15 22l5-5" />
+    <path d="m14 10 6-6M8 16l-6 6" />
+    <circle cx="12" cy="12" r="2" fill="currentColor" />
   </svg>
 );
 
 export const NutricionalIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* Manzana Saludable */}
-    <path d="M12 6c-2.5-3-7-2-7 2 0 6 7 13 7 13s7-7 7-13c0-4-4.5-5-7-2z" fill="currentColor" fillOpacity="0.15" />
-    <path d="M12 6V2c1.5 0 3 .5 3 2" />
+    {/* Manzana Saludable / Nutrición */}
+    <path d="M12 2a3 3 0 0 0-3 3c0 .3.05.6.14.88C6.6 6.3 4 8.8 4 12c0 4.5 3.5 9 8 9s8-4.5 8-9c0-3.2-2.6-5.7-5.14-6.12.1-.28.14-.58.14-.88a3 3 0 0 0-3-3z" fill="currentColor" fillOpacity="0.15" />
+    <path d="M12 5V2" />
   </svg>
 );
 
 export const MusculoesqueleticoIcon = ({ className = "w-5 h-5" }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     {/* Hueso / Articulación */}
-    <path d="M17 5a2 2 0 0 0-2-2 2 2 0 0 0-1.7 1L8.7 13A2 2 0 0 0 6 13a2 2 0 0 0-1 3.4l.6.6a2 2 0 0 0 3.4-1l4.6-9A2 2 0 0 0 15 7a2 2 0 0 0 2-2z" fill="currentColor" fillOpacity="0.15" />
+    <path d="M17.5 4a2.5 2.5 0 0 1 2.5 2.5c0 .6-.2 1.1-.5 1.5l-9.5 9.5c-.4.3-.9.5-1.5.5A2.5 2.5 0 0 1 6 15.5c0-.6.2-1.1.5-1.5l9.5-9.5c.4-.3.9-.5 1.5-.5z" fill="currentColor" fillOpacity="0.15" />
+    <circle cx="6.5" cy="17.5" r="2.5" />
+    <circle cx="17.5" cy="6.5" r="2.5" />
   </svg>
 );
 
@@ -186,37 +174,37 @@ export const SaludOralRiesgoIcon = ({ className = "w-5 h-5" }) => (
 );
 
 /**
- * Función utilitaria para obtener el icono de Curso de Vida por ID o clave
+ * Función utilitaria para obtener el componente de icono de Curso de Vida por ID o clave
  */
-export function getCursoVidaIcon(idOrKey, className = "w-5 h-5") {
+export function getCursoVidaIcon(idOrKey) {
   const norm = String(idOrKey || '').toLowerCase();
-  if (norm === 'a' || norm.includes('primera')) return <PrimeraInfanciaIcon className={className} />;
-  if (norm === 'b' || norm.includes('infancia')) return <InfanciaIcon className={className} />;
-  if (norm === 'c' || norm.includes('adolescen')) return <AdolescenciaIcon className={className} />;
-  if (norm === 'd' || norm.includes('juven')) return <JuventudIcon className={className} />;
-  if (norm === 'e' || norm.includes('adult')) return <AdultezIcon className={className} />;
-  if (norm === 'f' || norm.includes('vejez')) return <VejezIcon className={className} />;
-  if (norm === 'g' || norm.includes('mujer') || norm.includes('preventivo')) return <PreventivoMujerIcon className={className} />;
-  if (norm === 'h' || norm.includes('planificac')) return <PlanificacionFamiliarIcon className={className} />;
-  if (norm === 'i' || norm.includes('vacun')) return <VacunacionIcon className={className} />;
-  if (norm === 'j' || norm.includes('oral') || norm.includes('odonto')) return <SaludOralIcon className={className} />;
-  return <PrimeraInfanciaIcon className={className} />;
+  if (norm === 'a' || norm.includes('primera')) return PrimeraInfanciaIcon;
+  if (norm === 'b' || norm.includes('infancia')) return InfanciaIcon;
+  if (norm === 'c' || norm.includes('adolescen')) return AdolescenciaIcon;
+  if (norm === 'd' || norm.includes('juven')) return JuventudIcon;
+  if (norm === 'e' || norm.includes('adult')) return AdultezIcon;
+  if (norm === 'f' || norm.includes('vejez')) return VejezIcon;
+  if (norm === 'g' || norm.includes('mujer') || norm.includes('preventivo')) return PreventivoMujerIcon;
+  if (norm === 'h' || norm.includes('planificac')) return PlanificacionFamiliarIcon;
+  if (norm === 'i' || norm.includes('vacun')) return VacunacionIcon;
+  if (norm === 'j' || norm.includes('oral') || norm.includes('odonto')) return SaludOralIcon;
+  return PrimeraInfanciaIcon;
 }
 
 /**
- * Función utilitaria para obtener el icono de Grupo de Riesgo por código o nombre
+ * Función utilitaria para obtener el componente de icono de Grupo de Riesgo por código o nombre
  */
-export function getGrupoRiesgoIcon(idOrKey, className = "w-5 h-5") {
+export function getGrupoRiesgoIcon(idOrKey) {
   const norm = String(idOrKey || '').toLowerCase();
-  if (norm === '1' || norm.includes('materno') || norm.includes('parto')) return <MaternoPerinatalIcon className={className} />;
-  if (norm === '2' || norm.includes('cardio') || norm.includes('metabol') || norm.includes('renal')) return <CardiovascularIcon className={className} />;
-  if (norm === '3' || norm.includes('respira') || norm.includes('epoc') || norm.includes('asma')) return <RespiratorioIcon className={className} />;
-  if (norm === '4' || norm.includes('cancer') || norm.includes('onco') || norm.includes('mama')) return <CancerIcon className={className} />;
-  if (norm === '5' || norm.includes('mental') || norm.includes('sustanc')) return <MentalIcon className={className} />;
-  if (norm === '6' || norm.includes('infec') || norm.includes('vih') || norm.includes('tb')) return <InfecciosasIcon className={className} />;
-  if (norm === '7' || norm.includes('huerfa') || norm.includes('rara') || norm.includes('genet')) return <HuerfanasIcon className={className} />;
-  if (norm === '8' || norm.includes('nutric') || norm.includes('obesi')) return <NutricionalIcon className={className} />;
-  if (norm === '9' || norm.includes('musculo') || norm.includes('esquelet')) return <MusculoesqueleticoIcon className={className} />;
-  if (norm === '10' || norm.includes('oral') || norm.includes('orofac')) return <SaludOralRiesgoIcon className={className} />;
-  return <CardiovascularIcon className={className} />;
+  if (norm === '1' || norm.includes('materno') || norm.includes('parto')) return MaternoPerinatalIcon;
+  if (norm === '2' || norm.includes('cardio') || norm.includes('metabol') || norm.includes('renal')) return CardiovascularIcon;
+  if (norm === '3' || norm.includes('respira') || norm.includes('epoc') || norm.includes('asma')) return RespiratorioIcon;
+  if (norm === '4' || norm.includes('cancer') || norm.includes('onco') || norm.includes('mama')) return CancerIcon;
+  if (norm === '5' || norm.includes('mental') || norm.includes('sustanc')) return MentalIcon;
+  if (norm === '6' || norm.includes('infec') || norm.includes('vih') || norm.includes('tb')) return InfecciosasIcon;
+  if (norm === '7' || norm.includes('huerfa') || norm.includes('rara') || norm.includes('genet')) return HuerfanasIcon;
+  if (norm === '8' || norm.includes('nutric') || norm.includes('obesi')) return NutricionalIcon;
+  if (norm === '9' || norm.includes('musculo') || norm.includes('esquelet')) return MusculoesqueleticoIcon;
+  if (norm === '10' || norm.includes('oral') || norm.includes('orofac')) return SaludOralRiesgoIcon;
+  return CardiovascularIcon;
 }

@@ -1210,177 +1210,182 @@ const CampaignsPage = () => {
         {/* MODAL EXCLUSIVO DE RELANZAMIENTO DE CAMPAÑA                               */}
         {/* Solo permite editar: Fechas, Días, Semanas, Lugares y Frecuencia           */}
         {/* ========================================================================= */}
-        <Dialog open={showRelaunchDialog} onOpenChange={setShowRelaunchDialog}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
-            <div className="bg-gradient-to-r from-emerald-900 to-slate-900 p-6 text-white rounded-t-2xl">
-              <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                Relanzamiento de Campaña SADI
-              </span>
-              <DialogTitle className="text-xl font-bold mt-2 flex items-center gap-2">
-                <RotateCcw className="w-5 h-5 text-emerald-400" />
-                Relanzar Campaña: {selectedCampaign?.nombre}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-slate-300 mt-1">
-                La directriz clínica y segmentación original se conservan intactas. Configura el nuevo calendario de ejecución, frecuencia, lugar y horarios.
-              </DialogDescription>
-            </div>
+        {showRelaunchDialog && selectedCampaign && (
+          <Dialog open={showRelaunchDialog} onOpenChange={setShowRelaunchDialog}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
+              <div className="bg-gradient-to-r from-emerald-900 to-slate-900 p-6 text-white rounded-t-2xl">
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  Relanzamiento de Campaña SADI
+                </span>
+                <DialogTitle className="text-xl font-bold mt-2 flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-emerald-400" />
+                  Relanzar Campaña: {selectedCampaign?.nombre}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-300 mt-1">
+                  La directriz clínica y segmentación original se conservan intactas. Configura el nuevo calendario de ejecución, frecuencia, lugar y horarios.
+                </DialogDescription>
+              </div>
 
-            <div className="p-6 space-y-6">
-              {/* Información Fija de la Campaña Original */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2">
-                <div className="flex justify-between border-b border-slate-200 pb-1.5">
-                  <span className="text-slate-500">Segmentación Original:</span>
-                  <strong className="text-slate-800">
-                    {selectedCampaign?.segmento_cursos?.join(', ') || selectedCampaign?.segmento_riesgos?.join(', ') || selectedCampaign?.origen_nombre || 'General'}
-                  </strong>
-                </div>
-                <div className="flex justify-between border-b border-slate-200 pb-1.5">
-                  <span className="text-slate-500">Canales Autorizados:</span>
-                  <strong className="text-slate-800">
-                    {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 22), WhatsApp'}
-                  </strong>
-                </div>
-                {selectedCampaign?.directriz_ia && (
-                  <div className="text-[11px] text-slate-600 italic pt-1">
-                    "{selectedCampaign?.directriz_ia}"
+              <div className="p-6 space-y-6">
+                {/* Información Fija de la Campaña Original */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2">
+                  <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                    <span className="text-slate-500">Segmentación Original:</span>
+                    <strong className="text-slate-800">
+                      {selectedCampaign?.segmento_cursos?.join(', ') || selectedCampaign?.segmento_riesgos?.join(', ') || selectedCampaign?.origen_nombre || 'General'}
+                    </strong>
                   </div>
-                )}
-              </div>
-
-              {/* 1. SELECCIÓN DE FRECUENCIA & CALENDARIO (Diario, Semanal, Mensual) */}
-              <div className="space-y-3">
-                <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                  1. Nuevo Calendario & Frecuencia de Lanzamiento
-                </Label>
-                <CampaignSchedulingCalendar
-                  onScheduleChange={(sched) => setRelaunchSchedule(sched)}
-                />
-              </div>
-
-              {/* 2. LUGAR / SEDE DE ATENCIÓN */}
-              <div className="space-y-2">
-                <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                  2. Sede o Lugar de Atención Asignado
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-slate-400" />
-                  <select
-                    value={relaunchLugar}
-                    onChange={(e) => setRelaunchLugar(e.target.value)}
-                    className="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white font-medium"
-                  >
-                    <option value="Sede Principal - Manizales (Caldas)">Sede Principal - Manizales (Caldas)</option>
-                    <option value="Sede Ambulatoria - Chinchiná">Sede Ambulatoria - Chinchiná</option>
-                    <option value="Sede Villamaría - Centro Materno">Sede Villamaría - Centro Materno</option>
-                    <option value="Sede La Dorada - Especialidades">Sede La Dorada - Especialidades</option>
-                  </select>
+                  <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                    <span className="text-slate-500">Canales Autorizados:</span>
+                    <strong className="text-slate-800">
+                      {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 22), WhatsApp'}
+                    </strong>
+                  </div>
+                  {selectedCampaign?.directriz_ia && (
+                    <div className="text-[11px] text-slate-600 italic pt-1">
+                      "{selectedCampaign?.directriz_ia}"
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              {/* 3. HORARIOS DE TANDA (08:30 AM a 08:00 PM) */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    3. Horarios Permitidos (24 Intervalos de 30 min)
+                {/* 1. SELECCIÓN DE FRECUENCIA & CALENDARIO (Diario, Semanal, Mensual) */}
+                <div className="space-y-3">
+                  <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    1. Nuevo Calendario & Frecuencia de Lanzamiento
                   </Label>
-                  <span className="text-xs text-slate-500">{relaunchFranjas.length} franjas</span>
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-32 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
-                  {FRANJAS_HORARIAS_24.map(franja => {
-                    const isSel = relaunchFranjas.includes(franja);
-                    return (
-                      <button
-                        key={franja}
-                        type="button"
-                        onClick={() => {
-                          setRelaunchFranjas(prev => 
-                            isSel ? prev.filter(f => f !== franja) : [...prev, franja]
-                          );
-                        }}
-                        className={`py-1 px-1.5 rounded-lg text-xs font-medium transition-all ${
-                          isSel
-                            ? 'bg-emerald-600 text-white shadow-sm'
-                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {franja}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 4. REINTENTAR HASTA QUE CONTESTE */}
-              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <RotateCcw className="w-4 h-4 text-amber-600" />
-                    <span className="font-bold text-xs text-amber-900">
-                      Reintentar automáticamente hasta que conteste
-                    </span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={relaunchRetryUntilAnswer}
-                    onChange={(e) => setRelaunchRetryUntilAnswer(e.target.checked)}
-                    className="w-4 h-4 text-emerald-600 rounded"
+                  <CampaignSchedulingCalendar
+                    initialFrequency={selectedCampaign?.config_frecuencia?.frequency || 'diaria'}
+                    onScheduleChange={(sched) => setRelaunchSchedule(sched)}
                   />
                 </div>
-                {relaunchRetryUntilAnswer && (
-                  <div className="flex items-center gap-3 text-xs text-amber-800 pt-1.5 border-t border-amber-200">
-                    <span>Máximo de reintentos por paciente:</span>
+
+                {/* 2. LUGAR / SEDE DE ATENCIÓN */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                    2. Sede o Lugar de Atención Asignado
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-slate-400" />
                     <select
-                      value={relaunchMaxRetries}
-                      onChange={(e) => setRelaunchMaxRetries(Number(e.target.value))}
-                      className="bg-white border border-amber-300 rounded px-2 py-0.5 font-bold text-slate-800"
+                      value={relaunchLugar}
+                      onChange={(e) => setRelaunchLugar(e.target.value)}
+                      className="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white font-medium"
                     >
-                      <option value={1}>1 reintento</option>
-                      <option value={2}>2 reintentos</option>
-                      <option value={3}>3 reintentos (Recomendado)</option>
-                      <option value={5}>5 reintentos</option>
+                      <option value="Sede Principal - Manizales (Caldas)">Sede Principal - Manizales (Caldas)</option>
+                      <option value="Sede Ambulatoria - Chinchiná">Sede Ambulatoria - Chinchiná</option>
+                      <option value="Sede Villamaría - Centro Materno">Sede Villamaría - Centro Materno</option>
+                      <option value="Sede La Dorada - Especialidades">Sede La Dorada - Especialidades</option>
                     </select>
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
 
-            <DialogFooter className="p-6 pt-0">
-              <Button
-                variant="outline"
-                onClick={() => setShowRelaunchDialog(false)}
-                className="text-xs rounded-xl"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleConfirmRelaunch}
-                disabled={submitting}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md gap-1.5"
-              >
-                {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                Confirmar y Relanzar Campaña
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+                {/* 3. HORARIOS DE TANDA (08:30 AM a 08:00 PM) */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      3. Horarios Permitidos (24 Intervalos de 30 min)
+                    </Label>
+                    <span className="text-xs text-slate-500">{relaunchFranjas.length} franjas</span>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-32 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                    {FRANJAS_HORARIAS_24.map(franja => {
+                      const isSel = relaunchFranjas.includes(franja);
+                      return (
+                        <button
+                          key={franja}
+                          type="button"
+                          onClick={() => {
+                            setRelaunchFranjas(prev => 
+                              isSel ? prev.filter(f => f !== franja) : [...prev, franja]
+                            );
+                          }}
+                          className={`py-1 px-1.5 rounded-lg text-xs font-medium transition-all ${
+                            isSel
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {franja}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 4. REINTENTAR HASTA QUE CONTESTE */}
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4 text-amber-600" />
+                      <span className="font-bold text-xs text-amber-900">
+                        Reintentar automáticamente hasta que conteste
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={relaunchRetryUntilAnswer}
+                      onChange={(e) => setRelaunchRetryUntilAnswer(e.target.checked)}
+                      className="w-4 h-4 text-emerald-600 rounded"
+                    />
+                  </div>
+                  {relaunchRetryUntilAnswer && (
+                    <div className="flex items-center gap-3 text-xs text-amber-800 pt-1.5 border-t border-amber-200">
+                      <span>Máximo de reintentos por paciente:</span>
+                      <select
+                        value={relaunchMaxRetries}
+                        onChange={(e) => setRelaunchMaxRetries(Number(e.target.value))}
+                        className="bg-white border border-amber-300 rounded px-2 py-0.5 font-bold text-slate-800"
+                      >
+                        <option value={1}>1 reintento</option>
+                        <option value={2}>2 reintentos</option>
+                        <option value={3}>3 reintentos (Recomendado)</option>
+                        <option value={5}>5 reintentos</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="p-6 pt-0">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRelaunchDialog(false)}
+                  className="text-xs rounded-xl"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleConfirmRelaunch}
+                  disabled={submitting}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md gap-1.5"
+                >
+                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                  Confirmar y Relanzar Campaña
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
         {/* MODAL ELIMINAR CAMPAÑA */}
-        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Eliminar esta campaña?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Esta acción retirará la campaña "{selectedCampaign?.nombre}" del panel operativo.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteCampaign} className="bg-red-600 hover:bg-red-700">
-                Eliminar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        {showDeleteDialog && selectedCampaign && (
+          <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>¿Eliminar esta campaña?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción retirará la campaña "{selectedCampaign?.nombre}" del panel operativo.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDeleteCampaign} className="bg-red-600 hover:bg-red-700">
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
 
       </div>
     </Layout>

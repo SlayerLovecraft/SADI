@@ -23,12 +23,20 @@ const MESES_NOMBRES = [
 export default function CampaignSchedulingCalendar({
   initialFrequency = 'diaria',
   initialConfig = null,
+  onScheduleChange = null,
   onChange = () => {}
 }) {
   const today = useMemo(() => new Date(), []);
   
+  // Normalizar frecuencia ('diario' -> 'diaria')
+  const normalizeFreq = (f) => {
+    if (!f) return 'diaria';
+    if (f === 'diario') return 'diaria';
+    return f;
+  };
+
   // Frecuencia: 'diaria' | 'semanal' | 'mensual'
-  const [frecuencia, setFrecuencia] = useState(initialConfig?.frecuencia || initialFrequency);
+  const [frecuencia, setFrecuencia] = useState(normalizeFreq(initialConfig?.frecuencia || initialFrequency));
 
   // Navegación de mes en el calendario visual
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -152,8 +160,9 @@ export default function CampaignSchedulingCalendar({
   // Emitir cambios hacia el componente padre
   useEffect(() => {
     const isValid = scheduledDates.length > 0;
-    onChange({
+    const payload = {
       frecuencia,
+      frequency: frecuencia === 'diaria' ? 'diario' : frecuencia,
       fechaInicio: scheduledDates[0] || null,
       fechaFin: scheduledDates[scheduledDates.length - 1] || null,
       semanas: semanasCount,
@@ -161,11 +170,20 @@ export default function CampaignSchedulingCalendar({
       diaSemanaNombre: DIAS_SEMANA_NOMBRES.find(d => d.id === selectedDayOfWeek)?.nombre,
       meses: mesesCount,
       diaMes: monthlyDay,
+      selectedDates: scheduledDates,
       fechasProgramadas: scheduledDates,
       totalEjecuciones: scheduledDates.length,
       resumen: resumenTexto,
+      summary: resumenTexto,
       esValido: isValid
-    });
+    };
+
+    if (typeof onScheduleChange === 'function') {
+      onScheduleChange(payload);
+    }
+    if (typeof onChange === 'function') {
+      onChange(payload);
+    }
   }, [frecuencia, scheduledDates, resumenTexto]);
 
   // Días del mes en vista
@@ -512,3 +530,4 @@ export default function CampaignSchedulingCalendar({
     </div>
   );
 }
+

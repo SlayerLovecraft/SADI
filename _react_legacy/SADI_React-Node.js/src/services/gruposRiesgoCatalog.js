@@ -265,3 +265,4 @@ export const GRUPOS_RIESGO_10 = [
     ]
   }
 ];
+

@@ -204,24 +204,27 @@ export default function ResolutionAnnualMatrix({
 
   // Abrir Modal para crear campaña o ver cohorte desde una celda
   const handleCellClick = (type, item, monthIndex, mode = 'wizard') => {
+    const mObj = MESES_TITULOS[monthIndex];
+    const monthName = typeof mObj === 'string' ? mObj : (mObj?.nombre || `Mes ${monthIndex + 1}`);
+
     setSelectedContext({
       type, // 'curso_vida' | 'grupo_riesgo'
       item,
       monthIndex,
-      monthName: MESES_TITULOS[monthIndex]
+      monthName
     });
 
     const defaultName = type === 'curso_vida'
-      ? `Campaña ${item.nombre} - ${MESES_TITULOS[monthIndex]} ${selectedYear}`
-      : `Campaña Control: ${item.nombre} - ${MESES_TITULOS[monthIndex]} ${selectedYear}`;
+      ? `Campaña ${item.nombre} - ${monthName} ${selectedYear}`
+      : `Campaña Control: ${item.nombre} - ${monthName} ${selectedYear}`;
 
     setCampaignName(defaultName);
     setWizardStep(1);
     setCrossSegmentSelection([]);
     setPromptDirectriz(
       type === 'curso_vida'
-        ? `Llamar a los pacientes del curso ${item.nombre} nacidos o citados en ${MESES_TITULOS[monthIndex]} para tamizaje preventivo 3280, confirmando asistencia a la IPS ${sedeLugar}.`
-        : `Llamar a los pacientes en seguimiento de ${item.nombre} para su control de ${MESES_TITULOS[monthIndex]}, verificando adherencia farmacológica y signos de alarma en ${sedeLugar}.`
+        ? `Llamar a los pacientes del curso ${item.nombre} nacidos o citados en ${monthName} para tamizaje preventivo 3280, confirmando asistencia a la IPS ${sedeLugar}.`
+        : `Llamar a los pacientes en seguimiento de ${item.nombre} para su control de ${monthName}, verificando adherencia farmacológica y signos de alarma en ${sedeLugar}.`
     );
 
     setModalMode(mode);
@@ -416,12 +419,16 @@ export default function ResolutionAnnualMatrix({
                   <th className="p-3 w-64 sticky left-0 bg-slate-100 z-10 border-r border-slate-200">
                     Curso de Vida & Rango Etario
                   </th>
-                  {MESES_TITULOS.map((mes, idx) => (
-                    <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
-                      <div>{mes.slice(0, 3)}</div>
-                      <div className="text-[9px] font-normal text-slate-400 capitalize">{mes}</div>
-                    </th>
-                  ))}
+                  {MESES_TITULOS.map((mObj, idx) => {
+                    const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
+                    const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
+                    return (
+                      <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
+                        <div>{abrev}</div>
+                        <div className="text-[9px] font-normal text-slate-400 capitalize">{nombreMes}</div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -525,12 +532,16 @@ export default function ResolutionAnnualMatrix({
                   <th className="p-3 w-64 sticky left-0 bg-slate-100 z-10 border-r border-slate-200">
                     Grupo de Riesgo Priorizado
                   </th>
-                  {MESES_TITULOS.map((mes, idx) => (
-                    <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
-                      <div>{mes.slice(0, 3)}</div>
-                      <div className="text-[9px] font-normal text-slate-400 capitalize">{mes}</div>
-                    </th>
-                  ))}
+                  {MESES_TITULOS.map((mObj, idx) => {
+                    const nombreMes = typeof mObj === 'string' ? mObj : (mObj?.nombre || mObj?.label || `Mes ${idx + 1}`);
+                    const abrev = typeof mObj === 'string' ? mObj.slice(0, 3) : (mObj?.abreviatura || nombreMes.slice(0, 3));
+                    return (
+                      <th key={idx} className="p-2 text-center border-r border-slate-200/60 last:border-r-0">
+                        <div>{abrev}</div>
+                        <div className="text-[9px] font-normal text-slate-400 capitalize">{nombreMes}</div>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
