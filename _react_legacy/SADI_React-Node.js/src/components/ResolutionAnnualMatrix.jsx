@@ -791,10 +791,18 @@ export default function ResolutionAnnualMatrix({
                   {MESES_TITULOS.map((_, mIdx) => {
                     const days = getDaysForMonth(mIdx);
                     const monthCalls = days.reduce((acc, d) => acc + (d.totalLlamadasResolucion || 0), 0);
+                    const isPast = isMonthPast(activeYear, mIdx);
 
                     return (
-                      <td key={mIdx} className="p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top">
-                        <div className="w-full bg-slate-900/90 rounded-lg p-1 border border-slate-800 flex flex-col justify-between min-h-[58px]">
+                      <td 
+                        key={mIdx} 
+                        className={`p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top transition-opacity ${
+                          isPast ? 'opacity-30 filter grayscale-[60%]' : ''
+                        }`}
+                        title={isPast ? 'Periodo pasado cerrado en la Resolución 3280' : undefined}
+                      >
+                        {/* Mini Calendario Mensual Blanco */}
+                        <div className="w-full rounded-lg p-1 border border-slate-200 bg-white shadow-xs flex flex-col justify-between min-h-[58px]">
                           <div className="grid grid-cols-7 gap-[1px] w-full">
                             {days.map(d => {
                               const cvIds = Array.from(d.cursosVidaPresentes || []);
@@ -824,10 +832,10 @@ export default function ResolutionAnnualMatrix({
                                   style={bgStyle}
                                   className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
                                     isSun
-                                      ? 'bg-slate-950/40 text-slate-700 opacity-30 cursor-default'
+                                      ? 'bg-slate-100 text-slate-300 opacity-40 cursor-default'
                                       : hasCalls
                                         ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                        : 'bg-slate-800/60 text-slate-500 hover:bg-slate-700 hover:text-slate-200 cursor-pointer'
+                                        : 'bg-slate-50 text-slate-700 hover:bg-slate-200 hover:text-slate-900 border border-slate-100 cursor-pointer'
                                   }`}
                                 >
                                   {d.dayOfMonth}
@@ -835,11 +843,11 @@ export default function ResolutionAnnualMatrix({
                               );
                             })}
                           </div>
-                          <div className="flex items-center justify-between text-[7.5px] text-slate-300 mt-1 pt-0.5 border-t border-slate-800/80 px-0.5">
-                            <span className={monthCalls > 0 ? "text-emerald-400 font-bold truncate" : "text-slate-500 truncate"}>
+                          <div className="flex items-center justify-between text-[7.5px] text-slate-600 mt-1 pt-0.5 border-t border-slate-100 px-0.5">
+                            <span className={monthCalls > 0 ? "text-emerald-700 font-bold truncate" : "text-slate-400 truncate"}>
                               {monthCalls} llam.
                             </span>
-                            <span className="text-[7px] text-slate-500">{days.length}d</span>
+                            <span className="text-[7px] text-slate-400">{days.length}d</span>
                           </div>
                         </div>
                       </td>
@@ -931,8 +939,8 @@ export default function ResolutionAnnualMatrix({
                                 )}
                               </div>
 
-                              {/* Mini Calendario Mensual del Curso de Vida */}
-                              <div className="w-full bg-slate-900/95 rounded-lg p-0.5 border border-slate-800 flex flex-col justify-between my-0.5">
+                              {/* Mini Calendario Mensual del Curso de Vida (Blanco) */}
+                              <div className="w-full rounded-lg p-0.5 border border-slate-200 bg-white shadow-xs flex flex-col justify-between my-0.5">
                                 <div className="grid grid-cols-7 gap-[1px] w-full">
                                   {days.map(d => {
                                     const resCalls = (d.callsResolucion || []).filter(c => c.cursoVidaId === prog.id);
@@ -977,10 +985,10 @@ export default function ResolutionAnnualMatrix({
                                         style={bgStyle}
                                         className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
                                           isSun
-                                            ? 'bg-slate-950/40 text-slate-700 opacity-25 cursor-default'
+                                            ? 'bg-slate-100/60 text-slate-300 opacity-40 cursor-default'
                                             : hasCalls
                                               ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                              : 'bg-slate-800/60 text-slate-400 hover:bg-blue-600 hover:text-white cursor-pointer'
+                                              : 'bg-slate-50 text-slate-700 hover:bg-blue-100 hover:text-blue-900 border border-slate-100 cursor-pointer'
                                         }`}
                                       >
                                         {d.dayOfMonth}
@@ -988,11 +996,11 @@ export default function ResolutionAnnualMatrix({
                                     );
                                   })}
                                 </div>
-                                <div className="flex items-center justify-between text-[7px] text-slate-300 mt-0.5 pt-0.5 border-t border-slate-800/80 px-0.5">
-                                  <span className={progCalls > 0 ? "text-emerald-400 font-bold truncate" : "text-slate-500 truncate"}>
+                                <div className="flex items-center justify-between text-[7px] text-slate-600 mt-0.5 pt-0.5 border-t border-slate-100 px-0.5">
+                                  <span className={progCalls > 0 ? "text-emerald-700 font-bold truncate" : "text-slate-400 truncate"}>
                                     {progCalls} llam.
                                   </span>
-                                  <span className="text-[6.5px] text-slate-500">{days.length}d</span>
+                                  <span className="text-[6.5px] text-slate-400">{days.length}d</span>
                                 </div>
                               </div>
 
@@ -1112,10 +1120,18 @@ export default function ResolutionAnnualMatrix({
                   {MESES_TITULOS.map((_, mIdx) => {
                     const days = getDaysForMonth(mIdx);
                     const monthCalls = days.reduce((acc, d) => acc + (d.totalLlamadasResolucion || 0), 0);
+                    const isPast = isMonthPast(activeYear, mIdx);
 
                     return (
-                      <td key={mIdx} className="p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top">
-                        <div className="w-full bg-slate-900/90 rounded-lg p-1 border border-slate-800 flex flex-col justify-between min-h-[58px]">
+                      <td 
+                        key={mIdx} 
+                        className={`p-1 text-center border-r border-slate-800 last:border-r-0 overflow-hidden align-top transition-opacity ${
+                          isPast ? 'opacity-30 filter grayscale-[60%]' : ''
+                        }`}
+                        title={isPast ? 'Periodo pasado cerrado en la Resolución 3280' : undefined}
+                      >
+                        {/* Mini Calendario Mensual Blanco */}
+                        <div className="w-full rounded-lg p-1 border border-slate-200 bg-white shadow-xs flex flex-col justify-between min-h-[58px]">
                           <div className="grid grid-cols-7 gap-[1px] w-full">
                             {days.map(d => {
                               const grIds = Array.from(d.gruposRiesgoPresentes || []);
@@ -1145,10 +1161,10 @@ export default function ResolutionAnnualMatrix({
                                   style={bgStyle}
                                   className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
                                     isSun
-                                      ? 'bg-slate-950/40 text-slate-700 opacity-30 cursor-default'
+                                      ? 'bg-slate-100 text-slate-300 opacity-40 cursor-default'
                                       : hasCalls
                                         ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                        : 'bg-slate-800/60 text-slate-500 hover:bg-slate-700 hover:text-slate-200 cursor-pointer'
+                                        : 'bg-slate-50 text-slate-700 hover:bg-slate-200 hover:text-slate-900 border border-slate-100 cursor-pointer'
                                   }`}
                                 >
                                   {d.dayOfMonth}
@@ -1156,11 +1172,11 @@ export default function ResolutionAnnualMatrix({
                               );
                             })}
                           </div>
-                          <div className="flex items-center justify-between text-[7.5px] text-slate-300 mt-1 pt-0.5 border-t border-slate-800/80 px-0.5">
-                            <span className={monthCalls > 0 ? "text-purple-300 font-bold truncate" : "text-slate-500 truncate"}>
+                          <div className="flex items-center justify-between text-[7.5px] text-slate-600 mt-1 pt-0.5 border-t border-slate-100 px-0.5">
+                            <span className={monthCalls > 0 ? "text-purple-700 font-bold truncate" : "text-slate-400 truncate"}>
                               {monthCalls} llam.
                             </span>
-                            <span className="text-[7px] text-slate-500">{days.length}d</span>
+                            <span className="text-[7px] text-slate-400">{days.length}d</span>
                           </div>
                         </div>
                       </td>
@@ -1253,8 +1269,8 @@ export default function ResolutionAnnualMatrix({
                                 )}
                               </div>
 
-                              {/* Mini Calendario Mensual del Grupo de Riesgo */}
-                              <div className="w-full bg-slate-900/95 rounded-lg p-0.5 border border-slate-800 flex flex-col justify-between my-0.5">
+                              {/* Mini Calendario Mensual del Grupo de Riesgo (Blanco) */}
+                              <div className="w-full rounded-lg p-0.5 border border-slate-200 bg-white shadow-xs flex flex-col justify-between my-0.5">
                                 <div className="grid grid-cols-7 gap-[1px] w-full">
                                   {days.map(d => {
                                     const resCalls = (d.callsResolucion || []).filter(c => c.grupoRiesgoId === rg.id);
@@ -1299,10 +1315,10 @@ export default function ResolutionAnnualMatrix({
                                         style={bgStyle}
                                         className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
                                           isSun
-                                            ? 'bg-slate-950/40 text-slate-700 opacity-25 cursor-default'
+                                            ? 'bg-slate-100/60 text-slate-300 opacity-40 cursor-default'
                                             : hasCalls
                                               ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                              : 'bg-slate-800/60 text-slate-400 hover:bg-purple-600 hover:text-white cursor-pointer'
+                                              : 'bg-slate-50 text-slate-700 hover:bg-purple-100 hover:text-purple-900 border border-slate-100 cursor-pointer'
                                         }`}
                                       >
                                         {d.dayOfMonth}
@@ -1310,11 +1326,11 @@ export default function ResolutionAnnualMatrix({
                                     );
                                   })}
                                 </div>
-                                <div className="flex items-center justify-between text-[7px] text-slate-300 mt-0.5 pt-0.5 border-t border-slate-800/80 px-0.5">
-                                  <span className={rgCalls > 0 ? "text-purple-300 font-bold truncate" : "text-slate-500 truncate"}>
+                                <div className="flex items-center justify-between text-[7px] text-slate-600 mt-0.5 pt-0.5 border-t border-slate-100 px-0.5">
+                                  <span className={rgCalls > 0 ? "text-purple-700 font-bold truncate" : "text-slate-400 truncate"}>
                                     {rgCalls} llam.
                                   </span>
-                                  <span className="text-[6.5px] text-slate-500">{days.length}d</span>
+                                  <span className="text-[6.5px] text-slate-400">{days.length}d</span>
                                 </div>
                               </div>
 
