@@ -123,9 +123,14 @@ function App() {
                 />
 
                 <Route 
+                  path="/cronograma" 
+                  element={<Navigate to="/ivr-schedule" replace />} 
+                />
+
+                <Route 
                   path="/ivr-schedule" 
                   element={
-                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin']}>
+                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
                       <IvrSchedulePage />
                     </ProtectedRoute>
                   } 
@@ -134,7 +139,7 @@ function App() {
                 <Route 
                   path="/campaign-schedule" 
                   element={
-                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin']}>
+                    <ProtectedRoute roles={['super_admin', 'operator', 'hospital_admin', 'doctor']}>
                       <IvrSchedulePage />
                     </ProtectedRoute>
                   } 
@@ -176,7 +181,7 @@ function App() {
                 <Route 
                   path="/campaigns" 
                   element={
-                    <ProtectedRoute roles={['super_admin', 'hospital_admin']}>
+                    <ProtectedRoute roles={['super_admin', 'hospital_admin', 'doctor', 'operator']}>
                       <CampaignsPage />
                     </ProtectedRoute>
                   } 
@@ -185,7 +190,7 @@ function App() {
                 <Route 
                   path="/campaigns/:id" 
                   element={
-                    <ProtectedRoute roles={['super_admin', 'hospital_admin']}>
+                    <ProtectedRoute roles={['super_admin', 'hospital_admin', 'doctor', 'operator']}>
                       <CampaignDetailsPage />
                     </ProtectedRoute>
                   } 
@@ -199,7 +204,7 @@ function App() {
                 <Route 
                   path="/reports" 
                   element={
-                    <ProtectedRoute roles={['super_admin', 'hospital_admin']}>
+                    <ProtectedRoute roles={['super_admin', 'hospital_admin', 'doctor', 'operator']}>
                       <ReportsPage />
                     </ProtectedRoute>
                   } 

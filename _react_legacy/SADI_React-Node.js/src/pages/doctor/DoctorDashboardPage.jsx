@@ -161,7 +161,7 @@ const DoctorDashboardPage = () => {
         </div>
 
         {/* Accesos Rápidos a Módulos Médicos Autorizados */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
             to="/doctor/patients"
             className="group bg-white rounded-2xl p-5 border border-gray-200/80 shadow-sm hover:border-blue-300 hover:shadow-md transition-all flex items-center justify-between"
@@ -171,11 +171,27 @@ const DoctorDashboardPage = () => {
                 <Users className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 text-sm">Mis Pacientes Asignados</h3>
-                <p className="text-xs text-gray-500">Listado, datos de contacto y cursos 3280</p>
+                <h3 className="font-bold text-gray-900 text-sm">Mis Pacientes</h3>
+                <p className="text-xs text-gray-500">Cursos de vida 3280</p>
               </div>
             </div>
             <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
+          </Link>
+
+          <Link
+            to="/ivr-schedule"
+            className="group bg-white rounded-2xl p-5 border border-gray-200/80 shadow-sm hover:border-amber-300 hover:shadow-md transition-all flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">Cronograma 3280</h3>
+                <p className="text-xs text-gray-500">Roadmap IVR y llamadas</p>
+              </div>
+            </div>
+            <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-amber-600 transition-colors" />
           </Link>
 
           <Link
@@ -187,8 +203,8 @@ const DoctorDashboardPage = () => {
                 <Activity className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 text-sm">Telemonitoreo & Signos Vitales</h3>
-                <p className="text-xs text-gray-500">Curvas de evolución de equipos caseros</p>
+                <h3 className="font-bold text-gray-900 text-sm">Telemonitoreo</h3>
+                <p className="text-xs text-gray-500">Signos y equipos caseros</p>
               </div>
             </div>
             <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-indigo-600 transition-colors" />
@@ -203,8 +219,8 @@ const DoctorDashboardPage = () => {
                 <FolderArchive className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 text-sm">Historias Clínicas 3280</h3>
-                <p className="text-xs text-gray-500">Expedientes multiformato y carga segura</p>
+                <h3 className="font-bold text-gray-900 text-sm">Historias 3280</h3>
+                <p className="text-xs text-gray-500">Expedientes clínicos</p>
               </div>
             </div>
             <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-emerald-600 transition-colors" />
