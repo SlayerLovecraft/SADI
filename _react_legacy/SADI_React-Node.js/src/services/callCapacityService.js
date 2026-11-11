@@ -279,15 +279,35 @@ export function validateCampaignCallCapacity(selectedDates, totalDestinatarios, 
  * - Grupo de Riesgo Priorizado
  * - Directriz de Campaña
  */
-export function generateIndividualClinicalPrompt({
-  patient,
-  cursoVida,
-  grupoRiesgo,
-  hitoClinico,
-  campaignName = '',
-  campaignDirectriz = '',
-  sede = 'Sede Principal - Manizales (Caldas)'
-}) {
+export function generateIndividualClinicalPrompt(patientOrOptions, maybeHito, maybeCurso, maybeRiesgo, maybeCampaignName, maybeCampaignDirectriz, maybeSede) {
+  let patient = {};
+  let cursoVida = {};
+  let grupoRiesgo = {};
+  let hitoClinico = {};
+  let campaignName = '';
+  let campaignDirectriz = '';
+  let sede = 'Sede Principal - Manizales (Caldas)';
+
+  if (patientOrOptions && (patientOrOptions.patient || patientOrOptions.hitoClinico || patientOrOptions.campaignDirectriz)) {
+    // Modo objeto de opciones
+    patient = patientOrOptions.patient || {};
+    cursoVida = patientOrOptions.cursoVida || {};
+    grupoRiesgo = patientOrOptions.grupoRiesgo || {};
+    hitoClinico = patientOrOptions.hitoClinico || {};
+    campaignName = patientOrOptions.campaignName || '';
+    campaignDirectriz = patientOrOptions.campaignDirectriz || '';
+    sede = patientOrOptions.sede || sede;
+  } else {
+    // Modo posicional: (patient, accion/hito, cursoVida, grupoRiesgo, campaignName, directriz, sede)
+    patient = patientOrOptions || {};
+    hitoClinico = typeof maybeHito === 'string' ? { titulo: maybeHito, cups: '890201' } : (maybeHito || {});
+    cursoVida = typeof maybeCurso === 'string' ? { nombre: maybeCurso } : (maybeCurso || {});
+    grupoRiesgo = typeof maybeRiesgo === 'string' ? { nombre: maybeRiesgo } : (maybeRiesgo || {});
+    campaignName = maybeCampaignName || '';
+    campaignDirectriz = maybeCampaignDirectriz || '';
+    sede = maybeSede || sede;
+  }
+
   const nombre = patient.nombre || 'Paciente';
   const doc = patient.cc || patient.numero_documento || 'Sin documento';
   const edad = patient.edad || 'Edad no registrada';

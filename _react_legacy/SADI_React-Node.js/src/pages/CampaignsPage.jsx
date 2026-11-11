@@ -239,15 +239,27 @@ const CampaignsPage = () => {
 
   // Clasificación de campañas en los 2 paquetes: 'curso_vida' o 'grupo_riesgo'
   const getCampaignPackageType = (c) => {
-    if (c.tipo_origen === 'grupo_riesgo') return 'grupo_riesgo';
-    if (c.tipo_origen === 'curso_vida') return 'curso_vida';
+    const rawTipo = (c.tipo_origen || '').toLowerCase().trim();
+    if (rawTipo === 'grupo_riesgo' || rawTipo === 'grupos_riesgo' || rawTipo.includes('riesgo')) {
+      return 'grupo_riesgo';
+    }
+    if (rawTipo === 'curso_vida' || rawTipo === 'cursos_vida' || rawTipo.includes('curso') || rawTipo.includes('vida')) {
+      return 'curso_vida';
+    }
     
     // Fallback por texto del nombre o contexto
-    const txt = `${c.nombre || ''} ${c.contexto_agente || ''} ${c.edad_curso_vida || ''}`.toLowerCase();
-    if (txt.includes('materno') || txt.includes('cardio') || txt.includes('hipertens') || txt.includes('riesgo') || txt.includes('cancer') || txt.includes('mental')) {
+    const txt = `${c.nombre || ''} ${c.contexto_agente || ''} ${c.edad_curso_vida || ''} ${c.origen_nombre || ''}`.toLowerCase();
+    if (txt.includes('materno') || txt.includes('cardio') || txt.includes('hipertens') || txt.includes('riesgo') || txt.includes('cancer') || txt.includes('mental') || txt.includes('oral') || txt.includes('respirat')) {
       return 'grupo_riesgo';
     }
     return 'curso_vida';
+  };
+
+  const normalizePackageKey = (key) => {
+    if (!key || key === 'todos') return 'todos';
+    if (key === 'cursos_vida' || key === 'curso_vida') return 'curso_vida';
+    if (key === 'grupos_riesgo' || key === 'grupo_riesgo') return 'grupo_riesgo';
+    return key;
   };
 
   // Conteo por paquetes
@@ -262,9 +274,10 @@ const CampaignsPage = () => {
   // Filtrado de Campañas según paquete, estado y término de búsqueda
   const filteredCampaigns = useMemo(() => {
     return campaigns.filter(c => {
-      // 1. Filtro de Paquete
+      // 1. Filtro de Paquete (normalizado para soportar singular y plural)
       const pkg = getCampaignPackageType(c);
-      if (campaignPackageFilter !== 'todos' && pkg !== campaignPackageFilter) {
+      const activePkg = normalizePackageKey(campaignPackageFilter);
+      if (activePkg !== 'todos' && pkg !== activePkg) {
         return false;
       }
 
@@ -276,6 +289,7 @@ const CampaignsPage = () => {
       const matchesSearch = campaignSearchTerm === '' ||
         (c.nombre || '').toLowerCase().includes(campaignSearchTerm.toLowerCase()) ||
         (c.contexto_agente || '').toLowerCase().includes(campaignSearchTerm.toLowerCase()) ||
+        (c.origen_nombre || '').toLowerCase().includes(campaignSearchTerm.toLowerCase()) ||
         (c.lugar || '').toLowerCase().includes(campaignSearchTerm.toLowerCase());
 
       return matchesFilter && matchesSearch;

@@ -105,8 +105,9 @@ export default function ResolutionAnnualMatrix({
     async function loadInitialData() {
       setLoadingPatients(true);
       try {
-        const data = await patientService.getAll();
-        setPatients(Array.isArray(data) ? data : []);
+        const res = await patientService.getAll();
+        const data = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+        setPatients(data);
 
         const stored = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
         setExistingCampaigns(Array.isArray(stored) ? stored : []);
@@ -118,6 +119,16 @@ export default function ResolutionAnnualMatrix({
       }
     }
     loadInitialData();
+
+    // Sincronizar campañas en tiempo real si se lanzan o editan
+    const handleStorageChange = () => {
+      try {
+        const stored = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+        setExistingCampaigns(Array.isArray(stored) ? stored : []);
+      } catch (e) {}
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   // Constantes de Fecha Real
@@ -126,7 +137,13 @@ export default function ResolutionAnnualMatrix({
 
   // Año activo (soporta únicamente: 2025 Año Pasado, 2026 Año Actual, 2027 Año Siguiente)
   const [internalYear, setInternalYear] = useState(selectedYear || CURRENT_REAL_YEAR);
-  const activeYear = selectedYear || internalYear;
+  const activeYear = internalYear;
+
+  useEffect(() => {
+    if (selectedYear && selectedYear !== internalYear) {
+      setInternalYear(selectedYear);
+    }
+  }, [selectedYear]);
 
   const handleYearChange = (newYear) => {
     // Restricción del usuario: año actual, pasado o siguiente ("no mas que eso")
@@ -153,6 +170,71 @@ export default function ResolutionAnnualMatrix({
   const [selectedRoadmapDay, setSelectedRoadmapDay] = useState(null);
   const [isRoadmapDayOpen, setIsRoadmapDayOpen] = useState(false);
   const [selectedPromptPatient, setSelectedPromptPatient] = useState(null);
+
+  // Helper: Campañas asociadas a una celda específica (por programa, mes y año)
+  const getCellCampaigns = (type, item, monthIndex) => {
+    return existingCampaigns.filter(c => {
+      // 1. Coincidencia de tipo y programa
+      let matchesItem = false;
+      if (type === 'curso_vida') {
+        matchesItem = (c.tipo_origen === 'curso_vida' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
+          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item.nombre));
+      } else {
+        matchesItem = (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
+          (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item.nombre));
+      }
+      if (!matchesItem) return false;
+
+      // 2. Coincidencia de año y mes
+      const dates = c.fechas_ejecucion || c.config_frecuencia?.selectedDates || [];
+      const padM = String(monthIndex + 1).padStart(2, '0');
+      const monthPrefix = `${activeYear}-${padM}`;
+      const hasDateInMonth = dates.some(d => d.startsWith(monthPrefix));
+
+      const matchesYear = Number(c.ano) === Number(activeYear);
+      const matchesMonth = c.mes_index === monthIndex ||
+        (typeof c.mes_objetivo === 'string' && c.mes_objetivo.toLowerCase().startsWith(MESES_TITULOS[monthIndex]?.slice(0, 3).toLowerCase()));
+
+      return hasDateInMonth || (matchesYear && matchesMonth);
+    });
+  };
+
+  // Apertura interactiva del expediente de llamadas del día (Res. 3280 y Campañas)
+  const handleOpenDayDetail = (dayData, item = null, type = null) => {
+    const iso = dayData.isoDate;
+    
+    // Filtrar llamadas de resolución si se abre desde una fila específica
+    let resCalls = dayData.callsResolucion || [];
+    if (item && type === 'curso_vida') {
+      resCalls = resCalls.filter(c => c.cursoVidaId === item.id);
+    } else if (item && type === 'grupo_riesgo') {
+      resCalls = resCalls.filter(c => c.grupoRiesgoId === item.id);
+    }
+
+    // Filtrar campañas que tengan programada esta fecha
+    let dayCampaigns = existingCampaigns.filter(c => {
+      const dates = c.fechas_ejecucion || c.config_frecuencia?.selectedDates || [];
+      if (!dates.includes(iso)) return false;
+      if (!item) return true;
+      if (type === 'curso_vida') {
+        return (c.tipo_origen === 'curso_vida' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
+          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item.nombre));
+      } else {
+        return (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item.id || c.origen_nombre === item.nombre)) ||
+          (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item.nombre));
+      }
+    });
+
+    setSelectedRoadmapDay({
+      ...dayData,
+      callsResolucion: resCalls,
+      campaigns: dayCampaigns,
+      specificItem: item,
+      specificType: type
+    });
+    setSelectedPromptPatient(null);
+    setIsRoadmapDayOpen(true);
+  };
 
   // Helper para obtener los días del mes en roadmap365
   const getDaysForMonth = (mIdx) => {
@@ -272,7 +354,7 @@ export default function ResolutionAnnualMatrix({
   }, [patients]);
 
   // Abrir Modal para crear campaña o ver cohorte desde una celda
-  const handleCellClick = (type, item, monthIndex, mode = 'wizard') => {
+  const handleCellClick = (type, item, monthIndex, mode = 'wizard', targetDateISO = null) => {
     const mObj = MESES_TITULOS[monthIndex];
     const monthName = typeof mObj === 'string' ? mObj : (mObj?.nombre || `Mes ${monthIndex + 1}`);
 
@@ -290,7 +372,8 @@ export default function ResolutionAnnualMatrix({
       type, // 'curso_vida' | 'grupo_riesgo'
       item,
       monthIndex,
-      monthName
+      monthName,
+      targetDateISO
     });
 
     const defaultName = type === 'curso_vida'
@@ -424,14 +507,20 @@ export default function ResolutionAnnualMatrix({
       }
     }
 
+    const firstDate = campaignSchedule?.selectedDates?.[0];
+    const detectedYear = firstDate 
+      ? new Date(firstDate + 'T12:00:00').getFullYear() 
+      : activeYear;
+
     const newCampaign = {
       id: `camp_${Date.now()}`,
       tipo_origen: selectedContext.type, // 'curso_vida' | 'grupo_riesgo'
       origen_id: selectedContext.item.id,
       origen_nombre: selectedContext.item.nombre,
-      nombre: campaignName,
+      nombre: campaignName || `Campaña ${selectedContext.item.nombre} - ${selectedContext.monthName} ${detectedYear}`,
       mes_objetivo: selectedContext.monthName,
-      ano: selectedYear,
+      mes_index: selectedContext.monthIndex,
+      ano: detectedYear,
       canal: Object.keys(selectedChannels).filter(k => selectedChannels[k]).join(', '),
       canales_detalle: selectedChannels,
       horarios: selectedFranjas,
@@ -758,6 +847,11 @@ export default function ResolutionAnnualMatrix({
                         const count = cellPatients.length;
                         const hitoClinico = prog.hitosMeses?.[mIdx] || 'Tamizaje preventivo';
                         const isPast = isMonthPast(activeYear, mIdx);
+                        const cellCampaigns = getCellCampaigns('curso_vida', prog, mIdx);
+                        const days = getDaysForMonth(mIdx);
+                        const progCalls = days.reduce((acc, d) => {
+                          return acc + (d.callsResolucion || []).filter(c => c.cursoVidaId === prog.id).length;
+                        }, 0);
 
                         return (
                           <td 
@@ -766,38 +860,113 @@ export default function ResolutionAnnualMatrix({
                             className={`p-1 text-center border-r border-slate-100 last:border-r-0 relative group overflow-hidden transition-colors ${
                               isPast 
                                 ? 'cursor-pointer hover:bg-slate-100/80' 
-                                : 'cursor-pointer hover:bg-blue-50/50'
+                                : 'cursor-pointer hover:bg-blue-50/40'
                             }`}
                           >
                             <div 
-                              className={`p-1.5 rounded-xl border text-[10px] transition-all flex flex-col justify-between min-h-[58px] overflow-hidden ${
+                              className={`p-1 rounded-xl border text-[9px] transition-all flex flex-col justify-between min-h-[105px] overflow-hidden ${
                                 isPast
                                   ? 'bg-slate-100/70 border-slate-200 text-slate-400 opacity-60'
-                                  : count > 0 
-                                    ? 'border-blue-200 text-slate-900 group-hover:border-blue-500 group-hover:shadow-sm'
+                                  : (count > 0 || cellCampaigns.length > 0)
+                                    ? 'border-blue-200 text-slate-900 group-hover:border-blue-500 group-hover:shadow-sm bg-white'
                                     : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
                               }`}
-                              style={!isPast && count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
-                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : undefined}
+                              style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: `${pal.colorHex}08` } : {}}
+                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : 'Haz clic fuera de los días para crear una nueva campaña en este mes'}
                             >
-                              <div className="text-[8.5px] line-clamp-2 text-slate-600 text-left font-medium leading-tight overflow-hidden">
-                                {hitoClinico}
+                              {/* Cabecera de celda: Hito clínico y badge de campañas si existen */}
+                              <div className="flex items-center justify-between gap-1 overflow-hidden">
+                                <div className="text-[7.5px] truncate text-slate-700 font-bold leading-tight text-left">
+                                  {hitoClinico}
+                                </div>
+                                {cellCampaigns.length > 0 && (
+                                  <span className="text-[7px] font-black bg-amber-100 text-amber-800 border border-amber-300 px-1 py-0.2 rounded-full shrink-0" title={`${cellCampaigns.length} campaña(s) activa(s) en este mes`}>
+                                    📢 {cellCampaigns.length}
+                                  </span>
+                                )}
                               </div>
-                              <div className="flex items-center justify-between mt-1 pt-0.5 border-t border-slate-200/40">
+
+                              {/* Mini Calendario Mensual del Curso de Vida */}
+                              <div className="w-full bg-slate-900/95 rounded-lg p-0.5 border border-slate-800 flex flex-col justify-between my-0.5">
+                                <div className="grid grid-cols-7 gap-[1px] w-full">
+                                  {days.map(d => {
+                                    const resCalls = (d.callsResolucion || []).filter(c => c.cursoVidaId === prog.id);
+                                    const dayCamps = cellCampaigns.filter(c => (c.fechas_ejecucion || c.config_frecuencia?.selectedDates || []).includes(d.isoDate));
+                                    const hasResCalls = resCalls.length > 0;
+                                    const hasCampCalls = dayCamps.length > 0;
+                                    const hasCalls = hasResCalls || hasCampCalls;
+                                    const isSun = d.isSunday;
+
+                                    let bgStyle = {};
+                                    if (hasCalls) {
+                                      if (hasCampCalls && hasResCalls) {
+                                        bgStyle = { background: `linear-gradient(135deg, ${pal.colorHex} 0%, ${pal.colorHex} 50%, #f59e0b 50%, #f59e0b 100%)` };
+                                      } else if (hasCampCalls) {
+                                        bgStyle = { backgroundColor: '#f59e0b' };
+                                      } else {
+                                        bgStyle = { backgroundColor: pal.colorHex };
+                                      }
+                                    }
+
+                                    return (
+                                      <button
+                                        key={d.isoDate}
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (hasCalls) {
+                                            handleOpenDayDetail(d, prog, 'curso_vida');
+                                          } else if (!isSun && !isPast) {
+                                            handleCellClick('curso_vida', prog, mIdx, 'wizard', d.isoDate);
+                                          }
+                                        }}
+                                        title={
+                                          hasCalls
+                                            ? `${d.isoDate}: ${resCalls.length} citas Res. 3280 • ${dayCamps.length} campañas. Haz clic para ver detalles y guion de llamada.`
+                                            : isSun
+                                              ? 'Domingo no operativo'
+                                              : isPast
+                                                ? 'Periodo cerrado'
+                                                : `${d.isoDate}: Haz clic para crear campaña en este día.`
+                                        }
+                                        style={bgStyle}
+                                        className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
+                                          isSun
+                                            ? 'bg-slate-950/40 text-slate-700 opacity-25 cursor-default'
+                                            : hasCalls
+                                              ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
+                                              : 'bg-slate-800/60 text-slate-400 hover:bg-blue-600 hover:text-white cursor-pointer'
+                                        }`}
+                                      >
+                                        {d.dayOfMonth}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex items-center justify-between text-[7px] text-slate-300 mt-0.5 pt-0.5 border-t border-slate-800/80 px-0.5">
+                                  <span className={progCalls > 0 ? "text-emerald-400 font-bold truncate" : "text-slate-500 truncate"}>
+                                    {progCalls} llam.
+                                  </span>
+                                  <span className="text-[6.5px] text-slate-500">{days.length}d</span>
+                                </div>
+                              </div>
+
+                              {/* Footer de Celda: Conteo y botón + */}
+                              <div className="flex items-center justify-between pt-0.5 border-t border-slate-200/40">
                                 <span 
-                                  className={`text-[9px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
+                                  className={`text-[8.5px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
                                     isPast 
                                       ? 'bg-slate-200 text-slate-500' 
-                                      : count > 0 ? 'text-white' : 'text-white bg-slate-400'
+                                      : (count > 0 || cellCampaigns.length > 0) ? 'text-white' : 'text-white bg-slate-400'
                                   }`}
-                                  style={!isPast && count > 0 ? { backgroundColor: pal.colorHex } : {}}
+                                  style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: pal.colorHex } : {}}
                                 >
                                   {count} pac.
                                 </span>
                                 {isPast ? (
                                   <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Mes finalizado" />
                                 ) : (
-                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600 shrink-0" />
+                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-blue-600 shrink-0" title="Crear nueva campaña" />
                                 )}
                               </div>
                             </div>
@@ -1000,6 +1169,11 @@ export default function ResolutionAnnualMatrix({
                         const milestone = rg.milestones?.[mIdx];
                         const hitoClinico = milestone?.hito || 'Control clínico';
                         const isPast = isMonthPast(activeYear, mIdx);
+                        const cellCampaigns = getCellCampaigns('grupo_riesgo', rg, mIdx);
+                        const days = getDaysForMonth(mIdx);
+                        const rgCalls = days.reduce((acc, d) => {
+                          return acc + (d.callsResolucion || []).filter(c => c.grupoRiesgoId === rg.id).length;
+                        }, 0);
 
                         return (
                           <td 
@@ -1008,38 +1182,113 @@ export default function ResolutionAnnualMatrix({
                             className={`p-1 text-center border-r border-slate-100 last:border-r-0 relative group overflow-hidden transition-colors ${
                               isPast 
                                 ? 'cursor-pointer hover:bg-slate-100/80' 
-                                : 'cursor-pointer hover:bg-purple-50/50'
+                                : 'cursor-pointer hover:bg-purple-50/40'
                             }`}
                           >
                             <div 
-                              className={`p-1.5 rounded-xl border text-[10px] transition-all flex flex-col justify-between min-h-[58px] overflow-hidden ${
+                              className={`p-1 rounded-xl border text-[9px] transition-all flex flex-col justify-between min-h-[105px] overflow-hidden ${
                                 isPast
                                   ? 'bg-slate-100/70 border-slate-200 text-slate-400 opacity-60'
-                                  : count > 0 
-                                    ? 'border-purple-200 text-slate-900 group-hover:border-purple-500 group-hover:shadow-sm'
+                                  : (count > 0 || cellCampaigns.length > 0)
+                                    ? 'border-purple-200 text-slate-900 group-hover:border-purple-500 group-hover:shadow-sm bg-white'
                                     : 'bg-slate-50/50 border-slate-200/60 text-slate-400 group-hover:border-slate-300'
                               }`}
-                              style={!isPast && count > 0 ? { backgroundColor: `${pal.colorHex}10` } : {}}
-                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : undefined}
+                              style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: `${pal.colorHex}08` } : {}}
+                              title={isPast ? 'Periodo pasado cerrado • No se permiten campañas en meses anteriores' : 'Haz clic fuera de los días para crear una nueva campaña en este mes'}
                             >
-                              <div className="text-[8.5px] line-clamp-2 text-slate-600 text-left font-medium leading-tight overflow-hidden">
-                                {hitoClinico}
+                              {/* Cabecera de celda: Hito clínico y badge de campañas si existen */}
+                              <div className="flex items-center justify-between gap-1 overflow-hidden">
+                                <div className="text-[7.5px] truncate text-slate-700 font-bold leading-tight text-left">
+                                  {hitoClinico}
+                                </div>
+                                {cellCampaigns.length > 0 && (
+                                  <span className="text-[7px] font-black bg-amber-100 text-amber-800 border border-amber-300 px-1 py-0.2 rounded-full shrink-0" title={`${cellCampaigns.length} campaña(s) activa(s) en este mes`}>
+                                    📢 {cellCampaigns.length}
+                                  </span>
+                                )}
                               </div>
-                              <div className="flex items-center justify-between mt-1 pt-0.5 border-t border-purple-200/40">
+
+                              {/* Mini Calendario Mensual del Grupo de Riesgo */}
+                              <div className="w-full bg-slate-900/95 rounded-lg p-0.5 border border-slate-800 flex flex-col justify-between my-0.5">
+                                <div className="grid grid-cols-7 gap-[1px] w-full">
+                                  {days.map(d => {
+                                    const resCalls = (d.callsResolucion || []).filter(c => c.grupoRiesgoId === rg.id);
+                                    const dayCamps = cellCampaigns.filter(c => (c.fechas_ejecucion || c.config_frecuencia?.selectedDates || []).includes(d.isoDate));
+                                    const hasResCalls = resCalls.length > 0;
+                                    const hasCampCalls = dayCamps.length > 0;
+                                    const hasCalls = hasResCalls || hasCampCalls;
+                                    const isSun = d.isSunday;
+
+                                    let bgStyle = {};
+                                    if (hasCalls) {
+                                      if (hasCampCalls && hasResCalls) {
+                                        bgStyle = { background: `linear-gradient(135deg, ${pal.colorHex} 0%, ${pal.colorHex} 50%, #f59e0b 50%, #f59e0b 100%)` };
+                                      } else if (hasCampCalls) {
+                                        bgStyle = { backgroundColor: '#f59e0b' };
+                                      } else {
+                                        bgStyle = { backgroundColor: pal.colorHex };
+                                      }
+                                    }
+
+                                    return (
+                                      <button
+                                        key={d.isoDate}
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (hasCalls) {
+                                            handleOpenDayDetail(d, rg, 'grupo_riesgo');
+                                          } else if (!isSun && !isPast) {
+                                            handleCellClick('grupo_riesgo', rg, mIdx, 'wizard', d.isoDate);
+                                          }
+                                        }}
+                                        title={
+                                          hasCalls
+                                            ? `${d.isoDate}: ${resCalls.length} citas Res. 3280 • ${dayCamps.length} campañas. Haz clic para ver detalles y guion de llamada.`
+                                            : isSun
+                                              ? 'Domingo no operativo'
+                                              : isPast
+                                                ? 'Periodo cerrado'
+                                                : `${d.isoDate}: Haz clic para crear campaña en este día.`
+                                        }
+                                        style={bgStyle}
+                                        className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
+                                          isSun
+                                            ? 'bg-slate-950/40 text-slate-700 opacity-25 cursor-default'
+                                            : hasCalls
+                                              ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
+                                              : 'bg-slate-800/60 text-slate-400 hover:bg-purple-600 hover:text-white cursor-pointer'
+                                        }`}
+                                      >
+                                        {d.dayOfMonth}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex items-center justify-between text-[7px] text-slate-300 mt-0.5 pt-0.5 border-t border-slate-800/80 px-0.5">
+                                  <span className={rgCalls > 0 ? "text-purple-300 font-bold truncate" : "text-slate-500 truncate"}>
+                                    {rgCalls} llam.
+                                  </span>
+                                  <span className="text-[6.5px] text-slate-500">{days.length}d</span>
+                                </div>
+                              </div>
+
+                              {/* Footer de Celda: Conteo y botón + */}
+                              <div className="flex items-center justify-between pt-0.5 border-t border-purple-200/40">
                                 <span 
-                                  className={`text-[9px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
+                                  className={`text-[8.5px] font-black px-1 py-0.2 rounded-full truncate max-w-[70%] ${
                                     isPast 
                                       ? 'bg-slate-200 text-slate-500' 
-                                      : count > 0 ? 'text-white' : 'text-white bg-slate-400'
+                                      : (count > 0 || cellCampaigns.length > 0) ? 'text-white' : 'text-white bg-slate-400'
                                   }`}
-                                  style={!isPast && count > 0 ? { backgroundColor: pal.colorHex } : {}}
+                                  style={!isPast && (count > 0 || cellCampaigns.length > 0) ? { backgroundColor: pal.colorHex } : {}}
                                 >
                                   {count} pac.
                                 </span>
                                 {isPast ? (
                                   <Clock className="w-3 h-3 text-slate-400 shrink-0" title="Mes finalizado" />
                                 ) : (
-                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700 shrink-0" />
+                                  <Plus className="w-3 h-3 text-slate-400 group-hover:text-purple-700 shrink-0" title="Crear nueva campaña" />
                                 )}
                               </div>
                             </div>
@@ -1183,7 +1432,7 @@ export default function ResolutionAnnualMatrix({
                       initialConfig={{
                         mes: selectedContext?.monthIndex ?? CURRENT_REAL_MONTH,
                         year: activeYear || CURRENT_REAL_YEAR,
-                        fechaInicio: (() => {
+                        fechaInicio: selectedContext?.targetDateISO || (() => {
                           const targetMonth = selectedContext?.monthIndex ?? CURRENT_REAL_MONTH;
                           const targetYear = activeYear || CURRENT_REAL_YEAR;
                           const isCurrentM = targetYear === CURRENT_REAL_YEAR && targetMonth === CURRENT_REAL_MONTH;
@@ -1564,19 +1813,26 @@ export default function ResolutionAnnualMatrix({
               <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-5 text-white rounded-t-3xl">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                      Ruta Preventiva Res. 3280 • Hito Inamovible
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                        {selectedRoadmapDay.specificItem ? selectedRoadmapDay.specificItem.nombre : 'Ruta Preventiva Res. 3280'}
+                      </span>
+                      {selectedRoadmapDay.campaigns?.length > 0 && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                          {selectedRoadmapDay.campaigns.length} Campaña(s) Activa(s)
+                        </span>
+                      )}
+                    </div>
                     <DialogTitle className="text-lg font-bold mt-1 text-white flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-emerald-400" />
                       Fecha: {selectedRoadmapDay.isoDate} ({selectedRoadmapDay.dayOfMonth} de {(() => {
                         const mIdx = new Date(selectedRoadmapDay.isoDate + 'T12:00:00').getMonth();
                         const mObj = MESES_TITULOS[mIdx];
                         return typeof mObj === 'string' ? mObj : (mObj?.nombre || '');
-                      })()} {selectedYear})
+                      })()} {activeYear})
                     </DialogTitle>
                     <DialogDescription className="text-xs text-slate-300 mt-0.5">
-                      {selectedRoadmapDay.callsResolucion?.length || 0} paciente(s) con llamada priorizada según ventana normativa.
+                      {selectedRoadmapDay.callsResolucion?.length || 0} cita(s) Resolución 3280 • {selectedRoadmapDay.campaigns?.length || 0} campaña(s) asignadas a este día.
                     </DialogDescription>
                   </div>
 
@@ -1585,7 +1841,7 @@ export default function ResolutionAnnualMatrix({
                       Aforo Gateway GSM OpenVox
                     </div>
                     <div className="text-xs font-bold text-emerald-400">
-                      {selectedRoadmapDay.totalLlamadasResolucion || 0} / {DAILY_CALL_CAPACITY} llamadas
+                      {(selectedRoadmapDay.totalLlamadasResolucion || 0) + (selectedRoadmapDay.campaigns?.length ? selectedRoadmapDay.campaigns.reduce((a, c) => a + (c.pacientes_asignados || 0), 0) : 0)} / {DAILY_CALL_CAPACITY} llamadas
                     </div>
                     <div className="text-[9px] text-slate-400">
                       Saldo restante: {selectedRoadmapDay.cupoDisponible ?? (DAILY_CALL_CAPACITY - (selectedRoadmapDay.totalLlamadasResolucion || 0))}
@@ -1594,72 +1850,128 @@ export default function ResolutionAnnualMatrix({
                 </div>
               </div>
 
-              {/* Lista de pacientes del día */}
-              <div className="p-5 pt-0 space-y-3">
-                <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
-                  <span>Pacientes Citados para esta Fecha:</span>
-                  <span className="text-slate-500 text-[11px] font-normal">
-                    Horario autorizado: 08:00 AM a 06:00 PM (10h • 350 llam/h)
-                  </span>
-                </div>
+              {/* Contenido interactivo: ¿Qué se le dirá a los pacientes ese día? */}
+              <div className="p-5 pt-0 space-y-4">
+                
+                {/* 1. SECCIÓN DE CAMPAÑAS ASIGNADAS A ESTE DÍA */}
+                {selectedRoadmapDay.campaigns && selectedRoadmapDay.campaigns.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-amber-900 flex items-center justify-between border-b border-amber-200 pb-1">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-600" />
+                        Campañas Hospitalarias Programadas para esta Fecha ({selectedRoadmapDay.campaigns.length}):
+                      </span>
+                      <span className="text-[11px] font-semibold text-amber-700">Canal de Emisión Automática</span>
+                    </div>
 
-                {(!selectedRoadmapDay.callsResolucion || selectedRoadmapDay.callsResolucion.length === 0) ? (
-                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500">
-                    No hay llamadas de la Resolución 3280 programadas para este día. El cupo del Gateway GSM ({DAILY_CALL_CAPACITY} llamadas) está 100% disponible para campañas hospitalarias.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {selectedRoadmapDay.callsResolucion.map((cItem, cIdx) => (
-                      <div 
-                        key={cIdx}
-                        className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-slate-900 text-xs">{cItem.nombre}</span>
-                            <span className="text-[10px] text-slate-500 font-mono">CC: {cItem.documento}</span>
-                            <span 
-                              className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
-                              style={{ backgroundColor: cItem.cursoVidaColorHex }}
-                            >
-                              {cItem.cursoVidaNombre}
-                            </span>
-                            <span 
-                              className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
-                              style={{ backgroundColor: cItem.grupoRiesgoColorHex }}
-                            >
-                              {cItem.grupoRiesgoNombre}
+                    <div className="space-y-3">
+                      {selectedRoadmapDay.campaigns.map((camp, campIdx) => (
+                        <div key={campIdx} className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs space-y-2">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <span className="font-black text-slate-900 text-sm">{camp.nombre}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900">
+                              {camp.canal || 'Llamada Telefónica'}
                             </span>
                           </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                            <div><strong>Sede:</strong> {camp.lugar || 'Sede Principal - Manizales'}</div>
+                            <div><strong>Horarios de llamada:</strong> {Array.isArray(camp.horarios) ? camp.horarios.join(', ') : '08:00 AM - 06:00 PM'}</div>
+                            <div><strong>Reintentos:</strong> {camp.reintentos ? `Hasta ${camp.reintentos} reintentos` : 'Sin reintentos'}</div>
+                            <div><strong>Audiencia:</strong> {camp.pacientes_asignados || 56} pacientes proyectados</div>
+                          </div>
 
-                          <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-1.5">
+                          {/* ¿Qué se le dirá al paciente en la campaña? */}
+                          <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                            <div className="text-[10px] font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                              ¿Qué le dirá el Agente IA al paciente en esta llamada?
+                            </div>
+                            <p className="text-[11px] text-slate-700 font-mono italic">
+                              "{camp.directriz_ia || 'Llamada de tamizaje preventivo y demanda inducida para control de salud en el hospital.'}"
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. SECCIÓN DE CITAS RESOLUCIÓN 3280 */}
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-200 pb-1">
+                    <span className="flex items-center gap-1.5">
+                      <Stethoscope className="w-4 h-4 text-blue-600" />
+                      Llamadas Normativas Resolución 3280 ({selectedRoadmapDay.callsResolucion?.length || 0}):
+                    </span>
+                    <span className="text-slate-500 text-[11px] font-normal">
+                      Horario: 08:00 AM a 06:00 PM (10h • 350 llam/h)
+                    </span>
+                  </div>
+
+                  {(!selectedRoadmapDay.callsResolucion || selectedRoadmapDay.callsResolucion.length === 0) ? (
+                    <div className="p-4 text-center bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500">
+                      {selectedRoadmapDay.campaigns?.length > 0 
+                        ? 'No hay llamadas normativas de la Resolución 3280 agendadas para esta fecha en este programa.'
+                        : 'No hay citas de la Resolución 3280 programadas para este día. El cupo del Gateway GSM está disponible para campañas hospitalarias.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {selectedRoadmapDay.callsResolucion.map((cItem, cIdx) => (
+                        <div 
+                          key={cIdx}
+                          className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-all flex flex-col justify-between items-start gap-2 shadow-xs"
+                        >
+                          <div className="w-full flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-900 text-xs">{cItem.nombre}</span>
+                              <span className="text-[10px] text-slate-500 font-mono">CC: {cItem.documento}</span>
+                              <span 
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                                style={{ backgroundColor: cItem.cursoVidaColorHex }}
+                              >
+                                {cItem.cursoVidaNombre}
+                              </span>
+                              <span 
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                                style={{ backgroundColor: cItem.grupoRiesgoColorHex }}
+                              >
+                                {cItem.grupoRiesgoNombre}
+                              </span>
+                            </div>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const promptText = generateIndividualClinicalPrompt(
+                                  { nombre: cItem.nombre, cc: cItem.documento, telefono: cItem.telefono },
+                                  cItem.accion3280,
+                                  cItem.cursoVidaNombre,
+                                  cItem.grupoRiesgoNombre
+                                );
+                                setSelectedPromptPatient({ ...cItem, promptText });
+                              }}
+                              className="text-xs shrink-0 rounded-lg gap-1 border-blue-200 text-blue-700 hover:bg-blue-50 font-bold"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                              Ver Guion IA Completo
+                            </Button>
+                          </div>
+
+                          <div className="text-[11px] text-slate-600 flex items-center gap-1.5 flex-wrap">
                             <Stethoscope className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                             <span className="font-semibold text-blue-900">{cItem.accion3280}</span>
                             <span className="text-[9px] px-1 bg-slate-100 rounded text-slate-600 font-mono">CUPS: {cItem.cups}</span>
+                            {cItem.indicaciones && (
+                              <span className="text-[10px] text-slate-500 italic">· {cItem.indicaciones}</span>
+                            )}
                           </div>
                         </div>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const promptText = generateIndividualClinicalPrompt(
-                              { nombre: cItem.nombre, cc: cItem.documento, telefono: cItem.telefono },
-                              cItem.accion3280,
-                              cItem.cursoVidaNombre,
-                              cItem.grupoRiesgoNombre
-                            );
-                            setSelectedPromptPatient({ ...cItem, promptText });
-                          }}
-                          className="text-xs shrink-0 rounded-lg gap-1 border-blue-200 text-blue-700 hover:bg-blue-50 font-bold"
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                          Ver Prompt IA
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {/* Panel de Prompt IA Individualizado */}
                 {selectedPromptPatient && (
@@ -1667,7 +1979,7 @@ export default function ResolutionAnnualMatrix({
                     <div className="flex justify-between items-center pb-2 border-b border-slate-800">
                       <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-xs">
                         <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                        Prompt Clínico IA para {selectedPromptPatient.nombre}
+                        Guion y Prompt Clínico de Voz para {selectedPromptPatient.nombre}
                       </span>
                       <button 
                         onClick={() => setSelectedPromptPatient(null)}
@@ -1682,7 +1994,23 @@ export default function ResolutionAnnualMatrix({
                   </div>
                 )}
 
-                <div className="flex justify-end pt-2">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2 border-t border-slate-100">
+                  {/* Botón rápido para agregar campaña en esta fecha */}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsRoadmapDayOpen(false);
+                      const mIdx = new Date(selectedRoadmapDay.isoDate + 'T12:00:00').getMonth();
+                      const item = selectedRoadmapDay.specificItem || PROGRAMAS_3280[0];
+                      const type = selectedRoadmapDay.specificType || 'curso_vida';
+                      handleCellClick(type, item, mIdx, 'wizard', selectedRoadmapDay.isoDate);
+                    }}
+                    className="text-xs rounded-xl font-bold border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Programar Nueva Campaña en esta Fecha
+                  </Button>
+
                   <Button
                     onClick={() => setIsRoadmapDayOpen(false)}
                     className="text-xs rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800"

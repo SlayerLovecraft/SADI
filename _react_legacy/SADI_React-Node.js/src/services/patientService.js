@@ -125,22 +125,19 @@ function mapFrontendToSupabase(patient) {
   };
 }
 
-// Obtener hospital_id del usuario logueado
+// Obtener hospital_id del usuario logueado con fallback al hospital oficial de Caldas
 function getCurrentHospitalId() {
   try {
     const userData = localStorage.getItem('sadi_user');
-    if (!userData) {
-      console.error('❌ No hay usuario logueado');
-      return null;
+    if (userData) {
+      const user = JSON.parse(userData);
+      const targetId = user.hospitalId || user.hospital_id || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
+      return targetId;
     }
-
-    const user = JSON.parse(userData);
-    const targetId = user.hospitalId || user.hospital_id || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
-    return targetId;
   } catch (error) {
     console.error('❌ Error obteniendo hospitalId:', error);
-    return null;
   }
+  return 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
 }
 
 export const patientService = {
