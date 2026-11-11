@@ -491,6 +491,8 @@ export const SEED_PATIENTS_3280 = [
     fecha_nacimiento: '2007-06-14',
     sexo: 'femenino',
     curso_vida: 'juventud',
+    grupo_riesgo: 'Enfermedades Respiratorias Crónicas',
+    diagnostico: 'Asma bronquial intermitente y rinitis alérgica',
     es_gestante: false,
     doctor_asignado_id: 'd3333333-3333-3333-3333-333333333333',
     doctor_nombre: 'Dra. Sandra Milena Castaño Ríos',
@@ -499,7 +501,7 @@ export const SEED_PATIENTS_3280 = [
     regimen: 'Contributivo',
     eps: 'Sanitas EPS',
     canal_preferido: 'whatsapp',
-    notas_clinicas: '19 años. Citología cervicovaginal 1-1-3 realizada. Método anticonceptivo activo.'
+    notas_clinicas: '19 años. Asma bronquial en seguimiento. Citología cervicovaginal 1-1-3 realizada. Método anticonceptivo activo.'
   },
   {
     id: 'p4040000-0000-0000-0000-000000000017',
@@ -512,6 +514,8 @@ export const SEED_PATIENTS_3280 = [
     fecha_nacimiento: '2005-02-28',
     sexo: 'masculino',
     curso_vida: 'juventud',
+    grupo_riesgo: 'Enfermedades Respiratorias Crónicas',
+    diagnostico: 'Hiperreactividad bronquial y asma alérgica de esfuerzo',
     es_gestante: false,
     doctor_asignado_id: 'd3333333-3333-3333-3333-333333333333',
     doctor_nombre: 'Dra. Sandra Milena Castaño Ríos',
@@ -520,7 +524,7 @@ export const SEED_PATIENTS_3280 = [
     regimen: 'Contributivo',
     eps: 'Sura EPS',
     canal_preferido: 'sms',
-    notas_clinicas: '21 años. Tamizaje de ITS rápido (VIH y Sífilis) no reactivo. Score FINDRISC 4 pts (bajo).'
+    notas_clinicas: '21 años. Diagnóstico de hiperreactividad bronquial. Tamizaje de ITS rápido (VIH y Sífilis) no reactivo. Score FINDRISC 4 pts (bajo).'
   },
   {
     id: 'p4040000-0000-0000-0000-000000000018',
@@ -533,6 +537,8 @@ export const SEED_PATIENTS_3280 = [
     fecha_nacimiento: '2003-12-05',
     sexo: 'femenino',
     curso_vida: 'juventud',
+    grupo_riesgo: 'Salud Bucal y Periodontal',
+    diagnostico: 'Gingivitis marginal y profilaxis periodontal',
     es_gestante: false,
     doctor_asignado_id: 'd3333333-3333-3333-3333-333333333333',
     doctor_nombre: 'Dra. Sandra Milena Castaño Ríos',
@@ -554,6 +560,8 @@ export const SEED_PATIENTS_3280 = [
     fecha_nacimiento: '2001-08-17',
     sexo: 'masculino',
     curso_vida: 'juventud',
+    grupo_riesgo: 'Riesgo Cardiovascular, Metabólico y Renal',
+    diagnostico: 'Hipertensión arterial precoz estadio 1',
     es_gestante: false,
     doctor_asignado_id: 'd3333333-3333-3333-3333-333333333333',
     doctor_nombre: 'Dra. Sandra Milena Castaño Ríos',
@@ -575,6 +583,8 @@ export const SEED_PATIENTS_3280 = [
     fecha_nacimiento: '1999-04-23',
     sexo: 'femenino',
     curso_vida: 'juventud',
+    grupo_riesgo: 'Trastornos de Salud Mental y Consumo',
+    diagnostico: 'Episodio depresivo leve y trastorno de ansiedad',
     es_gestante: false,
     doctor_asignado_id: 'd3333333-3333-3333-3333-333333333333',
     doctor_nombre: 'Dra. Sandra Milena Castaño Ríos',

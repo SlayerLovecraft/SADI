@@ -3,6 +3,7 @@ import { isSupabaseAuthError, withTimeout } from '@/lib/utils'
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils'
 import { staffService } from './staffService'
 import { SEED_PATIENTS_3280 } from './telemonitoringService'
+import { getPatientCursoVida, getPatientGrupoRiesgo } from './callCapacityService'
 
 // Función auxiliar para calcular edad desde fecha de nacimiento
 function calculateAge(birthdate) {
@@ -40,8 +41,11 @@ function getCursoVidaFromData(age, program) {
 
 // Mapear de Supabase a Frontend
 function mapSupabaseToFrontend(patient) {
-  const age = calculateAge(patient.birthdate);
-  const cursoVida = getCursoVidaFromData(age, patient.program);
+  const cvObj = getPatientCursoVida(patient);
+  const grObj = getPatientGrupoRiesgo(patient);
+  const age = calculateAge(patient.birthdate || patient.fecha_nacimiento);
+  const cursoVida = cvObj.nombre;
+  const grupoRiesgo = patient.grupo_riesgo || grObj.nombre;
 
   // Parsing seguro de JSON
   let dispositivos = [];
@@ -81,23 +85,23 @@ function mapSupabaseToFrontend(patient) {
   } catch (e) { }
 
   return {
-    id: patient.patient_id,
-    nombre: patient.name,
-    telefono: patient.phone,
+    id: patient.patient_id || patient.id,
+    nombre: patient.name || patient.nombre,
+    telefono: patient.phone || patient.telefono,
     email: patient.email,
-    cc: patient.document,
+    cc: patient.document || patient.cc || patient.numero_documento,
     edad: age,
-    fechaNacimiento: patient.birthdate,
-    sexo: patient.sex === 'Masculino' ? 'M' : patient.sex === 'Femenino' ? 'F' : patient.sex,
-    ciudad: patient.city || '',
-    programa: patient.program || '',
-    direccion: patient.address || '',
-    hospitalId: patient.hospital_id,
-    fechaRegistro: patient.created_at,
+    fechaNacimiento: patient.birthdate || patient.fecha_nacimiento,
+    sexo: patient.sex === 'Masculino' || patient.sexo === 'masculino' || patient.sexo === 'M' ? 'M' : 'F',
+    ciudad: patient.city || patient.ciudad || '',
+    programa: cursoVida,
+    direccion: patient.address || patient.direccion || '',
+    hospitalId: patient.hospital_id || patient.hospitalId,
+    fechaRegistro: patient.created_at || new Date().toISOString(),
     zona: patient.zona || 'Urbano',
     barrio: patient.barrio || 'Centro',
     comuna: patient.comuna || 'Comuna 1',
-    grupo_riesgo: patient.grupo_riesgo || 'Alteraciones Cardiovasculares, Metabólicas y Renales',
+    grupo_riesgo: grupoRiesgo,
     grupo_vida: cursoVida,
     curso_vida: cursoVida,
     tipo_usuario: patient.tipo_usuario || 'Activo',
@@ -187,8 +191,11 @@ export const patientService = {
       }
 
       const mapFallbackPatient = (p, defaultHospId) => {
+        const cvObj = getPatientCursoVida(p);
+        const grObj = getPatientGrupoRiesgo(p);
         const age = calculateAge(p.fecha_nacimiento);
-        const cv = p.curso_vida?.replace('_', ' ') || getCursoVidaFromData(age, p.programa);
+        const cv = p.curso_vida?.replace('_', ' ') || cvObj.nombre;
+        const gr = p.grupo_riesgo || grObj.nombre;
         const hasDevice = (p.dispositivos_caseros && p.dispositivos_caseros.length > 0);
         return {
           id: p.id,
@@ -207,7 +214,7 @@ export const patientService = {
           zona: 'Urbano',
           barrio: 'El Poblado',
           comuna: 'Comuna 14',
-          grupo_riesgo: p.es_gestante ? 'Población Materno-Perinatal' : 'Alteraciones Cardiovasculares, Metabólicas y Renales',
+          grupo_riesgo: gr,
           grupo_vida: cv,
           curso_vida: cv,
           tipo_usuario: 'Activo',
@@ -305,32 +312,40 @@ export const patientService = {
       };
 
     } catch (error) {
-      console.warn('⚠️ Excepción al cargar pacientes, fallback a 35 pacientes:', error);
+      console.warn('⚠️ Excepción al cargar pacientes, fallback a pacientes 3280 con segmentación clínica:', error);
       return {
-        success: true, data: SEED_PATIENTS_3280.map(p => ({
-          id: p.id,
-          nombre: p.nombre,
-          telefono: p.telefono,
-          email: p.email,
-          cc: p.documento,
-          edad: calculateAge(p.fecha_nacimiento),
-          fechaNacimiento: p.fecha_nacimiento,
-          sexo: p.sexo === 'masculino' ? 'M' : 'F',
-          ciudad: 'Cali / Medellín / Bogotá',
-          programa: p.curso_vida?.replace('_', ' ') || 'Res. 3280',
-          direccion: p.direccion || 'Dirección registrada',
-          hospitalId: 'hosp-001',
-          fechaRegistro: new Date().toISOString(),
-          grupo_vida: 'Primera Infancia',
-          curso_vida: 'Primera Infancia',
-          grupo_riesgo: 'Población Materno-Perinatal',
-          tipo_usuario: 'Activo',
-          dispositivos: p.dispositivos_caseros || [],
-          dispositivos_caseros: p.dispositivos_caseros || [],
-          valores_criticos: { tiene_critico: false, tipo: 'Sin alertas', valor: 'Normal', fecha_hora: 'N/A', estado: 'Estable' },
-          historial_medidas: [],
-          conteo_canales: { whatsapp: 2, email: 1, call: 2, sms: 1 }
-        }))
+        success: true, 
+        data: SEED_PATIENTS_3280.map(p => {
+          const cvObj = getPatientCursoVida(p);
+          const grObj = getPatientGrupoRiesgo(p);
+          const age = calculateAge(p.fecha_nacimiento);
+          const cv = p.curso_vida?.replace('_', ' ') || cvObj.nombre;
+          const gr = p.grupo_riesgo || grObj.nombre;
+          return {
+            id: p.id,
+            nombre: p.nombre,
+            telefono: p.telefono,
+            email: p.email,
+            cc: p.documento,
+            edad: age,
+            fechaNacimiento: p.fecha_nacimiento,
+            sexo: p.sexo === 'masculino' ? 'M' : 'F',
+            ciudad: 'Cali / Medellín / Bogotá',
+            programa: cv,
+            direccion: p.direccion || 'Dirección registrada',
+            hospitalId: hospitalId || 'hosp-001',
+            fechaRegistro: new Date().toISOString(),
+            grupo_vida: cv,
+            curso_vida: cv,
+            grupo_riesgo: gr,
+            tipo_usuario: 'Activo',
+            dispositivos: p.dispositivos_caseros || [],
+            dispositivos_caseros: p.dispositivos_caseros || [],
+            valores_criticos: { tiene_critico: false, tipo: 'Sin alertas', valor: 'Normal', fecha_hora: 'N/A', estado: 'Estable' },
+            historial_medidas: [],
+            conteo_canales: { whatsapp: 2, email: 1, call: 2, sms: 1 }
+          };
+        })
       };
     }
   },

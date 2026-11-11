@@ -22,6 +22,9 @@ import {
   generateAnnualResolutionRoadmap, 
   validateCampaignCallCapacity, 
   generateIndividualClinicalPrompt,
+  getPatientCursoVida,
+  getPatientGrupoRiesgo,
+  getCampaignFilteredPatients,
   DAILY_CALL_CAPACITY,
   OPERATING_HOURS_START,
   OPERATING_HOURS_END 
@@ -296,16 +299,8 @@ function ResolutionAnnualMatrix({
     });
 
     patients.forEach(pat => {
-      const cvText = (pat.ciclo_vida || pat.curso_vida || '').toLowerCase();
-      const edad = Number(pat.edad) || 0;
-      let matchedProgId = 'E'; // Default Adultez
-
-      if (cvText.includes('primera infancia') || (edad >= 0 && edad <= 5)) matchedProgId = 'A';
-      else if (cvText.includes('infancia') || (edad >= 6 && edad <= 11)) matchedProgId = 'B';
-      else if (cvText.includes('adolescen') || (edad >= 12 && edad <= 17)) matchedProgId = 'C';
-      else if (cvText.includes('juventud') || (edad >= 18 && edad <= 28)) matchedProgId = 'D';
-      else if (cvText.includes('adultez') || (edad >= 29 && edad <= 59)) matchedProgId = 'E';
-      else if (cvText.includes('vejez') || edad >= 60) matchedProgId = 'F';
+      const cv = getPatientCursoVida(pat);
+      const matchedProgId = cv.id;
 
       let birthMonth = 0;
       const fn = pat.fechaNacimiento || pat.fecha_nacimiento;
@@ -335,22 +330,8 @@ function ResolutionAnnualMatrix({
     });
 
     patients.forEach(pat => {
-      const gr = (pat.grupo_riesgo || pat.condicion || pat.diagnostico || '').toLowerCase();
-      let matchedRgId = 2; // Cardiovascular default
-
-      if (gr.includes('materno') || gr.includes('gestan')) matchedRgId = 1;
-      else if (gr.includes('cardio') || gr.includes('hipertens') || gr.includes('diabet')) matchedRgId = 2;
-      else if (gr.includes('respira') || gr.includes('epoc') || gr.includes('asma')) matchedRgId = 3;
-      else if (gr.includes('cáncer') || gr.includes('cancer') || gr.includes('tumor')) matchedRgId = 4;
-      else if (gr.includes('mental') || gr.includes('depres') || gr.includes('sustanc')) matchedRgId = 5;
-      else if (gr.includes('infec') || gr.includes('tbc') || gr.includes('vih')) matchedRgId = 6;
-      else if (gr.includes('huerfa') || gr.includes('rara')) matchedRgId = 7;
-      else if (gr.includes('nutric') || gr.includes('desnutr') || gr.includes('obesi')) matchedRgId = 8;
-      else if (gr.includes('musculo') || gr.includes('artrit') || gr.includes('osteo')) matchedRgId = 9;
-      else if (gr.includes('oral') || gr.includes('caries') || gr.includes('bucal')) matchedRgId = 10;
-      else {
-        matchedRgId = ((pat.id || 1) % 10) + 1;
-      }
+      const gr = getPatientGrupoRiesgo(pat);
+      const matchedRgId = gr.id;
 
       let birthMonth = 0;
       const fn = pat.fechaNacimiento || pat.fecha_nacimiento;
@@ -421,6 +402,17 @@ function ResolutionAnnualMatrix({
       return matrixRiesgosData[selectedContext.item.id]?.[selectedContext.monthIndex] || [];
     }
   }, [selectedContext, matrixCursosData, matrixRiesgosData]);
+
+  // Pacientes en la cohorte cruzada estricta (Intersección Curso de Vida + Grupos de Riesgo)
+  const campaignTargetPatients = useMemo(() => {
+    if (!selectedContext) return [];
+    return getCampaignFilteredPatients(
+      patients,
+      selectedContext.type,
+      selectedContext.item,
+      crossSegmentSelection
+    );
+  }, [patients, selectedContext, crossSegmentSelection]);
 
   // Configuración estable memorizada para el calendario del Wizard
   const initialCalendarConfig = useMemo(() => {
@@ -494,9 +486,13 @@ function ResolutionAnnualMatrix({
 
       // Validar capacidad si incluye llamadas
       if (selectedChannels.call) {
+        const targetVol = campaignTargetPatients.length > 0 
+          ? campaignTargetPatients.length 
+          : (activeCellPatients.length || 1);
+
         const check = validateCampaignCallCapacity(
           datesToValidate,
-          activeCellPatients.length || 56,
+          targetVol,
           roadmap365,
           existingCampaigns
         );
@@ -542,7 +538,7 @@ function ResolutionAnnualMatrix({
     if (selectedChannels.call) {
       const check = validateCampaignCallCapacity(
         campaignSchedule.selectedDates,
-        activeCellPatients.length,
+        campaignTargetPatients.length || 1,
         roadmap365,
         existingCampaigns
       );
@@ -561,6 +557,24 @@ function ResolutionAnnualMatrix({
     const detectedYear = firstDate 
       ? new Date(firstDate + 'T12:00:00').getFullYear() 
       : activeYear;
+
+    const assignedPatientsList = campaignTargetPatients.map(p => {
+      const cv = getPatientCursoVida(p);
+      const gr = getPatientGrupoRiesgo(p);
+      return {
+        id: p.id,
+        nombre: p.nombre,
+        documento: p.cc || p.numero_documento || p.documento,
+        telefono: p.telefono,
+        edad: p.edad,
+        curso_vida: cv.nombre,
+        cursoVidaId: cv.id,
+        cursoVidaColorHex: cv.colorHex,
+        grupo_riesgo: gr.nombre,
+        grupoRiesgoId: gr.id,
+        grupoRiesgoColorHex: gr.colorHex
+      };
+    });
 
     const newCampaign = {
       id: `camp_${Date.now()}`,
@@ -583,7 +597,9 @@ function ResolutionAnnualMatrix({
       fechas_ejecucion: campaignSchedule.selectedDates,
       segmento_cursos: selectedContext.type === 'curso_vida' ? [selectedContext.item.nombre] : crossSegmentSelection,
       segmento_riesgos: selectedContext.type === 'grupo_riesgo' ? [selectedContext.item.nombre] : crossSegmentSelection,
-      pacientes_asignados: activeCellPatients.length,
+      pacientes_asignados: assignedPatientsList.length,
+      pacientes_ids: assignedPatientsList.map(p => p.id),
+      pacientes_detalle: assignedPatientsList,
       enviados: 0,
       entregados: 0
     };
@@ -833,9 +849,7 @@ function ResolutionAnnualMatrix({
                                   key={d.isoDate}
                                   type="button"
                                   onClick={() => {
-                                    setSelectedRoadmapDay(d);
-                                    setSelectedPromptPatient(null);
-                                    setIsRoadmapDayOpen(true);
+                                    handleOpenDayDetail(d, null, 'global_cursos');
                                   }}
                                   title={`${d.isoDate}: ${d.totalLlamadasResolucion || 0} llamadas`}
                                   style={bgStyle}
@@ -1172,9 +1186,7 @@ function ResolutionAnnualMatrix({
                                   key={d.isoDate}
                                   type="button"
                                   onClick={() => {
-                                    setSelectedRoadmapDay(d);
-                                    setSelectedPromptPatient(null);
-                                    setIsRoadmapDayOpen(true);
+                                    handleOpenDayDetail(d, null, 'global_riesgos');
                                   }}
                                   title={`${d.isoDate}: ${d.totalLlamadasResolucion || 0} llamadas (Grupos de Riesgo)`}
                                   style={bgStyle}
@@ -1406,7 +1418,7 @@ function ResolutionAnnualMatrix({
                   {selectedContext?.item?.nombre} ({selectedContext?.monthName} {selectedYear})
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-300 mt-1">
-                  Cohorte objetivo: <strong>{activeCellPatients.length} pacientes reales</strong> en este corte mensual.
+                  Cohorte objetivo: <strong>{campaignTargetPatients.length > 0 ? campaignTargetPatients.length : activeCellPatients.length} pacientes verificados</strong> {crossSegmentSelection.length > 0 ? `(Cruce: ${selectedContext?.item?.nombre} + ${crossSegmentSelection.join(', ')})` : `(Corte ${selectedContext?.item?.nombre})`}.
                 </DialogDescription>
               </div>
 
@@ -1426,7 +1438,7 @@ function ResolutionAnnualMatrix({
                     modalMode === 'cohort' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Ver Cohorte ({activeCellPatients.length})
+                  Ver Cohorte ({campaignTargetPatients.length > 0 ? campaignTargetPatients.length : activeCellPatients.length})
                 </button>
               </div>
             </div>
@@ -1465,35 +1477,57 @@ function ResolutionAnnualMatrix({
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h4 className="font-bold text-slate-800 text-sm">
-                    Pacientes en este Grupo & Mes ({activeCellPatients.length})
+                    Pacientes en este Segmento Clínico ({campaignTargetPatients.length > 0 ? campaignTargetPatients.length : activeCellPatients.length})
                   </h4>
-                  <span className="text-xs text-slate-500">Datos verificados en Supabase</span>
+                  <span className="text-xs text-slate-500">Datos verificados con Historia Clínica</span>
                 </div>
 
-                {activeCellPatients.length === 0 ? (
-                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
-                    <p className="text-sm text-slate-500">No hay pacientes con fecha de nacimiento o cita fijada en este mes.</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto border border-slate-200 rounded-2xl">
-                    {activeCellPatients.map(pat => (
-                      <div key={pat.id} className="p-3.5 hover:bg-slate-50 flex items-center justify-between text-xs">
-                        <div>
-                          <div className="font-bold text-slate-800">{pat.nombre}</div>
-                          <div className="text-slate-500">CC: {pat.cc || pat.numero_documento} • Tel: {pat.telefono}</div>
-                        </div>
-                        <div className="text-right">
-                          <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
-                            {pat.curso_vida || pat.ciclo_vida || 'General'}
-                          </span>
-                          <div className="text-[11px] text-slate-400 mt-1">
-                            Riesgo: {pat.grupo_riesgo || 'General'}
-                          </div>
-                        </div>
+                {(() => {
+                  const listToShow = campaignTargetPatients.length > 0 ? campaignTargetPatients : activeCellPatients;
+                  if (listToShow.length === 0) {
+                    return (
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                        <p className="text-sm text-slate-500">No hay pacientes que cumplan simultáneamente con los filtros clínicos de este segmento.</p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    );
+                  }
+
+                  return (
+                    <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto border border-slate-200 rounded-2xl">
+                      {listToShow.map(pat => {
+                        const cv = getPatientCursoVida(pat);
+                        const gr = getPatientGrupoRiesgo(pat);
+                        return (
+                          <div key={pat.id} className="p-3.5 hover:bg-slate-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                            <div>
+                              <div className="font-bold text-slate-800 text-sm">{pat.nombre}</div>
+                              <div className="text-slate-500 text-[11px] font-mono">CC: {pat.cc || pat.numero_documento} • Tel: {pat.telefono} • {pat.edad} años</div>
+                              {(pat.diagnostico || pat.notas_clinicas) && (
+                                <div className="text-[11px] text-slate-500 mt-0.5 italic">
+                                  {pat.diagnostico || pat.notas_clinicas}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap justify-end shrink-0">
+                              <span 
+                                className="px-2.5 py-0.5 rounded-full text-white font-bold text-[10px]"
+                                style={{ backgroundColor: cv.colorHex }}
+                              >
+                                {cv.nombre}
+                              </span>
+                              <span 
+                                className="px-2.5 py-0.5 rounded-full text-white font-bold text-[10px]"
+                                style={{ backgroundColor: gr.colorHex }}
+                              >
+                                {gr.nombre}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               /* WIZARD DE CAMPAÑA - PASOS 1 A 5 CON LIMITADOR DE 3.500 LLAMADAS */
@@ -1537,6 +1571,23 @@ function ResolutionAnnualMatrix({
                           ? `Para el curso "${selectedContext.item.nombre}", selecciona qué grupos de riesgo priorizados recibirán esta campaña.`
                           : `Para el grupo de riesgo "${selectedContext.item.nombre}", selecciona a qué cursos de vida se aplicará esta campaña (un grupo de riesgo abarca varios cursos de vida).`}
                       </p>
+                    </div>
+
+                    {/* Indicador en tiempo real de pacientes coincidentes */}
+                    <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-purple-600" />
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                          Población objetivo tras intersección clínica:
+                        </span>
+                      </div>
+                      <span className={`font-bold px-3 py-1 rounded-full text-xs border ${
+                        campaignTargetPatients.length > 0
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-amber-100 text-amber-800 border-amber-300'
+                      }`}>
+                        {campaignTargetPatients.length} paciente(s) seleccionado(s)
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto p-1">
@@ -1813,6 +1864,10 @@ function ResolutionAnnualMatrix({
                         </strong>
                       </div>
                       <div className="flex justify-between border-b border-slate-200 pb-2">
+                        <span className="text-slate-500">Población Objetivo Asignada:</span>
+                        <strong className="text-emerald-700">{campaignTargetPatients.length} paciente(s) verificados</strong>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-200 pb-2">
                         <span className="text-slate-500">Horarios (08:00 AM - 06:00 PM):</span>
                         <strong className="text-slate-800">{selectedFranjas.length} franjas seleccionadas</strong>
                       </div>
@@ -1932,113 +1987,211 @@ function ResolutionAnnualMatrix({
                     </div>
 
                     <div className="space-y-3">
-                      {selectedRoadmapDay.campaigns.map((camp, campIdx) => (
-                        <div key={campIdx} className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs space-y-2">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <span className="font-black text-slate-900 text-sm">{camp.nombre}</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900">
-                              {camp.canal || 'Llamada Telefónica'}
-                            </span>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
-                            <div><strong>Sede:</strong> {camp.lugar || 'Sede Principal - Manizales'}</div>
-                            <div><strong>Horarios de llamada:</strong> {Array.isArray(camp.horarios) ? camp.horarios.join(', ') : '08:00 AM - 06:00 PM'}</div>
-                            <div><strong>Reintentos:</strong> {camp.reintentos ? `Hasta ${camp.reintentos} reintentos` : 'Sin reintentos'}</div>
-                            <div><strong>Audiencia:</strong> {camp.pacientes_asignados || 56} pacientes proyectados</div>
-                          </div>
+                      {selectedRoadmapDay.campaigns.map((camp, campIdx) => {
+                        const campPatients = (Array.isArray(camp.pacientes_detalle) && camp.pacientes_detalle.length > 0)
+                          ? camp.pacientes_detalle
+                          : getCampaignFilteredPatients(
+                              patients,
+                              camp.tipo_origen,
+                              { id: camp.origen_id, nombre: camp.origen_nombre },
+                              camp.tipo_origen === 'curso_vida' ? camp.segmento_riesgos : camp.segmento_cursos
+                            ).map(p => {
+                              const cv = getPatientCursoVida(p);
+                              const gr = getPatientGrupoRiesgo(p);
+                              return {
+                                id: p.id,
+                                nombre: p.nombre,
+                                documento: p.cc || p.numero_documento || p.documento,
+                                telefono: p.telefono,
+                                edad: p.edad,
+                                curso_vida: cv.nombre,
+                                cursoVidaId: cv.id,
+                                cursoVidaColorHex: cv.colorHex,
+                                grupo_riesgo: gr.nombre,
+                                grupoRiesgoId: gr.id,
+                                grupoRiesgoColorHex: gr.colorHex
+                              };
+                            });
 
-                          {/* ¿Qué se le dirá al paciente en la campaña? */}
-                          <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
-                            <div className="text-[10px] font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1">
-                              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                              ¿Qué le dirá el Agente IA al paciente en esta llamada?
+                        return (
+                          <div key={campIdx} className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs space-y-2">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <span className="font-black text-slate-900 text-sm">{camp.nombre}</span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900">
+                                {camp.canal || 'Llamada Telefónica'}
+                              </span>
                             </div>
-                            <p className="text-[11px] text-slate-700 font-mono italic">
-                              "{camp.directriz_ia || 'Llamada de tamizaje preventivo y demanda inducida para control de salud en el hospital.'}"
-                            </p>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                              <div><strong>Sede:</strong> {camp.lugar || 'Sede Principal - Manizales'}</div>
+                              <div><strong>Horarios de llamada:</strong> {Array.isArray(camp.horarios) ? camp.horarios.join(', ') : '08:00 AM - 06:00 PM'}</div>
+                              <div><strong>Reintentos:</strong> {camp.reintentos ? `Hasta ${camp.reintentos} reintentos` : 'Sin reintentos'}</div>
+                              <div><strong>Audiencia:</strong> {campPatients.length} pacientes asignados (100% segmentados)</div>
+                            </div>
+
+                            {/* ¿Qué se le dirá al paciente en la campaña? */}
+                            <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                              <div className="text-[10px] font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                ¿Qué le dirá el Agente IA al paciente en esta llamada?
+                              </div>
+                              <p className="text-[11px] text-slate-700 font-mono italic">
+                                "{camp.directriz_ia || 'Llamada de tamizaje preventivo y demanda inducida para control de salud en el hospital.'}"
+                              </p>
+                            </div>
+
+                            {/* Listado de Pacientes Asignados a la Campaña */}
+                            <div className="mt-3 pt-2.5 border-t border-amber-200/80 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                                  <Users className="w-3.5 h-3.5 text-amber-700" />
+                                  Pacientes Asignados a esta Campaña ({campPatients.length}):
+                                </span>
+                                <span className="text-[10px] text-amber-800 font-medium">
+                                  Filtro: {camp.tipo_origen === 'curso_vida' ? `${camp.origen_nombre} + ${(camp.segmento_riesgos || []).join(', ')}` : `${camp.origen_nombre} + ${(camp.segmento_cursos || []).join(', ')}`}
+                                </span>
+                              </div>
+
+                              {campPatients.length === 0 ? (
+                                <div className="p-3 bg-white/90 rounded-xl text-center text-slate-500 text-[11px] border border-amber-200">
+                                  No hay pacientes en la base de datos que coincidan con la segmentación de esta campaña.
+                                </div>
+                              ) : (
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                  {campPatients.map((pat, pIdx) => (
+                                    <div key={pat.id || pIdx} className="p-2.5 bg-white rounded-xl border border-amber-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 shadow-xs">
+                                      <div>
+                                        <div className="font-bold text-slate-900 text-xs">{pat.nombre}</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">
+                                          CC: {pat.documento || pat.cc} • Tel: {pat.telefono} • {pat.edad} años
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: pat.cursoVidaColorHex || '#10b981' }}>
+                                          {pat.curso_vida || 'Juventud'}
+                                        </span>
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: pat.grupoRiesgoColorHex || '#06b6d4' }}>
+                                          {pat.grupo_riesgo || 'Enfermedades Respiratorias'}
+                                        </span>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            const promptText = generateIndividualClinicalPrompt(
+                                              { nombre: pat.nombre, cc: pat.documento || pat.cc, telefono: pat.telefono },
+                                              camp.nombre,
+                                              pat.curso_vida || camp.origen_nombre,
+                                              pat.grupo_riesgo || (camp.segmento_riesgos?.[0] || 'General'),
+                                              camp.nombre,
+                                              camp.directriz_ia,
+                                              camp.lugar
+                                            );
+                                            setSelectedPromptPatient({ ...pat, accion3280: camp.nombre, indicaciones: camp.directriz_ia, promptText });
+                                          }}
+                                          className="text-[10px] h-6 px-2 border-amber-300 text-amber-900 hover:bg-amber-100 font-bold"
+                                        >
+                                          <Sparkles className="w-3 h-3 text-amber-600 mr-1" />
+                                          Guion IA
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
                 {/* 2. SECCIÓN DE CITAS RESOLUCIÓN 3280 */}
-                <div className="space-y-2">
-                  <div className="text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-200 pb-1">
-                    <span className="flex items-center gap-1.5">
-                      <Stethoscope className="w-4 h-4 text-blue-600" />
-                      Llamadas Normativas Resolución 3280 ({selectedRoadmapDay.callsResolucion?.length || 0}):
-                    </span>
-                    <span className="text-slate-500 text-[11px] font-normal">
-                      Horario: 08:00 AM a 06:00 PM (10h • 350 llam/h)
-                    </span>
-                  </div>
+                {(() => {
+                  let calls = selectedRoadmapDay.callsResolucion || [];
+                  if (selectedRoadmapDay.specificItem && selectedRoadmapDay.specificType === 'curso_vida') {
+                    calls = calls.filter(c => c.cursoVidaId === selectedRoadmapDay.specificItem.id);
+                  } else if (selectedRoadmapDay.specificItem && selectedRoadmapDay.specificType === 'grupo_riesgo') {
+                    calls = calls.filter(c => c.grupoRiesgoId === selectedRoadmapDay.specificItem.id);
+                  }
 
-                  {(!selectedRoadmapDay.callsResolucion || selectedRoadmapDay.callsResolucion.length === 0) ? (
-                    <div className="p-4 text-center bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500">
-                      {selectedRoadmapDay.campaigns?.length > 0 
-                        ? 'No hay llamadas normativas de la Resolución 3280 agendadas para esta fecha en este programa.'
-                        : 'No hay citas de la Resolución 3280 programadas para este día. El cupo del Gateway GSM está disponible para campañas hospitalarias.'}
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                      {selectedRoadmapDay.callsResolucion.map((cItem, cIdx) => (
-                        <div 
-                          key={cIdx}
-                          className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-all flex flex-col justify-between items-start gap-2 shadow-xs"
-                        >
-                          <div className="w-full flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-slate-900 text-xs">{cItem.nombre}</span>
-                              <span className="text-[10px] text-slate-500 font-mono">CC: {cItem.documento}</span>
-                              <span 
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
-                                style={{ backgroundColor: cItem.cursoVidaColorHex }}
-                              >
-                                {cItem.cursoVidaNombre}
-                              </span>
-                              <span 
-                                className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
-                                style={{ backgroundColor: cItem.grupoRiesgoColorHex }}
-                              >
-                                {cItem.grupoRiesgoNombre}
-                              </span>
-                            </div>
+                  return (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-slate-800 flex items-center justify-between border-b border-slate-200 pb-1">
+                        <span className="flex items-center gap-1.5">
+                          <Stethoscope className="w-4 h-4 text-blue-600" />
+                          Llamadas Normativas Resolución 3280 ({calls.length}):
+                        </span>
+                        <span className="text-slate-500 text-[11px] font-normal">
+                          Horario: 08:00 AM a 06:00 PM (10h • 350 llam/h)
+                        </span>
+                      </div>
 
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                const promptText = generateIndividualClinicalPrompt(
-                                  { nombre: cItem.nombre, cc: cItem.documento, telefono: cItem.telefono },
-                                  cItem.accion3280,
-                                  cItem.cursoVidaNombre,
-                                  cItem.grupoRiesgoNombre
-                                );
-                                setSelectedPromptPatient({ ...cItem, promptText });
-                              }}
-                              className="text-xs shrink-0 rounded-lg gap-1 border-blue-200 text-blue-700 hover:bg-blue-50 font-bold"
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                              Ver Guion IA Completo
-                            </Button>
-                          </div>
-
-                          <div className="text-[11px] text-slate-600 flex items-center gap-1.5 flex-wrap">
-                            <Stethoscope className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                            <span className="font-semibold text-blue-900">{cItem.accion3280}</span>
-                            <span className="text-[9px] px-1 bg-slate-100 rounded text-slate-600 font-mono">CUPS: {cItem.cups}</span>
-                            {cItem.indicaciones && (
-                              <span className="text-[10px] text-slate-500 italic">· {cItem.indicaciones}</span>
-                            )}
-                          </div>
+                      {calls.length === 0 ? (
+                        <div className="p-4 text-center bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-500">
+                          {selectedRoadmapDay.campaigns?.length > 0 
+                            ? `No hay llamadas normativas de la Resolución 3280 agendadas para ${selectedRoadmapDay.specificItem ? selectedRoadmapDay.specificItem.nombre : 'este programa'} en esta fecha. Toda la franja está disponible para la campaña.`
+                            : 'No hay citas de la Resolución 3280 programadas para este día. El cupo del Gateway GSM está disponible para campañas hospitalarias.'}
                         </div>
-                      ))}
+                      ) : (
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {calls.map((cItem, cIdx) => (
+                            <div 
+                              key={cIdx}
+                              className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-300 transition-all flex flex-col justify-between items-start gap-2 shadow-xs"
+                            >
+                              <div className="w-full flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-slate-900 text-xs">{cItem.nombre}</span>
+                                  <span className="text-[10px] text-slate-500 font-mono">CC: {cItem.documento}</span>
+                                  <span 
+                                    className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                                    style={{ backgroundColor: cItem.cursoVidaColorHex }}
+                                  >
+                                    {cItem.cursoVidaNombre}
+                                  </span>
+                                  <span 
+                                    className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white"
+                                    style={{ backgroundColor: cItem.grupoRiesgoColorHex }}
+                                  >
+                                    {cItem.grupoRiesgoNombre}
+                                  </span>
+                                </div>
+
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    const promptText = generateIndividualClinicalPrompt(
+                                      { nombre: cItem.nombre, cc: cItem.documento, telefono: cItem.telefono },
+                                      cItem.accion3280,
+                                      cItem.cursoVidaNombre,
+                                      cItem.grupoRiesgoNombre
+                                    );
+                                    setSelectedPromptPatient({ ...cItem, promptText });
+                                  }}
+                                  className="text-xs shrink-0 rounded-lg gap-1 border-blue-200 text-blue-700 hover:bg-blue-50 font-bold"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                  Ver Guion IA Completo
+                                </Button>
+                              </div>
+
+                              <div className="text-[11px] text-slate-600 flex items-center gap-1.5 flex-wrap">
+                                <Stethoscope className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                <span className="font-semibold text-blue-900">{cItem.accion3280}</span>
+                                <span className="text-[9px] px-1 bg-slate-100 rounded text-slate-600 font-mono">CUPS: {cItem.cups}</span>
+                                {cItem.indicaciones && (
+                                  <span className="text-[10px] text-slate-500 italic">· {cItem.indicaciones}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 {/* Panel de Prompt IA Individualizado */}
                 {selectedPromptPatient && (

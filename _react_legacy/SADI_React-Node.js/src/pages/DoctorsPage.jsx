@@ -52,7 +52,7 @@ const GRUPOS_RIESGO_OPTIONS = [
   { id: 'todos', letra: '★', nombre: 'Todos los Grupos de Riesgo' },
   { id: 'materno_perinatal', letra: '1', nombre: 'Población Materno-Perinatal' },
   { id: 'cardiovascular', letra: '2', nombre: 'Alteraciones Cardiovasculares, Metabólicas y Renales' },
-  { id: 'respiratorio', letra: '3', nombre: 'Afecciones Respiratorias Crónicas' },
+  { id: 'respiratorio', letra: '3', nombre: 'Enfermedades Respiratorias Crónicas' },
   { id: 'cancer', letra: '4', nombre: 'Cáncer y Neoplasias' },
   { id: 'mental', letra: '5', nombre: 'Trastornos de Salud Mental y Consumo' },
   { id: 'infecciosas', letra: '6', nombre: 'Enfermedades Infecciosas Crónicas (VIH, TB)' },

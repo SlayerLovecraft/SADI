@@ -59,7 +59,7 @@ export const GRUPOS_RIESGO_10 = [
   {
     id: 3,
     codigo: 'respiratorio',
-    nombre: 'Afecciones Respiratorias Crónicas',
+    nombre: 'Enfermedades Respiratorias Crónicas',
     rango: 'Asma, EPOC y Fibrosis Pulmonar',
     color: 'bg-cyan-600',
     borderColor: 'border-cyan-300',

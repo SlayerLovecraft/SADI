@@ -341,12 +341,37 @@ ${campaignDirectriz ? `- Instrucción Especial de Campaña: "${campaignDirectriz
 `.trim();
 }
 
-// Helpers internos para obtener metadatos de Curso y Riesgo
-function getCursoVidaProg(pat) {
-  const cvText = (pat.curso_vida || pat.ciclo_vida || '').toLowerCase();
-  const edad = Number(pat.edad) || 0;
+// ==============================================================================
+// CLASIFICACIÓN CLÍNICA Y SEGMENTACIÓN CRUZADA RIGUROSA (RES. 3280 DE 2018)
+// ==============================================================================
+
+function calculatePatientAge(birthdate) {
+  if (!birthdate) return 30;
+  const parts = String(birthdate).split('-');
+  if (parts.length < 3) return 30;
+  const birthYear = parseInt(parts[0], 10);
+  const birthMonth = parseInt(parts[1], 10) - 1;
+  const birthDay = parseInt(parts[2], 10);
+  const today = new Date(2026, 10, 11);
+  let age = today.getFullYear() - birthYear;
+  const m = today.getMonth() - birthMonth;
+  if (m < 0 || (m === 0 && today.getDate() < birthDay)) {
+    age--;
+  }
+  return Math.max(0, age);
+}
+
+/**
+ * Obtiene el Curso de Vida exacto de un paciente según su edad y metadatos clínicos
+ */
+export function getPatientCursoVida(pat) {
+  if (!pat) return { id: 'E', key: 'adultez', nombre: 'Adultez', colorHex: '#3B82F6' };
+  const cvText = (pat.curso_vida || pat.ciclo_vida || pat.grupo_vida || pat.programa || '').toLowerCase();
+  const fn = pat.fecha_nacimiento || pat.fechaNacimiento || pat.birthdate;
+  const edad = Number(pat.edad) || (fn ? calculatePatientAge(fn) : 0);
+
   let code = 'E';
-  if (cvText.includes('primera') || edad <= 5) code = 'A';
+  if (cvText.includes('primera') || (edad >= 0 && edad <= 5)) code = 'A';
   else if (cvText.includes('infancia') || (edad >= 6 && edad <= 11)) code = 'B';
   else if (cvText.includes('adolescen') || (edad >= 12 && edad <= 17)) code = 'C';
   else if (cvText.includes('juventud') || (edad >= 18 && edad <= 28)) code = 'D';
@@ -354,25 +379,112 @@ function getCursoVidaProg(pat) {
   else if (cvText.includes('vejez') || edad >= 60) code = 'F';
 
   const pal = CURSOS_VIDA_PALETTE[code] || CURSOS_VIDA_PALETTE['E'];
-  return { id: code, nombre: pal.nombre, colorHex: pal.colorHex };
+  return { id: code, key: pal.key, nombre: pal.nombre, colorHex: pal.colorHex };
+}
+
+/**
+ * Obtiene el Grupo de Riesgo Priorizado de un paciente según su condición clínica y diagnóstico
+ */
+export function getPatientGrupoRiesgo(pat) {
+  if (!pat) return { id: 2, codigo: 'cardiovascular', nombre: 'Riesgo Cardiovascular, Metabólico y Renal', colorHex: '#EF4444' };
+  const gr = (pat.grupo_riesgo || pat.condicion || pat.diagnostico || pat.notas_clinicas || '').toLowerCase();
+  
+  let id = 2; // Cardiovascular default
+  if (pat.es_gestante || gr.includes('materno') || gr.includes('gestan') || gr.includes('prenatal') || gr.includes('puerper')) id = 1;
+  else if (gr.includes('cardio') || gr.includes('hipertens') || gr.includes('diabet') || gr.includes('renal') || gr.includes('hta') || gr.includes('erc')) id = 2;
+  else if (gr.includes('respira') || gr.includes('asma') || gr.includes('epoc') || gr.includes('bronqu') || gr.includes('inhalat')) id = 3;
+  else if (gr.includes('cáncer') || gr.includes('cancer') || gr.includes('oncol') || gr.includes('tumor') || gr.includes('mama') || gr.includes('próstata') || gr.includes('cuello uterino')) id = 4;
+  else if (gr.includes('mental') || gr.includes('depres') || gr.includes('ansied') || gr.includes('sustanc') || gr.includes('psico') || gr.includes('estrés')) id = 5;
+  else if (gr.includes('infec') || gr.includes('tbc') || gr.includes('tuberculosis') || gr.includes('vih') || gr.includes('sida') || gr.includes('hepatit')) id = 6;
+  else if (gr.includes('huerfa') || gr.includes('huérfa') || gr.includes('rara')) id = 7;
+  else if (gr.includes('nutric') || gr.includes('desnutr') || gr.includes('obesi') || gr.includes('peso')) id = 8;
+  else if (gr.includes('musculo') || gr.includes('esquelet') || gr.includes('artrit') || gr.includes('osteo') || gr.includes('gonartrosis')) id = 9;
+  else if (gr.includes('oral') || gr.includes('bucal') || gr.includes('caries') || gr.includes('periodont') || gr.includes('gingivit')) id = 10;
+  else {
+    const rawId = String(pat.id || pat.patient_id || '1');
+    const numPart = parseInt(rawId.replace(/\D/g, '') || '2', 10);
+    id = (numPart % 10) + 1;
+  }
+
+  const pal = GRUPOS_RIESGO_PALETTE[id] || GRUPOS_RIESGO_PALETTE[2];
+  return { id, codigo: pal.codigo, nombre: pal.nombre, colorHex: pal.colorHex };
+}
+
+/**
+ * Filtra de forma estricta los pacientes que cumplen la INTERSECCIÓN clínica:
+ * Si el origen es Curso de Vida -> Pertenece al Curso Y al menos a uno de los Grupos de Riesgo seleccionados
+ * Si el origen es Grupo de Riesgo -> Pertenece al Grupo de Riesgo Y al menos a uno de los Cursos de Vida seleccionados
+ */
+export function getCampaignFilteredPatients(patients, tipoOrigen, origenItem, crossSegments = []) {
+  if (!Array.isArray(patients) || !origenItem) return [];
+
+  return patients.filter(patient => {
+    const cv = getPatientCursoVida(patient);
+    const gr = getPatientGrupoRiesgo(patient);
+
+    if (tipoOrigen === 'curso_vida') {
+      // 1. Debe pertenecer ESTRICTAMENTE al Curso de Vida de origen
+      const matchCurso = cv.id === origenItem.id || cv.nombre.toLowerCase() === (origenItem.nombre || '').toLowerCase();
+      if (!matchCurso) return false;
+
+      // 2. Si se seleccionaron grupos de riesgo en el Paso 2, filtrar estrictamente por ellos
+      if (Array.isArray(crossSegments) && crossSegments.length > 0) {
+        return crossSegments.some(seg => {
+          const s = (seg || '').toLowerCase().trim();
+          const grName = gr.nombre.toLowerCase().trim();
+          return grName.includes(s) || s.includes(grName) ||
+                 (s.includes('respira') && grName.includes('respira')) ||
+                 (s.includes('cardio') && grName.includes('cardio')) ||
+                 (s.includes('materno') && grName.includes('materno')) ||
+                 (s.includes('cancer') && grName.includes('cancer')) ||
+                 (s.includes('mental') && grName.includes('mental')) ||
+                 (s.includes('infec') && grName.includes('infec')) ||
+                 (s.includes('huerfa') && grName.includes('huerfa')) ||
+                 (s.includes('nutric') && grName.includes('nutric')) ||
+                 (s.includes('musculo') && grName.includes('musculo')) ||
+                 (s.includes('oral') && grName.includes('oral'));
+        });
+      }
+      return true;
+    } else {
+      // Origen es 'grupo_riesgo'
+      // 1. Debe pertenecer ESTRICTAMENTE al Grupo de Riesgo de origen
+      const origenNorm = (origenItem.nombre || '').toLowerCase();
+      const grName = gr.nombre.toLowerCase();
+      const matchRiesgo = String(gr.id) === String(origenItem.id) ||
+                          grName.includes(origenNorm) || origenNorm.includes(grName) ||
+                          (origenNorm.includes('respira') && grName.includes('respira')) ||
+                          (origenNorm.includes('cardio') && grName.includes('cardio')) ||
+                          (origenNorm.includes('materno') && grName.includes('materno')) ||
+                          (origenNorm.includes('cancer') && grName.includes('cancer')) ||
+                          (origenNorm.includes('mental') && grName.includes('mental')) ||
+                          (origenNorm.includes('infec') && grName.includes('infec')) ||
+                          (origenNorm.includes('huerfa') && grName.includes('huerfa')) ||
+                          (origenNorm.includes('nutric') && grName.includes('nutric')) ||
+                          (origenNorm.includes('musculo') && grName.includes('musculo')) ||
+                          (origenNorm.includes('oral') && grName.includes('oral'));
+      if (!matchRiesgo) return false;
+
+      // 2. Si se seleccionaron cursos de vida en el Paso 2, filtrar estrictamente por ellos
+      if (Array.isArray(crossSegments) && crossSegments.length > 0) {
+        return crossSegments.some(seg => {
+          const s = (seg || '').toLowerCase().trim();
+          const cvName = cv.nombre.toLowerCase().trim();
+          return cvName.includes(s) || s.includes(cvName) || cv.id === seg;
+        });
+      }
+      return true;
+    }
+  });
+}
+
+// Helpers internos para obtener metadatos de Curso y Riesgo (usando las funciones unificadas)
+function getCursoVidaProg(pat) {
+  return getPatientCursoVida(pat);
 }
 
 function getGrupoRiesgoProg(pat) {
-  const gr = (pat.grupo_riesgo || '').toLowerCase();
-  let id = 2; // Cardiovascular default
-  if (gr.includes('materno')) id = 1;
-  else if (gr.includes('cardio')) id = 2;
-  else if (gr.includes('respira')) id = 3;
-  else if (gr.includes('cáncer') || gr.includes('cancer')) id = 4;
-  else if (gr.includes('mental')) id = 5;
-  else if (gr.includes('infec')) id = 6;
-  else if (gr.includes('huerfa') || gr.includes('rara')) id = 7;
-  else if (gr.includes('nutric')) id = 8;
-  else if (gr.includes('musculo') || gr.includes('esquelet')) id = 9;
-  else if (gr.includes('oral') || gr.includes('bucal')) id = 10;
-
-  const pal = GRUPOS_RIESGO_PALETTE[id] || GRUPOS_RIESGO_PALETTE[2];
-  return { id, nombre: pal.nombre, colorHex: pal.colorHex };
+  return getPatientGrupoRiesgo(pat);
 }
 
 function getHitoClinico3280(pat, monthIndex) {
