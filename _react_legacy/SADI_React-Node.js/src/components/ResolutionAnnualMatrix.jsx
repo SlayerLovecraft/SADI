@@ -51,7 +51,7 @@ const FRANJAS_HORARIAS_10H = [
   '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'
 ];
 
-export default function ResolutionAnnualMatrix({
+function ResolutionAnnualMatrix({
   selectedYear = 2026,
   onYearChange = () => {},
   onDownloadExcel = () => {}
@@ -250,33 +250,38 @@ export default function ResolutionAnnualMatrix({
     setIsRoadmapDayOpen(true);
   };
 
-  // Helper para obtener los días del mes en roadmap365
-  const getDaysForMonth = (mIdx) => {
-    const daysInMonth = new Date(activeYear, mIdx + 1, 0).getDate();
-    const days = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const padD = String(d).padStart(2, '0');
-      const padM = String(mIdx + 1).padStart(2, '0');
-      const iso = `${activeYear}-${padM}-${padD}`;
-      const dayData = roadmap365[iso] || {
-        isoDate: iso,
-        dayIndex: d,
-        dayOfMonth: d,
-        isSunday: new Date(activeYear, mIdx, d, 12, 0, 0).getDay() === 0,
-        callsResolucion: [],
-        cursosVidaPresentes: new Set(),
-        gruposRiesgoPresentes: new Set(),
-        totalLlamadasResolucion: 0,
-        cupoDisponible: DAILY_CALL_CAPACITY
-      };
-      days.push({
-        ...dayData,
-        dayOfMonth: d,
-        isoDate: iso
-      });
-    }
-    return days;
-  };
+  // Cache memorizado de los 12 meses de días para evitar recalcular 264 veces por render (8.184 new Date() suprimidos)
+  const allMonthsDays = useMemo(() => {
+    return Array.from({ length: 12 }, (_, mIdx) => {
+      const daysInMonth = new Date(activeYear, mIdx + 1, 0).getDate();
+      const days = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const padD = String(d).padStart(2, '0');
+        const padM = String(mIdx + 1).padStart(2, '0');
+        const iso = `${activeYear}-${padM}-${padD}`;
+        const dayData = roadmap365[iso] || {
+          isoDate: iso,
+          dayIndex: d,
+          dayOfMonth: d,
+          isSunday: new Date(activeYear, mIdx, d, 12, 0, 0).getDay() === 0,
+          callsResolucion: [],
+          cursosVidaPresentes: new Set(),
+          gruposRiesgoPresentes: new Set(),
+          totalLlamadasResolucion: 0,
+          cupoDisponible: DAILY_CALL_CAPACITY
+        };
+        days.push({
+          ...dayData,
+          dayOfMonth: d,
+          isoDate: iso
+        });
+      }
+      return days;
+    });
+  }, [activeYear, roadmap365]);
+
+  // Acceso O(1) ultra-rápido a los días del mes
+  const getDaysForMonth = (mIdx) => allMonthsDays[mIdx] || [];
 
   // Total anual de llamadas de resolución
   const totalYearlyCalls = useMemo(() => {
@@ -770,10 +775,10 @@ export default function ResolutionAnnualMatrix({
                   })}
                 </tr>
               </thead>
-              <tbody className="divide-y-4 divide-slate-100 text-xs">
+              <tbody className="divide-y-4 divide-slate-100 dark:divide-slate-800 text-xs">
                 {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES (Blanco en Luz, Negro en Noche) */}
-                <tr className="bg-white dark:bg-slate-950 text-slate-800 dark:text-white border-b-4 border-slate-200 dark:border-slate-800 group/roadmap transition-colors">
-                  <td className="p-2 sticky left-0 bg-white dark:bg-slate-950 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden transition-colors">
+                <tr className="bg-white dark:bg-slate-950 text-slate-800 dark:text-white border-b-4 border-slate-200 dark:border-slate-800 group/roadmap">
+                  <td className="p-2 sticky left-0 bg-white dark:bg-slate-950 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
                     <div className="flex items-center gap-1.5 overflow-hidden">
                       <div className="w-6 h-6 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800/60">
                         <Calendar className="w-3.5 h-3.5" />
@@ -796,13 +801,13 @@ export default function ResolutionAnnualMatrix({
                     return (
                       <td 
                         key={mIdx} 
-                        className={`p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden align-top transition-all ${
+                        className={`p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden align-top ${
                           isPast ? 'bg-slate-100/90 dark:bg-slate-900/60 filter grayscale contrast-[75%] opacity-70' : 'bg-white dark:bg-slate-950'
                         }`}
                         title={isPast ? 'Periodo pasado cerrado (Vencido) en la Resolución 3280' : undefined}
                       >
                         {/* Mini Calendario Mensual (Blanco en activo, grisáceo vencido en pasado) */}
-                        <div className={`w-full rounded-lg p-1 border flex flex-col justify-between min-h-[58px] transition-colors ${
+                        <div className={`w-full rounded-lg p-1 border flex flex-col justify-between min-h-[58px] ${
                           isPast 
                             ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 shadow-none' 
                             : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
@@ -834,12 +839,12 @@ export default function ResolutionAnnualMatrix({
                                   }}
                                   title={`${d.isoDate}: ${d.totalLlamadasResolucion || 0} llamadas`}
                                   style={bgStyle}
-                                  className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
+                                  className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center ${
                                     isSun
                                       ? 'bg-slate-100 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                       : hasCalls
-                                        ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border border-slate-100 dark:border-slate-700/50 cursor-pointer'
+                                        ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer transition-transform'
+                                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border border-slate-100 dark:border-slate-800 cursor-pointer'
                                   }`}
                                 >
                                   {d.dayOfMonth}
@@ -914,14 +919,14 @@ export default function ResolutionAnnualMatrix({
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('curso_vida', prog, mIdx, 'wizard')}
-                            className={`p-1 text-center border-r border-slate-100 last:border-r-0 relative group overflow-hidden transition-colors ${
+                            className={`p-1 text-center border-r border-slate-100 dark:border-slate-800 last:border-r-0 relative group overflow-hidden ${
                               isPast 
-                                ? 'cursor-pointer hover:bg-slate-100/80' 
-                                : 'cursor-pointer hover:bg-blue-50/40'
+                                ? 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60' 
+                                : 'cursor-pointer hover:bg-blue-50/40 dark:hover:bg-blue-950/20'
                             }`}
                           >
                             <div 
-                              className={`p-1 rounded-xl border text-[9px] transition-all flex flex-col justify-between min-h-[105px] overflow-hidden ${
+                              className={`p-1 rounded-xl border text-[9px] flex flex-col justify-between min-h-[105px] overflow-hidden ${
                                 isPast
                                   ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 text-slate-500 filter grayscale contrast-[75%] opacity-70'
                                   : (count > 0 || cellCampaigns.length > 0)
@@ -944,7 +949,7 @@ export default function ResolutionAnnualMatrix({
                               </div>
 
                               {/* Mini Calendario Mensual del Curso de Vida (Blanco en activo, grisáceo vencido en pasado) */}
-                              <div className={`w-full rounded-lg p-0.5 border flex flex-col justify-between my-0.5 transition-colors ${
+                              <div className={`w-full rounded-lg p-0.5 border flex flex-col justify-between my-0.5 ${
                                 isPast 
                                   ? 'bg-slate-100/90 dark:bg-slate-900/60 border-slate-300 dark:border-slate-800 shadow-none' 
                                   : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
@@ -991,12 +996,12 @@ export default function ResolutionAnnualMatrix({
                                                 : `${d.isoDate}: Haz clic para crear campaña en este día.`
                                         }
                                         style={bgStyle}
-                                        className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
+                                        className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center ${
                                           isSun
                                             ? 'bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                             : hasCalls
-                                              ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                              : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-900 dark:hover:text-blue-200 border border-slate-100 dark:border-slate-700/50 cursor-pointer'
+                                              ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer transition-transform'
+                                              : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-900 dark:hover:text-blue-200 border border-slate-100 dark:border-slate-800 cursor-pointer'
                                         }`}
                                       >
                                         {d.dayOfMonth}
@@ -1109,10 +1114,10 @@ export default function ResolutionAnnualMatrix({
                   })}
                 </tr>
               </thead>
-              <tbody className="divide-y-4 divide-slate-100 text-xs">
+              <tbody className="divide-y-4 divide-slate-100 dark:divide-slate-800 text-xs">
                 {/* LÍNEA EXTRA DEL ROADMAP ANUAL DIRECTAMENTE DEBAJO DE LOS MESES (Blanco en Luz, Negro en Noche) */}
-                <tr className="bg-white dark:bg-slate-950 text-slate-800 dark:text-white border-b-4 border-slate-200 dark:border-slate-800 group/roadmap transition-colors">
-                  <td className="p-2 sticky left-0 bg-white dark:bg-slate-950 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden transition-colors">
+                <tr className="bg-white dark:bg-slate-950 text-slate-800 dark:text-white border-b-4 border-slate-200 dark:border-slate-800 group/roadmap">
+                  <td className="p-2 sticky left-0 bg-white dark:bg-slate-950 z-10 border-r-2 border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
                     <div className="flex items-center gap-1.5 overflow-hidden">
                       <div className="w-6 h-6 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-200 dark:border-purple-800/60">
                         <Calendar className="w-3.5 h-3.5" />
@@ -1135,13 +1140,13 @@ export default function ResolutionAnnualMatrix({
                     return (
                       <td 
                         key={mIdx} 
-                        className={`p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden align-top transition-all ${
+                        className={`p-1 text-center border-r border-slate-200 dark:border-slate-800 last:border-r-0 overflow-hidden align-top ${
                           isPast ? 'bg-slate-100/90 dark:bg-slate-900/60 filter grayscale contrast-[75%] opacity-70' : 'bg-white dark:bg-slate-950'
                         }`}
                         title={isPast ? 'Periodo pasado cerrado (Vencido) en la Resolución 3280' : undefined}
                       >
                         {/* Mini Calendario Mensual (Blanco en activo, grisáceo vencido en pasado) */}
-                        <div className={`w-full rounded-lg p-1 border flex flex-col justify-between min-h-[58px] transition-colors ${
+                        <div className={`w-full rounded-lg p-1 border flex flex-col justify-between min-h-[58px] ${
                           isPast 
                             ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 shadow-none' 
                             : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
@@ -1173,12 +1178,12 @@ export default function ResolutionAnnualMatrix({
                                   }}
                                   title={`${d.isoDate}: ${d.totalLlamadasResolucion || 0} llamadas (Grupos de Riesgo)`}
                                   style={bgStyle}
-                                  className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center transition-all ${
+                                  className={`w-full aspect-square rounded-[1.5px] text-[7px] leading-none flex items-center justify-center ${
                                     isSun
                                       ? 'bg-slate-100 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                       : hasCalls
-                                        ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border border-slate-100 dark:border-slate-700/50 cursor-pointer'
+                                        ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer transition-transform'
+                                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white border border-slate-100 dark:border-slate-800 cursor-pointer'
                                   }`}
                                 >
                                   {d.dayOfMonth}
@@ -1254,14 +1259,14 @@ export default function ResolutionAnnualMatrix({
                           <td 
                             key={mIdx}
                             onClick={() => handleCellClick('grupo_riesgo', rg, mIdx, 'wizard')}
-                            className={`p-1 text-center border-r border-slate-100 last:border-r-0 relative group overflow-hidden transition-colors ${
+                            className={`p-1 text-center border-r border-slate-100 dark:border-slate-800 last:border-r-0 relative group overflow-hidden ${
                               isPast 
-                                ? 'cursor-pointer hover:bg-slate-100/80' 
-                                : 'cursor-pointer hover:bg-purple-50/40'
+                                ? 'cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60' 
+                                : 'cursor-pointer hover:bg-purple-50/40 dark:hover:bg-purple-950/20'
                             }`}
                           >
                             <div 
-                              className={`p-1 rounded-xl border text-[9px] transition-all flex flex-col justify-between min-h-[105px] overflow-hidden ${
+                              className={`p-1 rounded-xl border text-[9px] flex flex-col justify-between min-h-[105px] overflow-hidden ${
                                 isPast
                                   ? 'bg-slate-200/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-800 text-slate-500 filter grayscale contrast-[75%] opacity-70'
                                   : (count > 0 || cellCampaigns.length > 0)
@@ -1284,7 +1289,7 @@ export default function ResolutionAnnualMatrix({
                               </div>
 
                               {/* Mini Calendario Mensual del Grupo de Riesgo (Blanco en activo, grisáceo vencido en pasado) */}
-                              <div className={`w-full rounded-lg p-0.5 border flex flex-col justify-between my-0.5 transition-colors ${
+                              <div className={`w-full rounded-lg p-0.5 border flex flex-col justify-between my-0.5 ${
                                 isPast 
                                   ? 'bg-slate-100/90 dark:bg-slate-900/60 border-slate-300 dark:border-slate-800 shadow-none' 
                                   : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
@@ -1331,12 +1336,12 @@ export default function ResolutionAnnualMatrix({
                                                 : `${d.isoDate}: Haz clic para crear campaña en este día.`
                                         }
                                         style={bgStyle}
-                                        className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center transition-all ${
+                                        className={`w-full aspect-square rounded-[1.5px] text-[6.5px] leading-none flex items-center justify-center ${
                                           isSun
                                             ? 'bg-slate-100/60 dark:bg-slate-800/40 text-slate-300 dark:text-slate-600 opacity-40 cursor-default'
                                             : hasCalls
-                                              ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer'
-                                              : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-900 dark:hover:text-purple-200 border border-slate-100 dark:border-slate-700/50 cursor-pointer'
+                                              ? 'text-white font-black hover:scale-125 shadow-sm ring-1 ring-white/60 cursor-pointer transition-transform'
+                                              : 'bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:text-purple-900 dark:hover:text-purple-200 border border-slate-100 dark:border-slate-800 cursor-pointer'
                                         }`}
                                       >
                                         {d.dayOfMonth}
@@ -2088,3 +2093,5 @@ export default function ResolutionAnnualMatrix({
     </div>
   );
 }
+
+export default React.memo(ResolutionAnnualMatrix);
