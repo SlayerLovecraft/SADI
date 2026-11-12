@@ -124,19 +124,49 @@ export default function DoctorsPage() {
   const loadData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const [resStaff, resPatients] = await Promise.all([
+      const [resStaff, resPatients, telePatients] = await Promise.all([
         staffService.getAll(),
-        patientService.getAll()
+        patientService.getAll(),
+        telemonitoringService.getPatients()
       ]);
 
       if (resStaff.success) {
         setStaffList(resStaff.data || []);
-      }
-      let pts = [];
-      if (resPatients.success && Array.isArray(resPatients.data) && resPatients.data.length > 0) {
-        pts = resPatients.data;
       } else {
-        pts = await telemonitoringService.getPatients();
+        toast({
+          title: 'Advertencia de sincronización',
+          description: resStaff.error || 'No se pudo consultar la base de datos en este momento. Mostrando respaldo local.',
+          variant: 'destructive'
+        });
+        if (staffList.length === 0 && Array.isArray(resStaff.data) && resStaff.data.length > 0) {
+          setStaffList(resStaff.data);
+        }
+      }
+
+      const basePatients = Array.isArray(resPatients?.data) ? resPatients.data : [];
+      const teleList = Array.isArray(telePatients) ? telePatients : [];
+
+      let pts = [];
+      if (teleList.length > 0) {
+        const baseById = new Map();
+        basePatients.forEach((bp) => {
+          if (bp?.id) baseById.set(bp.id, bp);
+          if (bp?.patient_id) baseById.set(bp.patient_id, bp);
+        });
+        pts = teleList.map((tp) => {
+          const bp = baseById.get(tp.id) || baseById.get(tp.patient_id) || {};
+          return {
+            ...bp,
+            ...tp,
+            program: tp.program || bp.program || tp.programa || bp.programa || '',
+            programa: tp.program || tp.programa || bp.programa || bp.program || '',
+            curso_vida: tp.curso_vida || bp.curso_vida || '',
+            birthdate: tp.birthdate || bp.birthdate || tp.fecha_nacimiento || bp.fecha_nacimiento,
+            fecha_nacimiento: tp.fecha_nacimiento || tp.birthdate || bp.fecha_nacimiento || bp.birthdate
+          };
+        });
+      } else {
+        pts = basePatients;
       }
       setAllPatients(pts || []);
     } catch (e) {

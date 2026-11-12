@@ -3,6 +3,8 @@
 // ============================================
 
 import { supabase } from '../lib/supabase.js'
+import { runWithSupabaseAuthRecovery } from '../lib/utils.js'
+import { normalizeCursosArray } from './cursoVidaConfig.js'
 import { SEED_DOCTORS_3280 } from './telemonitoringService.js'
 
 export const authService = {
@@ -277,11 +279,16 @@ export const authService = {
       }
 
       // 3. Intento primario con función RPC en Supabase
-      const { data: rpcData, error: rpcError } = await supabase
-        .rpc('doctor_login', {
-          p_email: normalizedEmail,
-          p_password: rawPassword
-        });
+      const { data: rpcData, error: rpcError } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase.rpc('doctor_login', {
+            p_email: normalizedEmail,
+            p_password: rawPassword
+          }),
+        10000,
+        'Tiempo de espera agotado al autenticar doctor'
+      );
 
       if (!rpcError && rpcData) {
         const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
@@ -289,11 +296,17 @@ export const authService = {
           // Consultar permisos y Cursos de Vida reales desde la tabla staff
           let staffDoc = null;
           try {
-            const { data: staffData } = await supabase
-              .from('staff')
-              .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id')
-              .eq('doctor_id', row.doctor_id)
-              .maybeSingle();
+            const { data: staffData } = await runWithSupabaseAuthRecovery(
+              supabase,
+              () =>
+                supabase
+                  .from('staff')
+                  .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id')
+                  .eq('doctor_id', row.doctor_id)
+                  .maybeSingle(),
+              10000,
+              'Tiempo de espera agotado cargando perfil médico'
+            );
             staffDoc = staffData;
           } catch (_) {}
 
@@ -305,9 +318,9 @@ export const authService = {
               email: row.doctor_email,
               role: 'doctor',
               rol: staffDoc?.rol || row.rol || 'Enfermera',
-              nombre: row.doctor_name,
-              doctor_specialty: row.doctor_specialty,
-              cursos_vida_asignados: Array.isArray(staffDoc?.cursos_vida_asignados) ? staffDoc.cursos_vida_asignados : [],
+              nombre: staffDoc?.doctor_name || row.doctor_name,
+              doctor_specialty: staffDoc?.doctor_specialty || row.doctor_specialty,
+              cursos_vida_asignados: normalizeCursosArray(staffDoc?.cursos_vida_asignados),
               solo_lectura: staffDoc?.solo_lectura !== undefined ? Boolean(staffDoc.solo_lectura) : true,
               puede_lanzar_llamadas: Boolean(staffDoc?.puede_lanzar_llamadas),
               puede_enviar_mensajes: Boolean(staffDoc?.puede_enviar_mensajes),
@@ -326,11 +339,17 @@ export const authService = {
 
       // 2. Fallback: Consulta directa a la tabla staff en Supabase
       try {
-        const { data: doctor, error } = await supabase
-          .from('staff')
-          .select('doctor_id, doctor_name, doctor_email, doctor_password, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active')
-          .eq('doctor_email', normalizedEmail)
-          .maybeSingle();
+        const { data: doctor, error } = await runWithSupabaseAuthRecovery(
+          supabase,
+          () =>
+            supabase
+              .from('staff')
+              .select('doctor_id, doctor_name, doctor_email, doctor_password, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active')
+              .eq('doctor_email', normalizedEmail)
+              .maybeSingle(),
+          10000,
+          'Tiempo de espera agotado consultando tabla staff'
+        );
 
         if (!error && doctor) {
           if (doctor.is_active === false) return { success: false, error: 'Personal inactivo' };
@@ -363,7 +382,7 @@ export const authService = {
               rol: doctor.rol || 'Enfermera',
               nombre: doctor.doctor_name || 'Enf. Asistencial SADI',
               doctor_specialty: doctor.doctor_specialty || 'Atención Primaria y Demanda 3280',
-              cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : [],
+              cursos_vida_asignados: normalizeCursosArray(doctor.cursos_vida_asignados),
               solo_lectura: doctor.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
               puede_lanzar_llamadas: Boolean(doctor.puede_lanzar_llamadas),
               puede_enviar_mensajes: Boolean(doctor.puede_enviar_mensajes),

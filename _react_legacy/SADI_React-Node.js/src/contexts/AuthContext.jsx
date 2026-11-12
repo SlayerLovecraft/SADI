@@ -5,6 +5,8 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { useToast } from '@/components/ui/use-toast';
 import { authService } from '@/services/authService';
 import { supabase } from '@/lib/supabase';
+import { runWithSupabaseAuthRecovery } from '@/lib/utils';
+import { normalizeCursosArray } from '@/services/cursoVidaConfig';
 
 const AuthContext = createContext(null);
 
@@ -155,6 +157,97 @@ export const AuthProvider = ({ children }) => {
     };
   }, [user, loading]);
 
+  const syncDoctorProfile = async (doctorUser) => {
+    if (!doctorUser || doctorUser.role !== 'doctor') return doctorUser;
+    const docId = doctorUser.doctor_id || doctorUser.id;
+    const docEmail = (doctorUser.email || '').trim().toLowerCase();
+    if (!docId && !docEmail) return doctorUser;
+
+    try {
+      const selectCols =
+        'doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active';
+
+      let { data: staffDoc, error } = docId
+        ? await runWithSupabaseAuthRecovery(
+            supabase,
+            () => supabase.from('staff').select(selectCols).eq('doctor_id', docId).maybeSingle(),
+            8000,
+            'Timeout sincronizando perfil médico'
+          )
+        : { data: null, error: null };
+
+      if ((!staffDoc || error) && docEmail) {
+        const resByEmail = await runWithSupabaseAuthRecovery(
+          supabase,
+          () => supabase.from('staff').select(selectCols).eq('doctor_email', docEmail).maybeSingle(),
+          8000,
+          'Timeout sincronizando perfil médico por correo'
+        );
+        if (resByEmail?.data && !resByEmail?.error) {
+          staffDoc = resByEmail.data;
+          error = null;
+        }
+      }
+
+      if (error || !staffDoc) return doctorUser;
+      if (staffDoc.is_active === false) {
+        handleSignOut();
+        return null;
+      }
+
+      const synced = {
+        ...doctorUser,
+        id: staffDoc.doctor_id || doctorUser.id,
+        doctor_id: staffDoc.doctor_id || doctorUser.doctor_id,
+        email: staffDoc.doctor_email || doctorUser.email,
+        nombre: staffDoc.doctor_name || doctorUser.nombre,
+        doctor_specialty: staffDoc.doctor_specialty || doctorUser.doctor_specialty,
+        rol: staffDoc.rol || doctorUser.rol || 'Enfermera',
+        cursos_vida_asignados: normalizeCursosArray(staffDoc.cursos_vida_asignados),
+        solo_lectura: staffDoc.solo_lectura !== undefined ? Boolean(staffDoc.solo_lectura) : true,
+        puede_lanzar_llamadas: Boolean(staffDoc.puede_lanzar_llamadas),
+        puede_enviar_mensajes: Boolean(staffDoc.puede_enviar_mensajes),
+        puede_crear_campanas: Boolean(staffDoc.puede_crear_campanas),
+        puede_editar_pacientes: Boolean(staffDoc.puede_editar_pacientes),
+        hospitalId: staffDoc.hospital_id || doctorUser.hospitalId,
+      };
+
+      localStorage.setItem('sadi_user', JSON.stringify(synced));
+      return synced;
+    } catch {
+      return doctorUser;
+    }
+  };
+
+  useEffect(() => {
+    if (loading || !user || user.role !== 'doctor') return;
+
+    const refreshDoctor = async () => {
+      if (sessionRefreshInFlightRef.current) return;
+      sessionRefreshInFlightRef.current = true;
+      try {
+        const synced = await syncDoctorProfile(user);
+        if (synced && JSON.stringify(synced) !== JSON.stringify(user)) {
+          setUser(synced);
+        }
+      } finally {
+        sessionRefreshInFlightRef.current = false;
+      }
+    };
+
+    const onFocus = () => refreshDoctor();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshDoctor();
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [user, loading]);
+
   const initializeAuth = async () => {
     try {
       console.log('🔐 Inicializando autenticación...');
@@ -165,8 +258,15 @@ export const AuthProvider = ({ children }) => {
           const parsedUser = JSON.parse(storedUser);
           console.log('📦 Usuario encontrado en localStorage:', parsedUser.email, 'Rol:', parsedUser.role);
           
-          if (parsedUser.role === 'patient' || parsedUser.role === 'doctor' || parsedUser.role === 'hospital_admin' || parsedUser.role === 'super_admin' || parsedUser.role === 'operator') {
-            console.log('✅ Restaurando sesión de paciente desde localStorage');
+          if (parsedUser.role === 'doctor') {
+            const syncedDoctor = await syncDoctorProfile(parsedUser);
+            setUser(syncedDoctor);
+            setLoading(false);
+            return;
+          }
+
+          if (parsedUser.role === 'patient' || parsedUser.role === 'hospital_admin' || parsedUser.role === 'super_admin' || parsedUser.role === 'operator') {
+            console.log('✅ Restaurando sesión desde localStorage');
             setUser(parsedUser);
             setLoading(false);
             return;
@@ -592,6 +692,17 @@ export const AuthProvider = ({ children }) => {
   const getHospitalId = () => user?.hospitalId || null;
   const getHospitalName = () => user?.hospital_name || null;
 
+  const refreshProfile = async () => {
+    if (user?.role === 'doctor') {
+      const synced = await syncDoctorProfile(user);
+      if (synced && JSON.stringify(synced) !== JSON.stringify(user)) {
+        setUser(synced);
+      }
+      return synced;
+    }
+    return user;
+  };
+
   const value = {
     user,
     loading,
@@ -609,6 +720,7 @@ export const AuthProvider = ({ children }) => {
     isDoctor,
     getHospitalId,
     getHospitalName,
+    refreshProfile,
     reload: loadUser
   };
 

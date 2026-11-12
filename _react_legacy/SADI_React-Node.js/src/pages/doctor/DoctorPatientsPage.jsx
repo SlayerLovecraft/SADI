@@ -50,7 +50,8 @@ const DoctorPatientsPage = () => {
         name: user?.nombre || 'Dr. Médico Especialista',
         email: user?.email,
         specialty: user?.doctor_specialty || 'Medicina Especializada',
-        area_3280: user?.doctor_specialty || 'Área Clínica Asignada'
+        area_3280: user?.doctor_specialty || 'Área Clínica Asignada',
+        cursos_vida_asignados: Array.isArray(user?.cursos_vida_asignados) ? user.cursos_vida_asignados : []
       };
       setDoctorProfile(currentDoc);
 

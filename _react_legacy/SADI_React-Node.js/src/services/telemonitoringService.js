@@ -4,6 +4,8 @@
 // Con 35 Pacientes Reales (5 por cada caso/curso de vida) y 8 Doctores Especialistas
 // ==============================================================================
 import { supabase } from '@/lib/supabase';
+import { runWithSupabaseAuthRecovery } from '@/lib/utils';
+import { normalizeCursosArray } from './cursoVidaConfig';
 import { evaluateVitalSigns3280, generateAIAgentScript, getCursoVida3280 } from './rias3280Engine';
 import { getAssignedDoctorEmailForPatient } from '@/pages/doctor/doctorUtils';
 
@@ -1112,49 +1114,87 @@ const setLocal = (key, val) => {
 };
 
 export const telemonitoringService = {
-  // Obtener todos los doctores
+  // Obtener todos los doctores desde tabla persistente staff (Supabase)
   async getDoctors() {
     try {
-      const { data, error } = await supabase
-        .from('staff')
-        .select('*')
-        .not('doctor_name', 'is', null)
-        .order('created_at', { ascending: false });
+      const { data, error } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase
+            .from('staff')
+            .select('*')
+            .not('doctor_name', 'is', null)
+            .order('created_at', { ascending: false }),
+        15000,
+        'Tiempo de espera agotado al consultar doctores'
+      );
       if (!error && data && data.length > 0) {
-        return data.map(d => ({
-          id: d.doctor_id,
-          doctor_id: d.doctor_id,
-          name: d.doctor_name || '',
-          nombre: d.doctor_name || '',
-          email: d.doctor_email || '',
-          specialty: d.doctor_specialty || '',
-          especialidad: d.doctor_specialty || '',
-          rol: d.rol || 'Enfermera',
-          area_3280: Array.isArray(d.cursos_vida_asignados) && d.cursos_vida_asignados.length > 0 
-            ? d.cursos_vida_asignados.join(', ')
-            : 'Sin Asignación',
-          cursos_vida_asignados: Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : [],
-          grupos_riesgo_asignados: Array.isArray(d.grupos_riesgo_asignados) ? d.grupos_riesgo_asignados : [],
-          solo_lectura: d.solo_lectura !== undefined ? Boolean(d.solo_lectura) : true,
-          puede_lanzar_llamadas: Boolean(d.puede_lanzar_llamadas),
-          puede_enviar_mensajes: Boolean(d.puede_enviar_mensajes),
-          puede_crear_campanas: Boolean(d.puede_crear_campanas),
-          puede_editar_pacientes: Boolean(d.puede_editar_pacientes),
-          hospital_id: d.hospital_id,
-          registro_medico: d.registro_medico || 'RM-SADI-3280',
-          is_active: d.is_active
-        }));
+        const mapped = data.map(d => {
+          const cursos = normalizeCursosArray(d.cursos_vida_asignados);
+          const seedMeta = SEED_DOCTORS_3280.find(
+            (s) => s.email?.toLowerCase() === (d.doctor_email || '').toLowerCase() || s.id === d.doctor_id
+          );
+          return {
+            id: d.doctor_id,
+            doctor_id: d.doctor_id,
+            name: d.doctor_name || '',
+            nombre: d.doctor_name || '',
+            email: d.doctor_email || '',
+            specialty: d.doctor_specialty || '',
+            especialidad: d.doctor_specialty || '',
+            rol: d.rol || 'Enfermera',
+            area_3280: cursos.length > 0 ? cursos.join(', ') : 'Sin Asignación',
+            cursos_vida_asignados: cursos,
+            grupos_riesgo_asignados: Array.isArray(d.grupos_riesgo_asignados) ? d.grupos_riesgo_asignados : [],
+            solo_lectura: d.solo_lectura !== undefined ? Boolean(d.solo_lectura) : true,
+            puede_lanzar_llamadas: Boolean(d.puede_lanzar_llamadas),
+            puede_enviar_mensajes: Boolean(d.puede_enviar_mensajes),
+            puede_crear_campanas: Boolean(d.puede_crear_campanas),
+            puede_editar_pacientes: Boolean(d.puede_editar_pacientes),
+            hospital_id: d.hospital_id,
+            hospitalId: d.hospital_id,
+            registro_medico: d.registro_medico || seedMeta?.registro_medico || 'RM-SADI-3280',
+            is_active: d.is_active
+          };
+        });
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('sadi_staff_snapshot_v1', JSON.stringify(mapped));
+          }
+        } catch {}
+        return mapped;
       }
     } catch (e) {
-      // fallback
+      // fallback a respaldo local de última sincronización antes que seed vacío
     }
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('sadi_staff_snapshot_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map(d => ({
+              ...d,
+              name: d.name || d.nombre || '',
+              specialty: d.specialty || d.especialidad || '',
+              cursos_vida_asignados: normalizeCursosArray(d.cursos_vida_asignados),
+            }));
+          }
+        }
+      }
+    } catch {}
     return SEED_DOCTORS_3280;
   },
 
   // Obtener lista completa de pacientes
   async getPatients() {
     try {
-      const { data, error } = await supabase.from('patients').select('*');
+      const { data, error } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () => supabase.from('patients').select('*'),
+        15000,
+        'Tiempo de espera agotado al consultar pacientes'
+      );
       if (!error && data && data.length > 0) {
         return data.map(p => {
           const birthdate = p.birthdate || p.birth_date || p.fecha_nacimiento;

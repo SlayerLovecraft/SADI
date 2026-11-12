@@ -7,6 +7,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { normalizeCursosArray } from '@/services/cursoVidaConfig';
 import { demanda3280Service, GRUPOS_RIESGO_3280 } from '@/services/demanda3280Service';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import {
@@ -144,8 +145,14 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
     // Restricción por rol de Enfermera / Personal Clínico:
     // Solo ve los pacientes correspondientes a los Cursos de Vida asignados por el Hospital
-    if (user?.role === 'doctor' && Array.isArray(user?.cursos_vida_asignados) && !user.cursos_vida_asignados.includes('todos')) {
-      list = list.filter(i => user.cursos_vida_asignados.includes(i.cursoVida));
+    if (user?.role === 'doctor') {
+      const cursos = normalizeCursosArray(user?.cursos_vida_asignados);
+      if (!cursos.includes('todos')) {
+        list = list.filter(i => {
+          const cv = i.cursoVida === 'materno_perinatal' ? 'preventivo_mujer' : i.cursoVida;
+          return cursos.includes(cv);
+        });
+      }
     }
 
     if (searchTerm.trim()) {

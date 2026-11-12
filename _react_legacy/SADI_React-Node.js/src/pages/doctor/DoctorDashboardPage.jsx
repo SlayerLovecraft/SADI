@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router-dom';
 import { 
@@ -17,17 +17,25 @@ import {
 import { isPatientAssignedToDoctor } from './doctorUtils';
 
 const DoctorDashboardPage = () => {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [doctorProfile, setDoctorProfile] = useState(null);
   const [assignedPatients, setAssignedPatients] = useState([]);
   const [alertsCount, setAlertsCount] = useState(0);
+  const lastProfileSyncRef = useRef(0);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+
+      // Sincronizar sesión del doctor con public.staff (evitando bucle por re-render)
+      const now = Date.now();
+      if (refreshProfile && now - lastProfileSyncRef.current > 2000) {
+        lastProfileSyncRef.current = now;
+        await refreshProfile();
+      }
 
       // 1. Obtener perfil del doctor desde Supabase / Servicio
       const doctors = await telemonitoringService.getDoctors();

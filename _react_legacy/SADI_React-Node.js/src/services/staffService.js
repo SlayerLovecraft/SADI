@@ -1,6 +1,73 @@
 import { supabase } from '@/lib/supabase';
-import { isSupabaseAuthError, withTimeout } from '@/lib/utils';
+import { runWithSupabaseAuthRecovery } from '@/lib/utils';
+import { normalizeCursosArray } from './cursoVidaConfig';
 import { SEED_DOCTORS_3280 } from './telemonitoringService';
+
+const STAFF_SNAPSHOT_KEY = 'sadi_staff_snapshot_v1';
+
+const saveStaffSnapshot = (staffList) => {
+  try {
+    if (typeof localStorage !== 'undefined' && Array.isArray(staffList) && staffList.length > 0) {
+      localStorage.setItem(STAFF_SNAPSHOT_KEY, JSON.stringify(staffList));
+    }
+  } catch {
+    // Ignore storage quota errors
+  }
+};
+
+const loadStaffSnapshot = () => {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(STAFF_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const updateSnapshotAndActiveDoctor = (updatedStaff) => {
+  try {
+    if (typeof localStorage === 'undefined' || !updatedStaff) return;
+    const current = loadStaffSnapshot();
+    if (current) {
+      const next = current.map((s) =>
+        (s.id === updatedStaff.id || s.doctor_id === updatedStaff.doctor_id) ? { ...s, ...updatedStaff } : s
+      );
+      saveStaffSnapshot(next);
+    }
+
+    const rawUser = localStorage.getItem('sadi_user');
+    if (rawUser) {
+      const parsedUser = JSON.parse(rawUser);
+      const isSameDoctor =
+        parsedUser?.role === 'doctor' &&
+        (
+          (parsedUser.doctor_id && parsedUser.doctor_id === updatedStaff.doctor_id) ||
+          (parsedUser.id && parsedUser.id === updatedStaff.id) ||
+          (parsedUser.email && updatedStaff.email && parsedUser.email.toLowerCase() === updatedStaff.email.toLowerCase())
+        );
+      if (isSameDoctor) {
+        const merged = {
+          ...parsedUser,
+          nombre: updatedStaff.nombre || parsedUser.nombre,
+          doctor_specialty: updatedStaff.especialidad || parsedUser.doctor_specialty,
+          rol: updatedStaff.rol || parsedUser.rol,
+          cursos_vida_asignados: updatedStaff.cursos_vida_asignados,
+          solo_lectura: updatedStaff.solo_lectura,
+          puede_lanzar_llamadas: updatedStaff.puede_lanzar_llamadas,
+          puede_enviar_mensajes: updatedStaff.puede_enviar_mensajes,
+          puede_crear_campanas: updatedStaff.puede_crear_campanas,
+          puede_editar_pacientes: updatedStaff.puede_editar_pacientes,
+        };
+        localStorage.setItem('sadi_user', JSON.stringify(merged));
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+};
 
 const normalizeRol = (rol, specialty = '', name = '') => {
   const r = (rol || '').trim();
@@ -27,7 +94,7 @@ const mapSupabaseToFrontend = (doctor) => ({
   email: doctor.doctor_email || '',
   especialidad: doctor.doctor_specialty || '',
   rol: normalizeRol(doctor.rol, doctor.doctor_specialty, doctor.doctor_name),
-  cursos_vida_asignados: Array.isArray(doctor.cursos_vida_asignados) ? doctor.cursos_vida_asignados : [],
+  cursos_vida_asignados: normalizeCursosArray(doctor.cursos_vida_asignados),
   grupos_riesgo_asignados: Array.isArray(doctor.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : [],
   solo_lectura: doctor.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
   puede_lanzar_llamadas: Boolean(doctor.puede_lanzar_llamadas),
@@ -53,79 +120,76 @@ const getCurrentUserContext = () => {
 
 export const staffService = {
   async getAll() {
+    const { role, hospitalId } = getCurrentUserContext();
+
+    const mapFallbackDoctor = (d, defaultHospId) => ({
+      id: d.id,
+      doctor_id: d.id,
+      nombre: d.name,
+      email: d.email,
+      especialidad: d.specialty,
+      rol: d.rol || (d.name?.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General'),
+      cursos_vida_asignados: normalizeCursosArray(d.cursos_vida_asignados),
+      grupos_riesgo_asignados: [],
+      solo_lectura: true,
+      puede_lanzar_llamadas: true,
+      puede_enviar_mensajes: true,
+      puede_crear_campanas: false,
+      puede_editar_pacientes: false,
+      hospitalId: defaultHospId,
+      is_active: true,
+      created_at: new Date().toISOString()
+    });
+
     try {
-      const { role, hospitalId } = getCurrentUserContext();
+      // 1. Consulta principal directa a Supabase con recuperación automática de JWT expirado
+      const { data: allStaff, error: allErr } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase
+            .from('staff')
+            .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+            .not('doctor_name', 'is', null)
+            .order('created_at', { ascending: false }),
+        15000,
+        'Tiempo de espera agotado al consultar el personal'
+      );
 
-      const mapFallbackDoctor = (d, defaultHospId) => {
-        return {
-          id: d.id,
-          doctor_id: d.id,
-          nombre: d.name,
-          email: d.email,
-          especialidad: d.specialty,
-          rol: d.rol || (d.name?.toLowerCase().includes('enf') ? 'Enfermera' : 'Médico General'),
-          cursos_vida_asignados: Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : [],
-          grupos_riesgo_asignados: [],
-          solo_lectura: true,
-          puede_lanzar_llamadas: true,
-          puede_enviar_mensajes: true,
-          puede_crear_campanas: false,
-          puede_editar_pacientes: false,
-          hospitalId: defaultHospId,
-          is_active: true,
-          created_at: new Date().toISOString()
-        };
-      };
-
-      // 1. Consulta principal directa a Supabase (obteniendo todo el personal con nombre registrado)
-      try {
-        const { data: allStaff, error: allErr } = await supabase
-          .from('staff')
-          .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
-          .not('doctor_name', 'is', null)
-          .order('created_at', { ascending: false });
-
-        if (!allErr && allStaff && allStaff.length > 0) {
-          // Si el usuario tiene hospitalId y existen doctores específicamente con ese hospitalId,
-          // filtramos por hospitalId; si no, devolvemos todo el personal disponible
-          if (role !== 'super_admin' && hospitalId && hospitalId !== 'a0000000-0000-0000-0000-000000000001') {
-            const filteredByHosp = allStaff.filter(s => s.hospital_id === hospitalId);
-            if (filteredByHosp.length > 0) {
-              return { success: true, data: filteredByHosp.map(mapSupabaseToFrontend) };
-            }
+      if (!allErr && allStaff && allStaff.length > 0) {
+        let mapped = allStaff.map(mapSupabaseToFrontend);
+        if (role !== 'super_admin' && hospitalId && hospitalId !== 'a0000000-0000-0000-0000-000000000001') {
+          const filteredByHosp = mapped.filter(s => s.hospitalId === hospitalId);
+          if (filteredByHosp.length > 0) {
+            mapped = filteredByHosp;
           }
-          return { success: true, data: allStaff.map(mapSupabaseToFrontend) };
         }
-      } catch (err) {
-        console.warn('Error al consultar tabla staff en Supabase:', err);
+        saveStaffSnapshot(mapped);
+        return { success: true, data: mapped };
       }
 
-      // 2. Fallback de resiliencia solo si la base de datos no responde
+      const snapshot = loadStaffSnapshot();
+      if (snapshot) {
+        return {
+          success: false,
+          fromFallback: true,
+          error: allErr?.message || 'No se pudo sincronizar con la base de datos',
+          data: snapshot,
+        };
+      }
+
       return {
-        success: true,
-        data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8'))
+        success: false,
+        fromFallback: true,
+        error: allErr?.message || 'Base de datos no disponible',
+        data: SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8')),
       };
     } catch (error) {
+      const snapshot = loadStaffSnapshot();
       return {
-        success: true,
-        data: SEED_DOCTORS_3280.map(d => ({
-          id: d.id,
-          doctor_id: d.id,
-          nombre: d.name,
-          email: d.email,
-          especialidad: d.specialty,
-          rol: d.rol || 'Enfermera',
-          cursos_vida_asignados: Array.isArray(d.cursos_vida_asignados) ? d.cursos_vida_asignados : [],
-          grupos_riesgo_asignados: [],
-          solo_lectura: true,
-          puede_lanzar_llamadas: true,
-          puede_enviar_mensajes: true,
-          puede_crear_campanas: false,
-          puede_editar_pacientes: false,
-          hospitalId: 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
-          is_active: true,
-          created_at: new Date().toISOString()
-        }))
+        success: false,
+        fromFallback: true,
+        error: error?.message || 'Error al consultar personal',
+        data: snapshot || SEED_DOCTORS_3280.map(d => mapFallbackDoctor(d, hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8')),
       };
     }
   },
@@ -257,7 +321,7 @@ export const staffService = {
         doctor_password: String(doctor?.password || ''),
         doctor_specialty: String(doctor?.especialidad || '').trim().toLowerCase(),
         rol: String(doctor?.rol || 'Enfermera'),
-        cursos_vida_asignados: Array.isArray(doctor?.cursos_vida_asignados) ? doctor.cursos_vida_asignados : [],
+        cursos_vida_asignados: normalizeCursosArray(doctor?.cursos_vida_asignados),
         grupos_riesgo_asignados: Array.isArray(doctor?.grupos_riesgo_asignados) ? doctor.grupos_riesgo_asignados : [],
         solo_lectura: doctor?.solo_lectura !== undefined ? Boolean(doctor.solo_lectura) : true,
         puede_lanzar_llamadas: Boolean(doctor?.puede_lanzar_llamadas),
@@ -272,15 +336,24 @@ export const staffService = {
         return { success: false, error: 'Email, contraseña y especialidad son obligatorios' };
       }
 
-      const { data, error } = await supabase
-        .from('staff')
-        .insert([payload])
-        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
-        .single();
+      const { data, error } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase
+            .from('staff')
+            .insert([payload])
+            .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+            .single(),
+        15000,
+        'Tiempo de espera agotado al crear personal'
+      );
 
       if (error) return { success: false, error: error.message };
 
-      return { success: true, data: mapSupabaseToFrontend(data) };
+      const mapped = mapSupabaseToFrontend(data);
+      const current = loadStaffSnapshot() || [];
+      saveStaffSnapshot([mapped, ...current.filter((s) => s.id !== mapped.id)]);
+      return { success: true, data: mapped };
     } catch (error) {
       return { success: false, error: error?.message || 'Error creando doctor' };
     }
@@ -288,7 +361,6 @@ export const staffService = {
 
   async update(doctorId, changes) {
     try {
-      const { role, hospitalId } = getCurrentUserContext();
       const id = String(doctorId || '').trim();
       if (!id) return { success: false, error: 'ID de doctor inválido' };
 
@@ -299,7 +371,7 @@ export const staffService = {
       if (changes?.password) payload.doctor_password = String(changes.password);
       if (changes?.is_active !== undefined) payload.is_active = Boolean(changes.is_active);
       if (changes?.rol) payload.rol = String(changes.rol);
-      if (changes?.cursos_vida_asignados !== undefined) payload.cursos_vida_asignados = Array.isArray(changes.cursos_vida_asignados) ? changes.cursos_vida_asignados : [];
+      if (changes?.cursos_vida_asignados !== undefined) payload.cursos_vida_asignados = normalizeCursosArray(changes.cursos_vida_asignados);
       if (changes?.grupos_riesgo_asignados !== undefined) payload.grupos_riesgo_asignados = Array.isArray(changes.grupos_riesgo_asignados) ? changes.grupos_riesgo_asignados : [];
       if (changes?.solo_lectura !== undefined) payload.solo_lectura = Boolean(changes.solo_lectura);
       if (changes?.puede_lanzar_llamadas !== undefined) payload.puede_lanzar_llamadas = Boolean(changes.puede_lanzar_llamadas);
@@ -308,16 +380,27 @@ export const staffService = {
       if (changes?.puede_editar_pacientes !== undefined) payload.puede_editar_pacientes = Boolean(changes.puede_editar_pacientes);
       payload.updated_at = new Date().toISOString();
 
-      // doctor_id es la clave primaria UUID única del registro
-      const { data, error } = await supabase
-        .from('staff')
-        .update(payload)
-        .eq('doctor_id', id)
-        .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
-        .single();
+      // doctor_id es la clave primaria UUID única del registro; sobrescribe en BD de forma persistente
+      const { data, error } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase
+            .from('staff')
+            .update(payload)
+            .eq('doctor_id', id)
+            .select('doctor_id, doctor_name, doctor_email, doctor_specialty, rol, cursos_vida_asignados, grupos_riesgo_asignados, solo_lectura, puede_lanzar_llamadas, puede_enviar_mensajes, puede_crear_campanas, puede_editar_pacientes, hospital_id, is_active, created_at, updated_at')
+            .single(),
+        15000,
+        'Tiempo de espera agotado al guardar permisos en base de datos'
+      );
 
-      if (error) return { success: false, error: error.message };
-      return { success: true, data: mapSupabaseToFrontend(data) };
+      if (error || !data) {
+        return { success: false, error: error?.message || 'La base de datos no confirmó la actualización del registro' };
+      }
+
+      const mapped = mapSupabaseToFrontend(data);
+      updateSnapshotAndActiveDoctor(mapped);
+      return { success: true, data: mapped };
     } catch (error) {
       return { success: false, error: error?.message || 'Error actualizando doctor' };
     }
@@ -329,16 +412,27 @@ export const staffService = {
       const id = String(doctorId || '').trim();
       if (!id) return { success: false, error: 'ID de doctor inválido' };
 
-      let query = supabase.from('staff').delete().eq('doctor_id', id);
-      if (role !== 'super_admin') {
-        if (!hospitalId) return { success: false, error: 'No se pudo identificar el hospital del usuario' };
-        query = query.eq('hospital_id', hospitalId);
-      }
+      const runDelete = () => {
+        let query = supabase.from('staff').delete().eq('doctor_id', id);
+        if (role !== 'super_admin') {
+          if (!hospitalId) return Promise.resolve({ error: { message: 'No se pudo identificar el hospital del usuario' } });
+          query = query.eq('hospital_id', hospitalId);
+        }
+        return query;
+      };
 
-      const runDelete = () => query;
-      const { error } = await withTimeout(runDelete(), 15000, 'Tiempo de espera agotado al eliminar doctor');
+      const { error } = await runWithSupabaseAuthRecovery(
+        supabase,
+        runDelete,
+        15000,
+        'Tiempo de espera agotado al eliminar doctor'
+      );
 
       if (error) return { success: false, error: error.message };
+      const current = loadStaffSnapshot();
+      if (current) {
+        saveStaffSnapshot(current.filter((s) => s.id !== id && s.doctor_id !== id));
+      }
       return { success: true };
     } catch (error) {
       return { success: false, error: error?.message || 'Error eliminando doctor' };

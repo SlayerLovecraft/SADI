@@ -1,3 +1,5 @@
+import { normalizeCursosArray } from '@/services/cursoVidaConfig';
+
 export const normalizeText = (value) => {
   const str = value === null || value === undefined ? '' : String(value);
   return str
@@ -23,29 +25,55 @@ export const calculateAgeFromBirthdate = (birthdate) => {
 export const getCursoVidaFromPatient = (patient) => {
   if (!patient) return 'adultez';
 
-  // 1. Si ya tiene curso_vida explícito, normalizarlo
   const rawCurso = patient.curso_vida || patient.cursoVida || '';
   const normCurso = normalizeText(rawCurso);
 
+  // 1. Transversales explícitos en curso_vida (G, H, I, J)
+  if (normCurso.includes('mujer') || normCurso.includes('materno') || normCurso.includes('gestan') || normCurso === 'g') return 'preventivo_mujer';
+  if (normCurso.includes('planific') || normCurso === 'h') return 'planificacion_familiar';
+  if (normCurso.includes('vacun') || normCurso === 'i') return 'vacunacion';
+  if (normCurso.includes('salud oral') || normCurso.includes('salud_oral') || normCurso.includes('bucal') || normCurso.includes('odont') || normCurso === 'j') return 'salud_oral';
+
+  // 2. Transversales desde gestación o programa clínico 3280 (no sobrescribir por edad)
+  if (patient.es_gestante === true) return 'preventivo_mujer';
+
+  const pProg = normalizeText(patient.program || patient.programa || patient.program_raw || '');
+  if (pProg) {
+    if (
+      pProg.includes('embarazo') ||
+      pProg.includes('materno') ||
+      pProg.includes('gestan') ||
+      pProg.includes('preeclampsia') ||
+      pProg.includes('riamp') ||
+      pProg.includes('cuello') ||
+      /\bmama\b/.test(pProg) ||
+      pProg.includes('preventivo de la mujer')
+    ) {
+      return 'preventivo_mujer';
+    }
+    if (pProg.includes('planific') || pProg.includes('anticoncep') || pProg.includes('reproductiv')) {
+      return 'planificacion_familiar';
+    }
+    if (pProg.includes('vacun') || pProg.includes('esquema pai') || /\bpai\b/.test(pProg)) {
+      return 'vacunacion';
+    }
+    if (pProg.includes('salud oral') || pProg.includes('bucal') || pProg.includes('odont') || pProg.includes('fluor')) {
+      return 'salud_oral';
+    }
+  }
+
+  // 3. Curso de vida explícito por ciclo vital (A - F)
   if (normCurso.includes('primera') || normCurso === 'a' || normCurso.includes('infancia (0 a 5)')) return 'primera_infancia';
   if ((normCurso.includes('infancia') && !normCurso.includes('primera')) || normCurso === 'b' || normCurso.includes('(6 a 11)')) return 'infancia';
   if (normCurso.includes('adolesc') || normCurso === 'c' || normCurso.includes('(12 a 17)')) return 'adolescencia';
   if (normCurso.includes('juven') || normCurso === 'd' || normCurso.includes('(18 a 28)')) return 'juventud';
   if (normCurso.includes('adult') || normCurso === 'e' || normCurso.includes('(29 a 59)')) return 'adultez';
   if (normCurso.includes('vej') || normCurso.includes('mayor') || normCurso.includes('geriatr') || normCurso === 'f' || normCurso.includes('(60')) return 'vejez';
-  if (normCurso.includes('mujer') || normCurso.includes('materno') || normCurso.includes('gestan') || normCurso === 'g') return 'preventivo_mujer';
-  if (normCurso.includes('planific') || normCurso === 'h') return 'planificacion_familiar';
-  if (normCurso.includes('vacun') || normCurso === 'i') return 'vacunacion';
-  if (normCurso.includes('oral') || normCurso.includes('odont') || normCurso === 'j') return 'salud_oral';
 
-  if (patient.es_gestante === true) return 'preventivo_mujer';
-
-  const pProg = (patient.program || patient.programa || '').toLowerCase();
-  if (pProg.includes('embarazo') || pProg.includes('materno') || pProg.includes('gestan') || pProg.includes('preeclampsia')) {
-    return 'preventivo_mujer';
-  }
-
-  const age = calculateAgeFromBirthdate(patient.birthdate || patient.fecha_nacimiento);
+  // 4. Cálculo por edad cronológica
+  const age = calculateAgeFromBirthdate(
+    patient.birthdate || patient.fecha_nacimiento || patient.birth_date || patient.fechaNacimiento
+  );
   if (age !== null && age !== undefined) {
     if (age <= 5) return 'primera_infancia';
     if (age <= 11) return 'infancia';
@@ -216,8 +244,7 @@ export const getAssignedDoctorEmailForPatient = (patient) => {
 export const isPatientAssignedToDoctor = (patient, doctorUser) => {
   if (!patient || !doctorUser) return false;
 
-  const rawCursos = doctorUser.cursos_vida_asignados;
-  const cursos = Array.isArray(rawCursos) ? rawCursos : [];
+  const cursos = normalizeCursosArray(doctorUser.cursos_vida_asignados);
 
   // Si no tiene cursos asignados, CERO pacientes (0 pacientes)
   if (cursos.length === 0) {

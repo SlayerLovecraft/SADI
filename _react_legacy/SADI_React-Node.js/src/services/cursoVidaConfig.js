@@ -189,16 +189,47 @@ export const CURSOS_VIDA_LIST = [
 ];
 
 /**
+ * Normaliza la columna cursos_vida_asignados desde PostgreSQL/JSON/texto a un arreglo único de IDs
+ */
+export function normalizeCursosArray(raw) {
+  let list = [];
+  if (Array.isArray(raw)) {
+    list = raw;
+  } else if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === '{}' || trimmed === '[]') return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      const cleaned = trimmed.replace(/^\{|\}$/g, '');
+      list = cleaned.split(',').map((s) => s.replace(/^["']|["']$/g, '').trim());
+    }
+  }
+  const seen = new Set();
+  const out = [];
+  for (const item of list) {
+    const v = String(item || '').trim();
+    if (v && v !== 'sin_asignacion' && !seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+/**
  * Obtiene el tema visual y psicológico del doctor basado en sus cursos de vida asignados
  */
 export function getDoctorLifeCourseTheme(cursosAsignados) {
-  if (!Array.isArray(cursosAsignados) || cursosAsignados.length === 0) {
+  const cursos = normalizeCursosArray(cursosAsignados);
+  if (cursos.length === 0) {
     return CURSO_VIDA_CONFIG.sin_asignacion;
   }
-  if (cursosAsignados.includes('todos') || cursosAsignados.length >= 10) {
+  if (cursos.includes('todos') || cursos.length >= 10) {
     return CURSO_VIDA_CONFIG.todos;
   }
-  const first = cursosAsignados.find(c => c !== 'todos' && c !== 'sin_asignacion') || cursosAsignados[0];
+  const first = cursos.find(c => c !== 'todos' && c !== 'sin_asignacion') || cursos[0];
   return CURSO_VIDA_CONFIG[first] || CURSO_VIDA_CONFIG.sin_asignacion;
 }
 
@@ -206,13 +237,14 @@ export function getDoctorLifeCourseTheme(cursosAsignados) {
  * Formatea en texto legible los Cursos de Vida asignados
  */
 export function formatCursosVidaLabel(cursosAsignados) {
-  if (!Array.isArray(cursosAsignados) || cursosAsignados.length === 0) {
+  const cursos = normalizeCursosArray(cursosAsignados);
+  if (cursos.length === 0) {
     return 'Sin Asignación';
   }
-  if (cursosAsignados.includes('todos') || cursosAsignados.length >= 10) {
+  if (cursos.includes('todos') || cursos.length >= 10) {
     return 'Todos los Cursos de Vida (A - J)';
   }
-  return cursosAsignados
+  return cursos
     .filter(c => c !== 'todos' && c !== 'sin_asignacion')
     .map(cId => {
       const cfg = CURSO_VIDA_CONFIG[cId];
