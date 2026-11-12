@@ -21,6 +21,7 @@ const LoginPage = () => {
   const [resetEmail, setResetEmail] = useState('');
   const [problemDescription, setProblemDescription] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [portalRedirect, setPortalRedirect] = useState(null);
   
   const { loginHospital, user, loading: authLoading } = useAuth(); // ✅ USA loginHospital
   const navigate = useNavigate();
@@ -42,55 +43,24 @@ const LoginPage = () => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage('');
+    setPortalRedirect(null);
     
-    console.log('🔵 Iniciando login con:', { email, password: '***' });
-
-    // Validar que sea correo institucional
-    const isInstitutional = email.includes('@') && 
-      !email.includes('@gmail.com') && 
-      !email.includes('@hotmail.com') && 
-      !email.includes('@yahoo.com') &&
-      !email.includes('@outlook.com');
-
-    console.log('🔵 ¿Es institucional?', isInstitutional);
-
-    if (!isInstitutional) {
-      console.log('❌ Correo rechazado - No es institucional');
-      const errorMsg = "Debe usar un correo institucional (EPS/IPS). No se aceptan Gmail, Hotmail, Yahoo u Outlook.";
-      
-      setErrorMessage(errorMsg);
-      
-      toast({
-        title: "Correo no válido",
-        description: "Debe usar un correo institucional (EPS/IPS)",
-        variant: "destructive",
-      });
-      
-      setIsSubmitting(false);
-      return;
-    }
+    console.log('🔵 Iniciando login administrativo con:', { email, password: '***' });
 
     try {
-      console.log('🔵 Llamando a loginHospital()...');
-      
-      // ✅ USA loginHospital en lugar de login genérico
       const result = await loginHospital(email, password);
       
-      console.log('🔵 Resultado del login:', result);
-      
       if (result.success) {
-        console.log('✅ Login exitoso');
-        
         setTimeout(() => {
           navigate('/dashboard', { replace: true });
-        }, 500);
+        }, 300);
       } else {
-        console.log('❌ Login fallido:', result.error);
         const errorMsg = result.error || "Verifique sus credenciales";
         setErrorMessage(errorMsg);
+        setPortalRedirect(result.portalRedirect || null);
         
         toast({
-          title: "Error de autenticación",
+          title: "Acceso no permitido",
           description: errorMsg,
           variant: "destructive",
         });
@@ -100,6 +70,7 @@ const LoginPage = () => {
       console.error('❌ Error en login:', error);
       const errorMsg = error.message || "Ocurrió un error inesperado";
       setErrorMessage(errorMsg);
+      setPortalRedirect(null);
       
       toast({
         title: "Error",
@@ -394,10 +365,20 @@ Generado desde SADI
             </div>
 
             {errorMessage && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl shadow-xs">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-800">{errorMessage}</p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-red-800 font-semibold">{errorMessage}</p>
+                    {portalRedirect && (
+                      <Link
+                        to={portalRedirect}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+                      >
+                        {portalRedirect.includes('doctor') ? '🩺 Ir al Portal de Doctores' : '🏥 Ir al Portal de Pacientes'} →
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

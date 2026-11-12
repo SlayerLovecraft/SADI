@@ -13,6 +13,7 @@ const DoctorLoginPage = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [portalRedirect, setPortalRedirect] = useState(null);
 
   const { loginDoctor, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -36,6 +37,7 @@ const DoctorLoginPage = () => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage('');
+    setPortalRedirect(null);
 
     try {
       const result = await loginDoctor(email, password);
@@ -45,13 +47,15 @@ const DoctorLoginPage = () => {
       }
 
       setErrorMessage(result.error || 'Verifique sus credenciales');
+      setPortalRedirect(result.portalRedirect || null);
       toast({
-        title: "Error de autenticación",
+        title: "Acceso no permitido",
         description: result.error || 'Verifique sus credenciales',
         variant: "destructive",
       });
     } catch (error) {
       setErrorMessage(error?.message || 'Ocurrió un error inesperado');
+      setPortalRedirect(null);
       toast({
         title: "Error",
         description: error?.message || 'Ocurrió un error inesperado',
@@ -97,9 +101,21 @@ const DoctorLoginPage = () => {
           </div>
 
           {errorMessage && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-              <p className="text-sm text-red-700">{errorMessage}</p>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 shadow-xs">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="space-y-2">
+                  <p className="text-sm text-red-800 font-semibold">{errorMessage}</p>
+                  {portalRedirect && (
+                    <Link
+                      to={portalRedirect}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+                    >
+                      {portalRedirect.includes('patient') ? '🏥 Ir al Portal de Pacientes' : '🏛️ Ir al Portal Administrativo'} →
+                    </Link>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

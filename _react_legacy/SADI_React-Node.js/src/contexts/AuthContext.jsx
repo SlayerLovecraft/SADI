@@ -296,88 +296,38 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log('🏥 loginPatient - Iniciando login de PACIENTE con:', identifier);
 
-      const isEmail = identifier.includes('@');
-      console.log(`📋 Tipo de identificador: ${isEmail ? 'EMAIL' : 'DOCUMENTO'}`);
+      const result = await authService.loginPatient(identifier, password);
 
-      // Verificar si existe el paciente
-      console.log('🔍 Buscando paciente en base de datos...');
-      
-      const { data: patientCheck, error: patientCheckError } = await supabase
-        .from('patients')
-        .select('patient_id, name, email, document, password_hash, hospital_id')
-        .or(isEmail 
-          ? `email.eq.${identifier.trim().toLowerCase()}`
-          : `document.eq.${identifier.trim()}`)
-        .maybeSingle();
-
-      if (patientCheckError) {
-        console.error('❌ Error verificando paciente:', patientCheckError);
-        throw new Error('Error al verificar el paciente');
+      if (!result.success) {
+        return result;
       }
 
-      if (!patientCheck) {
-        console.log('❌ Paciente NO encontrado');
-        return { 
-          success: false, 
-          error: 'Usuario no encontrado. Verifique su documento o correo.' 
-        };
-      }
+      const patient = result.user;
 
-      console.log('✅ Paciente encontrado:', patientCheck.name);
+      const normalizedUser = {
+        id: patient.id,
+        email: patient.email,
+        role: 'patient',
+        nombre: patient.nombre || 'Paciente SADI',
+        documento: patient.documento,
+        telefono: patient.telefono || null,
+        hospitalId: patient.hospitalId || null,
+        hospital_name: null
+      };
 
-      // Autenticar paciente
-      console.log('🔐 Autenticando paciente...');
-      
-      const { data: patientData, error: patientError } = await supabase
-        .rpc('patient_login', {
-          p_identifier: identifier.trim(),
-          p_password: password
-        });
+      setUser(normalizedUser);
+      localStorage.setItem('sadi_user', JSON.stringify(normalizedUser));
 
-      if (patientError) {
-        console.error('❌ Error en autenticación:', patientError);
-        throw new Error(patientError.message || 'Error en la autenticación');
-      }
+      toast({
+        title: "Bienvenido",
+        description: `Hola ${normalizedUser.nombre}`,
+      });
 
-      if (!patientData) {
-        throw new Error('La función de login no retornó datos');
-      }
-
-      const loginResult = Array.isArray(patientData) ? patientData[0] : patientData;
-
-      if (loginResult.success === true) {
-        console.log('✅ Autenticación de paciente EXITOSA');
-
-        const normalizedUser = {
-          id: loginResult.patient_id,
-          email: loginResult.email,
-          role: 'patient',
-          nombre: loginResult.name,
-          documento: loginResult.document,
-          telefono: null,
-          hospitalId: patientCheck?.hospital_id || loginResult?.hospital_id || null,
-          hospital_name: null
-        };
-
-        setUser(normalizedUser);
-        localStorage.setItem('sadi_user', JSON.stringify(normalizedUser));
-
-        toast({
-          title: "Bienvenido",
-          description: `Hola ${normalizedUser.nombre}`,
-        });
-
-        return { 
-          success: true, 
-          role: 'patient', 
-          user: normalizedUser 
-        };
-      } else {
-        const errorMsg = loginResult.message || 'Contraseña incorrecta';
-        console.log('❌ Autenticación falló:', errorMsg);
-        
-        return { success: false, error: errorMsg };
-      }
+      return { 
+        success: true, 
+        role: 'patient', 
+        user: normalizedUser 
+      };
 
     } catch (error) {
       console.error('💥 Error en loginPatient:', error);
@@ -391,65 +341,8 @@ export const AuthProvider = ({ children }) => {
   const loginHospital = async (email, password) => {
     try {
       console.log('🏥 loginHospital - Iniciando login de HOSPITAL con:', email);
-      // Resiliencia Demo / Contingencia para demostración clínica Res. 3280
-      if (email.toLowerCase().includes('admin') || email.toLowerCase().includes('demo') || email.toLowerCase().includes('sadi')) {
-        console.log('✨ Acceso Demo SADI 3280 activado');
-        const demoUser = {
-          id: 'demo-admin-id-1234',
-          email: email,
-          role: 'hospital_admin',
-          nombre: 'Personal Clínico SADI',
-          hospitalId: 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
-          hospital_name: 'Hospital Central SADI (Caldas)',
-          ciudad: 'Manizales',
-          direccion: 'Carrera 23 # 45-10'
-        };
-        setUser(demoUser);
-        localStorage.setItem('sadi_user', JSON.stringify(demoUser));
-        localStorage.setItem('authToken', 'demo-token-1234');
-        return { success: true, user: demoUser };
-      }
 
-
-      if (!email.includes('@')) {
-        console.log('❌ No es un email válido');
-        return { 
-          success: false, 
-          error: 'Debe ingresar un correo electrónico válido' 
-        };
-      }
-
-      // Verificar si existe el hospital
-      console.log('🔍 Buscando hospital en base de datos...');
-      
-      const { data: hospitalExists, error: checkError } = await supabase
-        .from('hospitals')
-        .select('hospital_id, name, email')
-        .eq('email', email.trim().toLowerCase())
-        .maybeSingle();
-
-      if (checkError) {
-        console.error('❌ Error verificando hospital:', checkError);
-        return { 
-          success: false, 
-          error: 'Error del sistema al verificar el usuario' 
-        };
-      }
-
-      if (!hospitalExists) {
-        console.log('❌ Hospital NO encontrado');
-        return { 
-          success: false, 
-          error: 'Hospital no registrado en el sistema' 
-        };
-      }
-
-      console.log('✅ Hospital encontrado:', hospitalExists.name);
-
-      // Autenticar hospital
-      console.log('🔐 Autenticando hospital...');
-      
-      const result = await authService.login(email, password);
+      const result = await authService.loginHospital(email, password);
 
       if (!result.success) {
         console.error('❌ Login de hospital falló:', result.error);
@@ -458,13 +351,8 @@ export const AuthProvider = ({ children }) => {
 
       console.log('✅ Autenticación de hospital EXITOSA');
 
-      if (result.data?.token) {
-        localStorage.setItem('authToken', result.data.token);
-      }
-
       const userData = result.user;
       let userRole = userData.role;
-      
       if (userRole === 'hospital') {
         userRole = 'hospital_admin';
       }
@@ -473,7 +361,7 @@ export const AuthProvider = ({ children }) => {
         id: userData.id,
         email: userData.email,
         role: userRole,
-        nombre: userData.nombre || userData.hospital_name || 'Usuario',
+        nombre: userData.nombre || userData.hospital_name || 'Personal Clínico SADI',
         hospitalId: userData.hospitalId,
         hospital_name: userData.hospital_name,
         ciudad: userData.ciudad,
@@ -485,10 +373,13 @@ export const AuthProvider = ({ children }) => {
 
       setUser(normalizedUser);
       localStorage.setItem('sadi_user', JSON.stringify(normalizedUser));
+      if (!localStorage.getItem('authToken')) {
+        localStorage.setItem('authToken', 'auth-token-' + (userData.id || 'admin'));
+      }
 
       toast({
         title: "Inicio de sesión exitoso",
-        description: `Bienvenido ${normalizedUser.nombre}`,
+        description: `Bienvenido al Portal Administrativo`,
       });
 
       return { success: true, role: normalizedUser.role, user: normalizedUser };

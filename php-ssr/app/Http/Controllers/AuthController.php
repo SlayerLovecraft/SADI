@@ -74,8 +74,26 @@ final class AuthController
         try {
             $row = $this->fetchHospitalByEmail($db, $email);
             if (!$row) {
+                $isDoctor = $db->fetchOne('SELECT doctor_id FROM public.staff WHERE lower(doctor_email) = lower(:email) LIMIT 1', ['email' => $email]);
+                if ($isDoctor) {
+                    return Response::html($view->render('pages/auth_login', [
+                        'error' => 'Esta cuenta pertenece al Portal de Doctores. Por favor inicie sesión en /doctor/login.',
+                        'success' => null,
+                        'csrf' => Csrf::token(),
+                    ]), 401);
+                }
+
+                $isPatient = $db->fetchOne('SELECT patient_id FROM public.patients WHERE lower(email) = lower(:email) LIMIT 1', ['email' => $email]);
+                if ($isPatient) {
+                    return Response::html($view->render('pages/auth_login', [
+                        'error' => 'Esta cuenta pertenece al Portal de Pacientes. Por favor inicie sesión en /patient/login.',
+                        'success' => null,
+                        'csrf' => Csrf::token(),
+                    ]), 401);
+                }
+
                 return Response::html($view->render('pages/auth_login', [
-                    'error' => 'Hospital no registrado en el sistema.',
+                    'error' => 'Hospital o administrador no registrado en el sistema.',
                     'success' => null,
                     'csrf' => Csrf::token(),
                 ]), 401);
@@ -292,8 +310,24 @@ final class AuthController
             }
 
             if (!$row) {
+                $isHospital = $db->fetchOne('SELECT hospital_id FROM public.hospitals WHERE lower(email) = lower(:email) LIMIT 1', ['email' => $email]);
+                if ($isHospital) {
+                    return Response::html($view->render('pages/auth_doctor_login', [
+                        'error' => 'Esta cuenta pertenece al Portal Administrativo. Por favor inicie sesión en /login.',
+                        'csrf' => Csrf::token(),
+                    ]), 401);
+                }
+
+                $isPatient = $db->fetchOne('SELECT patient_id FROM public.patients WHERE lower(email) = lower(:email) LIMIT 1', ['email' => $email]);
+                if ($isPatient) {
+                    return Response::html($view->render('pages/auth_doctor_login', [
+                        'error' => 'Esta cuenta pertenece al Portal de Pacientes. Por favor inicie sesión en /patient/login.',
+                        'csrf' => Csrf::token(),
+                    ]), 401);
+                }
+
                 return Response::html($view->render('pages/auth_doctor_login', [
-                    'error' => 'Credenciales inválidas.',
+                    'error' => 'Doctor o personal asistencial no registrado en el sistema.',
                     'csrf' => Csrf::token(),
                 ]), 401);
             }

@@ -21,6 +21,7 @@ const PatientLoginPage = () => {
   const [resetEmail, setResetEmail] = useState('');
   const [problemDescription, setProblemDescription] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [portalRedirect, setPortalRedirect] = useState(null);
   
   const { loginPatient, user, loading: authLoading } = useAuth(); // ✅ USA loginPatient
   const navigate = useNavigate();
@@ -41,6 +42,7 @@ const PatientLoginPage = () => {
     e.preventDefault();
     setIsSubmitting(true);
     setErrorMessage('');
+    setPortalRedirect(null);
 
     console.log('🔵 PatientLogin - Intentando login con:', identifier);
 
@@ -61,9 +63,10 @@ const PatientLoginPage = () => {
         
         const errorMsg = result.error || "Verifique su documento/correo y contraseña";
         setErrorMessage(errorMsg);
+        setPortalRedirect(result.portalRedirect || null);
         
         toast({
-          title: "Error de autenticación",
+          title: "Acceso no permitido",
           description: errorMsg,
           variant: "destructive",
         });
@@ -74,6 +77,7 @@ const PatientLoginPage = () => {
       
       const errorMsg = error.message || "Ocurrió un error inesperado. Intente nuevamente.";
       setErrorMessage(errorMsg);
+      setPortalRedirect(null);
       
       toast({
         title: "Error",
@@ -366,10 +370,20 @@ Este mensaje fue generado desde el sistema SADI
             </div>
 
             {errorMessage && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl shadow-xs">
                 <div className="flex items-start gap-3">
                   <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-800">{errorMessage}</p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-red-800 font-semibold">{errorMessage}</p>
+                    {portalRedirect && (
+                      <Link
+                        to={portalRedirect}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+                      >
+                        {portalRedirect.includes('doctor') ? '🩺 Ir al Portal de Doctores' : '🏛️ Ir al Portal Administrativo'} →
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
