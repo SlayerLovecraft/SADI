@@ -1036,6 +1036,39 @@ export default function DoctorsPage() {
 
               {/* Cuadrícula de Cursos de Vida */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {/* Opción 1: ★ Todos los Cursos de Vida (Acceso Total) */}
+                {(() => {
+                  const isAllChecked = permissionsForm.cursos_vida_asignados.includes('todos') || 
+                    (permissionsForm.cursos_vida_asignados.length >= 10 && ALL_10_CURSOS_IDS.every(id => permissionsForm.cursos_vida_asignados.includes(id)));
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => toggleCursoVida('todos')}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none sm:col-span-2 ${
+                        isAllChecked 
+                          ? 'bg-blue-50/90 shadow-xs ring-2 ring-blue-600 border-transparent font-bold' 
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-7 h-7 rounded-lg text-white font-black text-sm flex items-center justify-center shadow-xs shrink-0 bg-blue-600">
+                          ★
+                        </span>
+                        <div className="min-w-0">
+                          <span className="font-bold block text-xs text-slate-900 truncate">★. Todos los Cursos de Vida</span>
+                          <span className="text-[10px] text-slate-500 font-medium block truncate">Acceso Total a las 10 Rutas Integrales de Atención (A - J)</span>
+                        </div>
+                      </div>
+
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-2 ${
+                        isAllChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'
+                      }`}>
+                        {isAllChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      </div>
+                    </button>
+                  );
+                })()}
+
                 {CURSOS_VIDA_LIST.filter(c => c.id !== 'todos' && c.id !== 'sin_asignacion').map(c => {
                   const isChecked = permissionsForm.cursos_vida_asignados.includes('todos') || permissionsForm.cursos_vida_asignados.includes(c.id);
                   return (
