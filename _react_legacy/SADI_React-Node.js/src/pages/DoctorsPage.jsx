@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { staffService } from '@/services/staffService';
 import { patientService } from '@/services/patientService';
+import { telemonitoringService } from '@/services/telemonitoringService';
 import StaffPatientInteractionsTable from '@/components/StaffPatientInteractionsTable';
 import {
   Dialog,
@@ -131,9 +132,13 @@ export default function DoctorsPage() {
       if (resStaff.success) {
         setStaffList(resStaff.data || []);
       }
-      if (resPatients.success) {
-        setAllPatients(resPatients.data || []);
+      let pts = [];
+      if (resPatients.success && Array.isArray(resPatients.data) && resPatients.data.length > 0) {
+        pts = resPatients.data;
+      } else {
+        pts = await telemonitoringService.getPatients();
       }
+      setAllPatients(pts || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -784,7 +789,7 @@ export default function DoctorsPage() {
               Agregar Personal Asistencial o Enfermera
             </DialogTitle>
             <DialogDescription>
-              Configura los datos del profesional, asigna sus Cursos de Vida y Grupos de Riesgo, y define sus permisos.
+              Configura los datos del profesional, asigna sus Cursos de Vida de la Resolución 3280 y define sus privilegios asistenciales.
             </DialogDescription>
           </DialogHeader>
 

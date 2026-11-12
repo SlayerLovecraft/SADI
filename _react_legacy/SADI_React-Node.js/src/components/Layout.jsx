@@ -149,8 +149,15 @@ const Layout = ({ children }) => {
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
+      const userRole = user?.role;
       await logout();
-      navigate('/login');
+      if (userRole === 'doctor') {
+        navigate('/doctor/login', { replace: true });
+      } else if (userRole === 'patient') {
+        navigate('/patient/login', { replace: true });
+      } else {
+        navigate('/login', { replace: true });
+      }
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
     } finally {

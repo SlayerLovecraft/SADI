@@ -22,23 +22,40 @@ export const calculateAgeFromBirthdate = (birthdate) => {
 
 export const getCursoVidaFromPatient = (patient) => {
   if (!patient) return 'adultez';
-  if (patient.curso_vida) return patient.curso_vida;
-  if (patient.es_gestante === true) return 'materno_perinatal';
 
-  const pProg = (patient.program || '').toLowerCase();
+  // 1. Si ya tiene curso_vida explícito, normalizarlo
+  const rawCurso = patient.curso_vida || patient.cursoVida || '';
+  const normCurso = normalizeText(rawCurso);
+
+  if (normCurso.includes('primera') || normCurso === 'a' || normCurso.includes('infancia (0 a 5)')) return 'primera_infancia';
+  if ((normCurso.includes('infancia') && !normCurso.includes('primera')) || normCurso === 'b' || normCurso.includes('(6 a 11)')) return 'infancia';
+  if (normCurso.includes('adolesc') || normCurso === 'c' || normCurso.includes('(12 a 17)')) return 'adolescencia';
+  if (normCurso.includes('juven') || normCurso === 'd' || normCurso.includes('(18 a 28)')) return 'juventud';
+  if (normCurso.includes('adult') || normCurso === 'e' || normCurso.includes('(29 a 59)')) return 'adultez';
+  if (normCurso.includes('vej') || normCurso.includes('mayor') || normCurso.includes('geriatr') || normCurso === 'f' || normCurso.includes('(60')) return 'vejez';
+  if (normCurso.includes('mujer') || normCurso.includes('materno') || normCurso.includes('gestan') || normCurso === 'g') return 'preventivo_mujer';
+  if (normCurso.includes('planific') || normCurso === 'h') return 'planificacion_familiar';
+  if (normCurso.includes('vacun') || normCurso === 'i') return 'vacunacion';
+  if (normCurso.includes('oral') || normCurso.includes('odont') || normCurso === 'j') return 'salud_oral';
+
+  if (patient.es_gestante === true) return 'preventivo_mujer';
+
+  const pProg = (patient.program || patient.programa || '').toLowerCase();
   if (pProg.includes('embarazo') || pProg.includes('materno') || pProg.includes('gestan') || pProg.includes('preeclampsia')) {
-    return 'materno_perinatal';
+    return 'preventivo_mujer';
   }
 
   const age = calculateAgeFromBirthdate(patient.birthdate || patient.fecha_nacimiento);
-  if (age === null) return 'adultez';
+  if (age !== null && age !== undefined) {
+    if (age <= 5) return 'primera_infancia';
+    if (age <= 11) return 'infancia';
+    if (age <= 17) return 'adolescencia';
+    if (age <= 28) return 'juventud';
+    if (age <= 59) return 'adultez';
+    return 'vejez';
+  }
 
-  if (age <= 5) return 'primera_infancia';
-  if (age <= 11) return 'infancia';
-  if (age <= 17) return 'adolescencia';
-  if (age <= 28) return 'juventud';
-  if (age <= 59) return 'adultez';
-  return 'vejez';
+  return 'adultez';
 };
 
 export const GENERAL_DOCTORS = [
@@ -202,7 +219,7 @@ export const isPatientAssignedToDoctor = (patient, doctorUser) => {
   const rawCursos = doctorUser.cursos_vida_asignados;
   const cursos = Array.isArray(rawCursos) ? rawCursos : [];
 
-  // Si no tiene cursos asignados, CERO pacientes
+  // Si no tiene cursos asignados, CERO pacientes (0 pacientes)
   if (cursos.length === 0) {
     return false;
   }
@@ -212,19 +229,20 @@ export const isPatientAssignedToDoctor = (patient, doctorUser) => {
     return true;
   }
 
-  const cursoPaciente = getCursoVidaFromPatient(patient);
+  const canonicalCurso = getCursoVidaFromPatient(patient);
+
   return cursos.some(cId => {
-    if (cId === cursoPaciente) return true;
-    if (cId === 'primera_infancia' && (cursoPaciente === 'primera_infancia' || cursoPaciente === 'A')) return true;
-    if (cId === 'infancia' && (cursoPaciente === 'infancia' || cursoPaciente === 'B')) return true;
-    if (cId === 'adolescencia' && (cursoPaciente === 'adolescencia' || cursoPaciente === 'C')) return true;
-    if (cId === 'juventud' && (cursoPaciente === 'juventud' || cursoPaciente === 'D')) return true;
-    if (cId === 'adultez' && (cursoPaciente === 'adultez' || cursoPaciente === 'E')) return true;
-    if (cId === 'vejez' && (cursoPaciente === 'vejez' || cursoPaciente === 'F')) return true;
-    if ((cId === 'materno_perinatal' || cId === 'preventivo_mujer') && (cursoPaciente === 'materno_perinatal' || cursoPaciente === 'preventivo_mujer' || cursoPaciente === 'G')) return true;
-    if (cId === 'planificacion_familiar' && (cursoPaciente === 'planificacion_familiar' || cursoPaciente === 'H')) return true;
-    if ((cId === 'vacunacion' || cId === 'vacunacion_pai') && (cursoPaciente === 'vacunacion' || cursoPaciente === 'vacunacion_pai' || cursoPaciente === 'I')) return true;
-    if (cId === 'salud_oral' && (cursoPaciente === 'salud_oral' || cursoPaciente === 'J')) return true;
+    if (cId === canonicalCurso) return true;
+    if (cId === 'primera_infancia' && (canonicalCurso === 'primera_infancia' || canonicalCurso === 'A')) return true;
+    if (cId === 'infancia' && (canonicalCurso === 'infancia' || canonicalCurso === 'B')) return true;
+    if (cId === 'adolescencia' && (canonicalCurso === 'adolescencia' || canonicalCurso === 'C')) return true;
+    if (cId === 'juventud' && (canonicalCurso === 'juventud' || canonicalCurso === 'D')) return true;
+    if (cId === 'adultez' && (canonicalCurso === 'adultez' || canonicalCurso === 'E')) return true;
+    if (cId === 'vejez' && (canonicalCurso === 'vejez' || canonicalCurso === 'F')) return true;
+    if ((cId === 'preventivo_mujer' || cId === 'materno_perinatal') && (canonicalCurso === 'preventivo_mujer' || canonicalCurso === 'materno_perinatal' || canonicalCurso === 'G')) return true;
+    if (cId === 'planificacion_familiar' && (canonicalCurso === 'planificacion_familiar' || canonicalCurso === 'H')) return true;
+    if ((cId === 'vacunacion' || cId === 'vacunacion_pai') && (canonicalCurso === 'vacunacion' || canonicalCurso === 'vacunacion_pai' || canonicalCurso === 'I')) return true;
+    if (cId === 'salud_oral' && (canonicalCurso === 'salud_oral' || canonicalCurso === 'J')) return true;
     return false;
   });
 };
