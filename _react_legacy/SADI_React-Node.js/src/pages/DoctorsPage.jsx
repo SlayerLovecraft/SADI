@@ -246,13 +246,13 @@ export default function DoctorsPage() {
     setSelectedStaff(staff);
     const raw = staff.cursos_vida_asignados;
     let cursos = Array.isArray(raw) ? [...raw] : [];
-    // Si contiene 'todos', expandir explícitamente a los 10 cursos para que se visualicen todos seleccionados
-    if (cursos.includes('todos')) {
+    // Si contiene 'todos' o los 10, expandir explícitamente a los 10 cursos para que se visualicen todos seleccionados
+    if (cursos.includes('todos') || cursos.length >= 10) {
       cursos = ['todos', ...ALL_10_CURSOS_IDS];
     }
     setPermissionsForm({
       cursos_vida_asignados: cursos,
-      solo_lectura: staff.solo_lectura !== undefined ? staff.solo_lectura : true,
+      solo_lectura: staff.solo_lectura !== undefined ? Boolean(staff.solo_lectura) : true,
       puede_lanzar_llamadas: Boolean(staff.puede_lanzar_llamadas),
       puede_enviar_mensajes: Boolean(staff.puede_enviar_mensajes),
       puede_crear_campanas: Boolean(staff.puede_crear_campanas),
@@ -266,30 +266,28 @@ export default function DoctorsPage() {
     setSavingAction(true);
     try {
       let toSave = [...permissionsForm.cursos_vida_asignados];
-      if (toSave.includes('todos') || ALL_10_CURSOS_IDS.every(id => toSave.includes(id))) {
+      const hasAll = toSave.includes('todos') || (toSave.length >= 10 && ALL_10_CURSOS_IDS.every(id => toSave.includes(id)));
+      if (hasAll) {
         toSave = ['todos', ...ALL_10_CURSOS_IDS];
       }
 
-      const res = await staffService.update(selectedStaff.id, {
+      const payload = {
         cursos_vida_asignados: toSave,
         grupos_riesgo_asignados: [],
-        solo_lectura: permissionsForm.solo_lectura,
-        puede_lanzar_llamadas: permissionsForm.puede_lanzar_llamadas,
-        puede_enviar_mensajes: permissionsForm.puede_enviar_mensajes,
-        puede_crear_campanas: permissionsForm.puede_crear_campanas,
-        puede_editar_pacientes: permissionsForm.puede_editar_pacientes
-      });
+        solo_lectura: Boolean(permissionsForm.solo_lectura),
+        puede_lanzar_llamadas: Boolean(permissionsForm.puede_lanzar_llamadas),
+        puede_enviar_mensajes: Boolean(permissionsForm.puede_enviar_mensajes),
+        puede_crear_campanas: Boolean(permissionsForm.puede_crear_campanas),
+        puede_editar_pacientes: Boolean(permissionsForm.puede_editar_pacientes)
+      };
+
+      const res = await staffService.update(selectedStaff.id, payload);
 
       if (res.success) {
         // Actualizar de inmediato en el estado local React para retroalimentación instantánea
         const updatedStaff = res.data || {
           ...selectedStaff,
-          cursos_vida_asignados: toSave,
-          solo_lectura: permissionsForm.solo_lectura,
-          puede_lanzar_llamadas: permissionsForm.puede_lanzar_llamadas,
-          puede_enviar_mensajes: permissionsForm.puede_enviar_mensajes,
-          puede_crear_campanas: permissionsForm.puede_crear_campanas,
-          puede_editar_pacientes: permissionsForm.puede_editar_pacientes
+          ...payload
         };
 
         setStaffList(prev => prev.map(s => (s.id === selectedStaff.id || s.doctor_id === selectedStaff.id) ? { ...s, ...updatedStaff } : s));
@@ -329,41 +327,106 @@ export default function DoctorsPage() {
     }
   };
 
-  // Toggle de Cursos de Vida en el formulario
-  const toggleCursoVida = (cursoId, formState, setFormState) => {
-    let current = Array.isArray(formState.cursos_vida_asignados) ? [...formState.cursos_vida_asignados] : [];
-    const hasTodos = current.includes('todos');
+  // Toggle de Cursos de Vida en el formulario de Permisos
+  const toggleCursoVida = (cursoId) => {
+    setPermissionsForm(prev => {
+      const current = Array.isArray(prev.cursos_vida_asignados) ? [...prev.cursos_vida_asignados] : [];
+      const hasAll = current.includes('todos') || (current.length >= 10 && ALL_10_CURSOS_IDS.every(id => current.includes(id)));
 
-    if (cursoId === 'todos') {
-      const next = hasTodos ? [] : ['todos', ...ALL_10_CURSOS_IDS];
-      setFormState({ ...formState, cursos_vida_asignados: next });
-      return;
-    }
-
-    // Si tenía 'todos', expandir a todos los 10 cursos antes de alternar
-    if (hasTodos) {
-      current = ALL_10_CURSOS_IDS.filter(id => id !== cursoId);
-      setFormState({ ...formState, cursos_vida_asignados: current });
-      return;
-    }
-
-    if (current.includes(cursoId)) {
-      current = current.filter(c => c !== cursoId);
-    } else {
-      current.push(cursoId);
-      if (ALL_10_CURSOS_IDS.every(id => current.includes(id))) {
-        current = ['todos', ...ALL_10_CURSOS_IDS];
+      if (cursoId === 'todos') {
+        return {
+          ...prev,
+          cursos_vida_asignados: hasAll ? [] : ['todos', ...ALL_10_CURSOS_IDS]
+        };
       }
-    }
-    setFormState({ ...formState, cursos_vida_asignados: current });
+
+      if (hasAll) {
+        // Si tenía todos, desmarcar el seleccionado y dejar los otros 9
+        return {
+          ...prev,
+          cursos_vida_asignados: ALL_10_CURSOS_IDS.filter(id => id !== cursoId)
+        };
+      }
+
+      if (current.includes(cursoId)) {
+        return {
+          ...prev,
+          cursos_vida_asignados: current.filter(id => id !== cursoId && id !== 'todos')
+        };
+      } else {
+        const next = [...current.filter(id => id !== 'todos'), cursoId];
+        if (ALL_10_CURSOS_IDS.every(id => next.includes(id))) {
+          return { ...prev, cursos_vida_asignados: ['todos', ...ALL_10_CURSOS_IDS] };
+        }
+        return { ...prev, cursos_vida_asignados: next };
+      }
+    });
   };
 
-  const clearCursosVida = (formState, setFormState) => {
-    setFormState({ ...formState, cursos_vida_asignados: [] });
+  const clearCursosVida = () => {
+    setPermissionsForm(prev => ({ ...prev, cursos_vida_asignados: [] }));
   };
 
-  const setAllCursosVida = (formState, setFormState) => {
-    setFormState({ ...formState, cursos_vida_asignados: ['todos', ...ALL_10_CURSOS_IDS] });
+  const setAllCursosVida = () => {
+    setPermissionsForm(prev => ({ ...prev, cursos_vida_asignados: ['todos', ...ALL_10_CURSOS_IDS] }));
+  };
+
+  // Acciones y Toggles de Privilegios Asistenciales
+  const setAllPrivileges = () => {
+    setPermissionsForm(prev => ({
+      ...prev,
+      solo_lectura: false,
+      puede_lanzar_llamadas: true,
+      puede_enviar_mensajes: true,
+      puede_crear_campanas: true,
+      puede_editar_pacientes: true
+    }));
+  };
+
+  const setReadOnlyOnly = () => {
+    setPermissionsForm(prev => ({
+      ...prev,
+      solo_lectura: true,
+      puede_lanzar_llamadas: false,
+      puede_enviar_mensajes: false,
+      puede_crear_campanas: false,
+      puede_editar_pacientes: false
+    }));
+  };
+
+  const togglePrivilege = (key) => {
+    setPermissionsForm(prev => {
+      const nextVal = !prev[key];
+      const nextState = { ...prev, [key]: nextVal };
+
+      if (key === 'solo_lectura' && nextVal === true) {
+        // Al pasar a Solo Lectura, desactiva automáticamente las acciones operativas
+        nextState.puede_lanzar_llamadas = false;
+        nextState.puede_enviar_mensajes = false;
+        nextState.puede_crear_campanas = false;
+        nextState.puede_editar_pacientes = false;
+      } else if (key !== 'solo_lectura' && nextVal === true) {
+        // Al otorgar cualquier privilegio activo, se desactiva Solo Lectura
+        nextState.solo_lectura = false;
+      }
+      return nextState;
+    });
+  };
+
+  // Toggle para formulario de crear nuevo personal
+  const toggleNewStaffCursoVida = (cursoId) => {
+    setNewStaff(prev => {
+      const current = Array.isArray(prev.cursos_vida_asignados) ? [...prev.cursos_vida_asignados] : [];
+      if (current.includes(cursoId)) {
+        return { ...prev, cursos_vida_asignados: current.filter(id => id !== cursoId) };
+      } else {
+        return { ...prev, cursos_vida_asignados: [...current, cursoId] };
+      }
+    });
+  };
+
+  const clearNewStaffCursosVida = () => {
+    setNewStaff(prev => ({ ...prev, cursos_vida_asignados: [] }));
   };
 
   // Filtros de tabla de personal
@@ -552,15 +615,19 @@ export default function DoctorsPage() {
                           </button>
                         </td>
 
-                        {/* 2. Cursos de Vida Asignados */}
-                        <td className="p-4 max-w-sm">
+                        {/* 2. Cursos de Vida Asignados (Clickeable -> Abre modal de Permisos) */}
+                        <td 
+                          className="p-4 max-w-sm cursor-pointer hover:bg-blue-50/70 transition-colors group"
+                          onClick={() => openPermissionsModal(staff)}
+                          title="Haz clic aquí para editar los Cursos de Vida y Permisos de este profesional"
+                        >
                           {isSinAsignacion ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
-                              <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                              <span>Sin Asignación</span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-300 group-hover:border-blue-400 group-hover:text-blue-700 transition-colors">
+                              <span className="w-2 h-2 rounded-full bg-slate-400 group-hover:bg-blue-500"></span>
+                              <span>Sin Asignación (Clic para asignar)</span>
                             </span>
                           ) : isAllCursos ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black bg-blue-50 text-blue-900 border border-blue-300">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black bg-blue-50 text-blue-900 border border-blue-300 group-hover:border-blue-500 transition-colors">
                               <span>★</span>
                               <span>Todos los Cursos de Vida (A - J)</span>
                             </span>
@@ -571,7 +638,7 @@ export default function DoctorsPage() {
                                 return (
                                   <span
                                     key={cId}
-                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-black border shadow-xs inline-flex items-center gap-1.5 ${
+                                    className={`px-2 py-0.5 rounded-lg text-[10px] font-black border shadow-xs inline-flex items-center gap-1.5 transition-transform group-hover:scale-102 ${
                                       cfg ? cfg.badge : 'bg-gray-100 text-gray-800 border-gray-200'
                                     }`}
                                   >
@@ -783,7 +850,7 @@ export default function DoctorsPage() {
                 </Label>
                 <button
                   type="button"
-                  onClick={() => clearCursosVida(newStaff, setNewStaff)}
+                  onClick={clearNewStaffCursosVida}
                   className="text-[10px] text-slate-500 hover:text-slate-800 font-bold underline"
                 >
                   Limpiar / Sin Asignación
@@ -796,7 +863,7 @@ export default function DoctorsPage() {
                   return (
                     <div
                       key={c.id}
-                      onClick={() => toggleCursoVida(c.id, newStaff, setNewStaff)}
+                      onClick={() => toggleNewStaffCursoVida(c.id)}
                       className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all select-none ${
                         isChecked 
                           ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold' 
@@ -936,7 +1003,7 @@ export default function DoctorsPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => setAllCursosVida(permissionsForm, setPermissionsForm)}
+                    onClick={setAllCursosVida}
                     className="h-7 text-[10px] font-bold px-2.5 border-blue-300 text-blue-700 hover:bg-blue-50"
                   >
                     ★ Acceso Total (A - J)
@@ -945,7 +1012,7 @@ export default function DoctorsPage() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => clearCursosVida(permissionsForm, setPermissionsForm)}
+                    onClick={clearCursosVida}
                     className="h-7 text-[10px] font-bold px-2.5 border-slate-300 text-slate-600 hover:bg-slate-100"
                   >
                     ⚪ Dejar Sin Asignación (0 pac.)
@@ -959,7 +1026,7 @@ export default function DoctorsPage() {
                 <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] ${
                   permissionsForm.cursos_vida_asignados.length === 0
                     ? 'bg-slate-100 text-slate-700 border border-slate-300'
-                    : permissionsForm.cursos_vida_asignados.includes('todos')
+                    : (permissionsForm.cursos_vida_asignados.includes('todos') || permissionsForm.cursos_vida_asignados.length >= 10)
                     ? 'bg-blue-100 text-blue-900 border border-blue-300'
                     : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                 }`}>
@@ -972,13 +1039,14 @@ export default function DoctorsPage() {
                 {CURSOS_VIDA_LIST.filter(c => c.id !== 'todos' && c.id !== 'sin_asignacion').map(c => {
                   const isChecked = permissionsForm.cursos_vida_asignados.includes('todos') || permissionsForm.cursos_vida_asignados.includes(c.id);
                   return (
-                    <div
+                    <button
                       key={c.id}
-                      onClick={() => toggleCursoVida(c.id, permissionsForm, setPermissionsForm)}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all select-none ${
+                      type="button"
+                      onClick={() => toggleCursoVida(c.id)}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
                         isChecked 
-                          ? 'bg-white shadow-sm ring-2 ring-blue-500 border-transparent font-bold' 
-                          : 'bg-white/80 border-slate-200 text-slate-600 hover:bg-white hover:border-slate-300'
+                          ? 'bg-blue-50/70 shadow-xs ring-2 ring-blue-500 border-transparent font-bold' 
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -999,79 +1067,191 @@ export default function DoctorsPage() {
                       }`}>
                         {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Permisos de Interacción y Acciones */}
+            {/* Permisos de Interacción y Acciones Asistenciales */}
             <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
-              <Label className="font-black text-amber-900 flex items-center gap-1.5">
-                <Key className="w-4 h-4 text-amber-600" />
-                Privilegios de Operación Asistencial:
-              </Label>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-amber-200/70">
+                <div>
+                  <Label className="font-black text-amber-900 flex items-center gap-1.5 text-xs">
+                    <Key className="w-4 h-4 text-amber-600" />
+                    Privilegios de Operación Asistencial:
+                  </Label>
+                  <p className="text-[11px] text-amber-800/80 mt-0.5">
+                    Configura libremente las acciones que el profesional puede ejecutar sobre sus pacientes.
+                  </p>
+                </div>
 
-              <div className="space-y-2.5 text-xs">
-                <label className="flex items-center gap-2.5 cursor-pointer font-bold text-gray-800 bg-white p-2.5 rounded-xl border border-amber-200">
-                  <input
-                    type="checkbox"
-                    checked={permissionsForm.solo_lectura}
-                    onChange={(e) => setPermissionsForm({ ...permissionsForm, solo_lectura: e.target.checked })}
-                    className="rounded text-amber-600"
-                  />
-                  <div>
-                    <span className="block">Modo Solo Lectura</span>
-                    <span className="text-[10px] text-gray-400 font-normal">
-                      Por defecto. Solo puede consultar citas, estados de llamadas y datos clínicos sin intervenir.
-                    </span>
-                  </div>
-                </label>
+                {/* Acciones Rápidas Privilegios */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={setAllPrivileges}
+                    className="h-7 text-[10px] font-bold px-2.5 border-emerald-300 text-emerald-800 hover:bg-emerald-50 bg-white"
+                  >
+                    ★ Activar Todos
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={setReadOnlyOnly}
+                    className="h-7 text-[10px] font-bold px-2.5 border-amber-300 text-amber-800 hover:bg-amber-100 bg-white"
+                  >
+                    🔒 Solo Lectura
+                  </Button>
+                </div>
+              </div>
 
-                <label className="flex items-center gap-2.5 cursor-pointer text-gray-800 bg-white p-2.5 rounded-xl border border-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={permissionsForm.puede_lanzar_llamadas}
-                    onChange={(e) => setPermissionsForm({ ...permissionsForm, puede_lanzar_llamadas: e.target.checked })}
-                    className="rounded text-blue-600"
-                  />
-                  <div>
-                    <span className="font-bold block text-blue-900">Permitir Llamadas en Vivo (GSM Puerto 22)</span>
-                    <span className="text-[10px] text-gray-500 font-normal">
-                      Habilita el botón de llamada individual y enlace con el Agente IA para sus pacientes asignados.
-                    </span>
+              {/* Lista interactiva de privilegios */}
+              <div className="grid grid-cols-1 gap-2 pt-1">
+                
+                {/* 1. Modo Solo Lectura */}
+                <button
+                  type="button"
+                  onClick={() => togglePrivilege('solo_lectura')}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
+                    permissionsForm.solo_lectura
+                      ? 'bg-amber-100/80 border-amber-300 ring-2 ring-amber-500 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.solo_lectura ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <Eye className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-slate-900 block">Modo Solo Lectura (Consulta)</span>
+                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                        Solo puede consultar citas, expedientes y alertas clínicas sin realizar llamadas ni envíos.
+                      </span>
+                    </div>
                   </div>
-                </label>
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
+                    permissionsForm.solo_lectura ? 'bg-amber-600 border-amber-600 text-white' : 'border-slate-300 bg-white'
+                  }`}>
+                    {permissionsForm.solo_lectura && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                </button>
 
-                <label className="flex items-center gap-2.5 cursor-pointer text-gray-800 bg-white p-2.5 rounded-xl border border-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={permissionsForm.puede_enviar_mensajes}
-                    onChange={(e) => setPermissionsForm({ ...permissionsForm, puede_enviar_mensajes: e.target.checked })}
-                    className="rounded text-green-600"
-                  />
-                  <div>
-                    <span className="font-bold block text-green-900">Permitir Envío de Mensajes (SMS, WhatsApp, E-mail)</span>
-                    <span className="text-[10px] text-gray-500 font-normal">
-                      Autoriza el despacho de notificaciones y recordatorios preventivos a los pacientes asignados.
-                    </span>
+                {/* 2. Permitir Llamadas en Vivo */}
+                <button
+                  type="button"
+                  onClick={() => togglePrivilege('puede_lanzar_llamadas')}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
+                    permissionsForm.puede_lanzar_llamadas
+                      ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-500 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_lanzar_llamadas ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <PhoneCall className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-slate-900 block">Permitir Llamadas en Vivo (GSM Puerto 22)</span>
+                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                        Habilita el botón de llamada individual y enlace con el Agente IA para sus pacientes.
+                      </span>
+                    </div>
                   </div>
-                </label>
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
+                    permissionsForm.puede_lanzar_llamadas ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'
+                  }`}>
+                    {permissionsForm.puede_lanzar_llamadas && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                </button>
 
-                <label className="flex items-center gap-2.5 cursor-pointer text-gray-800 bg-white p-2.5 rounded-xl border border-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={permissionsForm.puede_crear_campanas}
-                    onChange={(e) => setPermissionsForm({ ...permissionsForm, puede_crear_campanas: e.target.checked })}
-                    className="rounded text-purple-600"
-                  />
-                  <div>
-                    <span className="font-bold block text-purple-900">Permitir Crear y Gestionar Campañas</span>
-                    <span className="text-[10px] text-gray-500 font-normal">
-                      Habilita el botón de crear campañas masivas para los cursos de vida que tiene asignados.
-                    </span>
+                {/* 3. Permitir Envío de Mensajes */}
+                <button
+                  type="button"
+                  onClick={() => togglePrivilege('puede_enviar_mensajes')}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
+                    permissionsForm.puede_enviar_mensajes
+                      ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-500 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_enviar_mensajes ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <MessageSquare className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-slate-900 block">Permitir Envío de Mensajes (SMS, WhatsApp, Email)</span>
+                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                        Autoriza el despacho de notificaciones y recordatorios preventivos a los pacientes.
+                      </span>
+                    </div>
                   </div>
-                </label>
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
+                    permissionsForm.puede_enviar_mensajes ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white'
+                  }`}>
+                    {permissionsForm.puede_enviar_mensajes && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                </button>
+
+                {/* 4. Permitir Crear y Gestionar Campañas */}
+                <button
+                  type="button"
+                  onClick={() => togglePrivilege('puede_crear_campanas')}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
+                    permissionsForm.puede_crear_campanas
+                      ? 'bg-purple-50 border-purple-300 ring-2 ring-purple-500 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_crear_campanas ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <Send className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-slate-900 block">Permitir Crear y Gestionar Campañas</span>
+                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                        Habilita la creación y programación de campañas masivas para sus Cursos de Vida.
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
+                    permissionsForm.puede_crear_campanas ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
+                  }`}>
+                    {permissionsForm.puede_crear_campanas && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                </button>
+
+                {/* 5. Permitir Modificar / Editar Pacientes */}
+                <button
+                  type="button"
+                  onClick={() => togglePrivilege('puede_editar_pacientes')}
+                  className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
+                    permissionsForm.puede_editar_pacientes
+                      ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-500 shadow-xs'
+                      : 'bg-white border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_editar_pacientes ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <UserCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-xs text-slate-900 block">Permitir Editar y Gestionar Pacientes</span>
+                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                        Autoriza la actualización de historias clínicas, datos demográficos y antecedentes.
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
+                    permissionsForm.puede_editar_pacientes ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-300 bg-white'
+                  }`}>
+                    {permissionsForm.puede_editar_pacientes && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </div>
+                </button>
+
               </div>
             </div>
 

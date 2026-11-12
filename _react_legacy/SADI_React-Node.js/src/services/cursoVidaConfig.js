@@ -195,10 +195,10 @@ export function getDoctorLifeCourseTheme(cursosAsignados) {
   if (!Array.isArray(cursosAsignados) || cursosAsignados.length === 0) {
     return CURSO_VIDA_CONFIG.sin_asignacion;
   }
-  if (cursosAsignados.includes('todos')) {
+  if (cursosAsignados.includes('todos') || cursosAsignados.length >= 10) {
     return CURSO_VIDA_CONFIG.todos;
   }
-  const first = cursosAsignados[0];
+  const first = cursosAsignados.find(c => c !== 'todos' && c !== 'sin_asignacion') || cursosAsignados[0];
   return CURSO_VIDA_CONFIG[first] || CURSO_VIDA_CONFIG.sin_asignacion;
 }
 
@@ -209,10 +209,11 @@ export function formatCursosVidaLabel(cursosAsignados) {
   if (!Array.isArray(cursosAsignados) || cursosAsignados.length === 0) {
     return 'Sin Asignación';
   }
-  if (cursosAsignados.includes('todos')) {
+  if (cursosAsignados.includes('todos') || cursosAsignados.length >= 10) {
     return 'Todos los Cursos de Vida (A - J)';
   }
   return cursosAsignados
+    .filter(c => c !== 'todos' && c !== 'sin_asignacion')
     .map(cId => {
       const cfg = CURSO_VIDA_CONFIG[cId];
       return cfg ? `${cfg.letra}. ${cfg.nombre}` : cId;
