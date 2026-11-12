@@ -48,6 +48,13 @@ import {
   DAILY_CALL_CAPACITY
 } from '@/services/callCapacityService';
 import { patientService } from '@/services/patientService';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  getAllowedCursoKeysForUser,
+  isCampaignAllowedForUser,
+  formatCursosVidaLabel,
+} from '@/services/cursoVidaConfig';
+import { isPatientAssignedToDoctor } from '@/pages/doctor/doctorUtils';
 
 // Horarios autorizados: 10 Horas (08:00 AM a 06:00 PM • 350 llamadas/hora = 3.500/día)
 const FRANJAS_HORARIAS_10H = [
@@ -57,6 +64,8 @@ const FRANJAS_HORARIAS_10H = [
 
 const CampaignsPage = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const doctorAccess = useMemo(() => getAllowedCursoKeysForUser(user), [user]);
 
   // Navegación de los 4 pasos / pestañas (IDÉNTICO A CRONOGRAMA)
   // 'campanas' (Paso 1) | 'tandas' (Paso 2) | 'casos_humanos' (Paso 3) | 'config' (Paso 4)
@@ -262,18 +271,25 @@ const CampaignsPage = () => {
     return key;
   };
 
+  // Campañas visibles según Cursos de Vida permitidos al usuario
+  const visibleCampaigns = useMemo(() => {
+    if (!doctorAccess.restricted) return campaigns;
+    if (doctorAccess.keys.length === 0) return [];
+    return campaigns.filter(c => isCampaignAllowedForUser(c, user));
+  }, [campaigns, doctorAccess, user]);
+
   // Conteo por paquetes
   const countCursosVida = useMemo(() => {
-    return campaigns.filter(c => getCampaignPackageType(c) === 'curso_vida').length;
-  }, [campaigns]);
+    return visibleCampaigns.filter(c => getCampaignPackageType(c) === 'curso_vida').length;
+  }, [visibleCampaigns]);
 
   const countGruposRiesgo = useMemo(() => {
-    return campaigns.filter(c => getCampaignPackageType(c) === 'grupo_riesgo').length;
-  }, [campaigns]);
+    return visibleCampaigns.filter(c => getCampaignPackageType(c) === 'grupo_riesgo').length;
+  }, [visibleCampaigns]);
 
   // Filtrado de Campañas según paquete, estado y término de búsqueda
   const filteredCampaigns = useMemo(() => {
-    return campaigns.filter(c => {
+    return visibleCampaigns.filter(c => {
       // 1. Filtro de Paquete (normalizado para soportar singular y plural)
       const pkg = getCampaignPackageType(c);
       const activePkg = normalizePackageKey(campaignPackageFilter);
@@ -294,10 +310,18 @@ const CampaignsPage = () => {
 
       return matchesFilter && matchesSearch;
     });
-  }, [campaigns, campaignPackageFilter, campaignStatusFilter, campaignSearchTerm]);
+  }, [visibleCampaigns, campaignPackageFilter, campaignStatusFilter, campaignSearchTerm]);
 
   // Abrir Modal de Relanzamiento
   const handleOpenRelaunchModal = (campaign) => {
+    if (doctorAccess.restricted && !isCampaignAllowedForUser(campaign, user)) {
+      toast({
+        title: "Acceso Restringido",
+        description: "Solo puedes gestionar campañas de tus Cursos de Vida asignados.",
+        variant: "destructive"
+      });
+      return;
+    }
     setSelectedCampaign(campaign);
     setRelaunchLugar(campaign.lugar || 'Sede Principal - Manizales (Caldas)');
     setRelaunchFranjas(campaign.horarios || ['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
@@ -309,6 +333,14 @@ const CampaignsPage = () => {
   // Confirmar Relanzamiento (Solo se editan fechas, días, semanas, lugares y frecuencia)
   const handleConfirmRelaunch = async () => {
     if (!selectedCampaign) return;
+    if (doctorAccess.restricted && !isCampaignAllowedForUser(selectedCampaign, user)) {
+      toast({
+        title: "Acceso Restringido",
+        description: "No tienes permisos para relanzar campañas fuera de tus Cursos de Vida asignados.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     if (!relaunchSchedule.selectedDates || relaunchSchedule.selectedDates.length === 0) {
       toast({
@@ -371,6 +403,15 @@ const CampaignsPage = () => {
 
   // Eliminar Campaña
   const handleDeleteCampaign = async () => {
+    if (!selectedCampaign) return;
+    if (doctorAccess.restricted && !isCampaignAllowedForUser(selectedCampaign, user)) {
+      toast({
+        title: "Acceso Restringido",
+        description: "No puedes eliminar campañas fuera de tus Cursos de Vida asignados.",
+        variant: "destructive"
+      });
+      return;
+    }
     try {
       setSubmitting(true);
       if (selectedCampaign.id.startsWith('camp_')) {
@@ -404,6 +445,14 @@ const CampaignsPage = () => {
   };
 
   const handleSendNow = async (campaign) => {
+    if (doctorAccess.restricted && !isCampaignAllowedForUser(campaign, user)) {
+      toast({
+        title: "Acceso Restringido",
+        description: "No tienes permisos para enviar campañas fuera de tus Cursos de Vida asignados.",
+        variant: "destructive"
+      });
+      return;
+    }
     try {
       setSubmitting(true);
       const result = await campaignService.sendNow(campaign.id);
@@ -434,9 +483,20 @@ const CampaignsPage = () => {
 
   // Tandas & Simulación
   const handleSimulateBatch = async (slotId) => {
+    if (doctorAccess.restricted && doctorAccess.keys.length === 0) {
+      toast({
+        title: "Sin Asignación de Cursos de Vida",
+        description: "No tienes Cursos de Vida asignados para ejecutar tandas.",
+        variant: "destructive"
+      });
+      return;
+    }
     setIsSimulating(true);
     try {
-      const res = await ivrScheduleService.simulateBatchExecution(slotId);
+      const predicate = doctorAccess.restricted
+        ? (item) => isPatientAssignedToDoctor(item, user)
+        : null;
+      const res = await ivrScheduleService.simulateBatchExecution(slotId, predicate);
       setScheduleData(res.schedule);
       const slot = IVR_TIME_SLOTS.find(s => s.id === slotId);
 
@@ -516,7 +576,12 @@ const CampaignsPage = () => {
   };
 
   // Métricas de Tandas Diarias
-  const items = scheduleData?.items || [];
+  const rawItems = scheduleData?.items || [];
+  const items = useMemo(() => {
+    if (!doctorAccess.restricted) return rawItems;
+    if (doctorAccess.keys.length === 0) return [];
+    return rawItems.filter(it => isPatientAssignedToDoctor(it, user));
+  }, [rawItems, doctorAccess, user]);
   const totalPacientes = items.length;
   const confirmados = items.filter(i => i.estado === 'confirmada').length;
   const reagendados = items.filter(i => i.estado === 'reagendada').length;
@@ -612,7 +677,7 @@ const CampaignsPage = () => {
             <Layers className="w-4 h-4" />
             Campañas Organizadas en 2 Paquetes
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'campanas' ? 'bg-blue-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
-              {campaigns.length}
+              {visibleCampaigns.length}
             </span>
           </button>
 
@@ -742,7 +807,7 @@ const CampaignsPage = () => {
                       : 'text-gray-600 hover:text-gray-900'
                     }`}
                 >
-                  Todas ({campaigns.length})
+                  Todas ({visibleCampaigns.length})
                 </button>
               </div>
 
@@ -1290,12 +1355,12 @@ const CampaignsPage = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      3. Horarios Permitidos (24 Intervalos de 30 min)
+                      3. Horarios Permitidos (08:00 AM a 06:00 PM)
                     </Label>
                     <span className="text-xs text-slate-500">{relaunchFranjas.length} franjas</span>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-32 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
-                    {FRANJAS_HORARIAS_24.map(franja => {
+                    {FRANJAS_HORARIAS_10H.map(franja => {
                       const isSel = relaunchFranjas.includes(franja);
                       return (
                         <button

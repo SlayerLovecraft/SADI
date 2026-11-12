@@ -12,6 +12,11 @@
 import { supabase } from '@/lib/supabase';
 import { telemonitoringService } from './telemonitoringService';
 import { getCursoVida3280, getRequiredRIASAppointments } from './rias3280Engine';
+import {
+  classifyPatientCursoVidaKey,
+  CURSO_KEY_TO_CODE,
+  CURSO_VIDA_CONFIG,
+} from './cursoVidaConfig';
 
 // Slots oficiales de tandas: 24 intervalos de 30 min desde las 08:30 AM hasta las 08:00 PM
 export const IVR_TIME_SLOTS = [
@@ -149,7 +154,10 @@ export const ivrScheduleService = {
         if (cached) {
           const parsed = JSON.parse(cached);
           const todayStr = new Date().toISOString().split('T')[0];
-          if (parsed.fecha === todayStr) {
+          const hasTransversalMeta =
+            Array.isArray(parsed.items) &&
+            (parsed.items.length === 0 || parsed.items.every(it => 'curso_vida_key' in it));
+          if (parsed.fecha === todayStr && hasTransversalMeta) {
             return parsed;
           }
         }
@@ -216,6 +224,10 @@ export const ivrScheduleService = {
 
     scheduledForToday.forEach((p, idx) => {
       const curso = getCursoVida3280(p.birthdate || p.fecha_nacimiento);
+      const cursoKey = classifyPatientCursoVidaKey(p);
+      const cursoCfg = CURSO_VIDA_CONFIG[cursoKey];
+      const cursoCode = CURSO_KEY_TO_CODE[cursoKey] || 'E';
+      const resolvedCursoLabel = cursoCfg?.nombre || curso.label;
       const appts = getRequiredRIASAppointments(
         p.birthdate || p.fecha_nacimiento,
         p.sex || p.sexo,
@@ -231,7 +243,7 @@ export const ivrScheduleService = {
       const slot = IVR_TIME_SLOTS[currentSlotIndex] || IVR_TIME_SLOTS[0];
       const callScript = generateCallScript3280({
         nombre: p.name || p.nombre,
-        cursoVida: curso.label,
+        cursoVida: resolvedCursoLabel,
         accion3280: targetAppt.accion,
         programa3280: targetAppt.nombre
       });
@@ -246,7 +258,14 @@ export const ivrScheduleService = {
         direccion: p.address || p.direccion || 'Calle 15 #14-112',
         ciudad: p.city || p.ciudad || 'Palmira',
         email: p.email || '',
-        cursoVida: curso.label,
+        cursoVida: resolvedCursoLabel,
+        curso_vida_key: cursoKey,
+        cursoVidaId: cursoCode,
+        program: p.program || p.programa || '',
+        birthdate: p.birthdate || p.fecha_nacimiento || null,
+        fecha_nacimiento: p.fecha_nacimiento || p.birthdate || null,
+        es_gestante: Boolean(p.es_gestante),
+        curso_vida: p.curso_vida || '',
         edad: curso.edad,
         programa3280: targetAppt.nombre,
         accion3280: targetAppt.accion,
@@ -298,7 +317,7 @@ export const ivrScheduleService = {
    *    - Si hay tanda siguiente en el día -> SE REASIGNA A LA TANDA SIGUIENTE.
    *    - Si es la última tanda -> PASA A "CASOS AISLADOS / GESTIÓN HUMANA".
    */
-  async simulateBatchExecution(slotId) {
+  async simulateBatchExecution(slotId, itemPredicate = null) {
     const currentSchedule = await this.getDailySchedule();
     const slotIdx = IVR_TIME_SLOTS.findIndex(s => s.id === slotId);
     if (slotIdx === -1) return currentSchedule;
@@ -311,7 +330,11 @@ export const ivrScheduleService = {
     let failedToHumanCount = 0;
 
     currentSchedule.items = currentSchedule.items.map(item => {
-      if (item.slotId === slotId && (item.estado === 'programada' || item.estado === 'en_reintento')) {
+      if (
+        item.slotId === slotId &&
+        (item.estado === 'programada' || item.estado === 'en_reintento') &&
+        (!itemPredicate || itemPredicate(item))
+      ) {
         updatedCount++;
         item.intentos = (item.intentos || 0) + 1;
         const nowStr = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });

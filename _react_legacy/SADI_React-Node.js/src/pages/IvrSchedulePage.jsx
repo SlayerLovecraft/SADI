@@ -10,9 +10,17 @@
 // 3. BANDEJA DE CASOS AISLADOS (Gestión Humana)
 // ==============================================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  getAllowedCursoKeysForUser,
+  isCampaignAllowedForUser,
+  canonicalizeCursoKey,
+  formatCursosVidaLabel,
+} from '@/services/cursoVidaConfig';
+import { isPatientAssignedToDoctor } from '@/pages/doctor/doctorUtils';
 import { 
   Clock, PhoneCall, CheckCircle2, AlertTriangle, UserX, 
   RotateCw, Play, ShieldAlert, Sparkles, Phone, MessageSquare, 
@@ -42,7 +50,9 @@ import {
 
 export default function IvrSchedulePage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const today = new Date();
+  const doctorAccess = useMemo(() => getAllowedCursoKeysForUser(user), [user]);
 
   // Pestaña principal: 'roadmap' | 'tandas' | 'casos_humanos' | 'config'
   const [activeTab, setActiveTab] = useState('roadmap');
@@ -133,9 +143,9 @@ export default function IvrSchedulePage() {
   const handleDownloadExcel = () => {
     try {
       const fileName = roadmapService.exportRoadmapToExcel(
-        resolutionRoadmap,
-        campaignsRoadmap,
-        individualRoadmap,
+        visibleResolutionRoadmap,
+        visibleCampaignsRoadmap,
+        visibleIndividualRoadmap,
         selectedYear,
         selectedMonth
       );
@@ -193,9 +203,20 @@ export default function IvrSchedulePage() {
   };
 
   const handleSimulateBatch = async (slotId) => {
+    if (doctorAccess.restricted && doctorAccess.keys.length === 0) {
+      toast({
+        title: 'Sin Asignación de Cursos de Vida',
+        description: 'No tienes Cursos de Vida asignados para ejecutar tandas de llamadas.',
+        variant: 'destructive'
+      });
+      return;
+    }
     setIsSimulating(true);
     try {
-      const res = await ivrScheduleService.simulateBatchExecution(slotId);
+      const predicate = doctorAccess.restricted
+        ? (item) => isPatientAssignedToDoctor(item, user)
+        : null;
+      const res = await ivrScheduleService.simulateBatchExecution(slotId, predicate);
       setScheduleData(res.schedule);
       const slot = IVR_TIME_SLOTS.find(s => s.id === slotId);
 
@@ -275,8 +296,50 @@ export default function IvrSchedulePage() {
     });
   };
 
+  // Vistas del Roadmap filtradas por Cursos de Vida asignados al doctor
+  const visibleResolutionRoadmap = useMemo(() => {
+    if (!doctorAccess.restricted) return resolutionRoadmap;
+    if (doctorAccess.keys.length === 0) return [];
+    return resolutionRoadmap.filter(item => isPatientAssignedToDoctor(item, user));
+  }, [resolutionRoadmap, doctorAccess, user]);
+
+  const visibleCampaignsRoadmap = useMemo(() => {
+    if (!doctorAccess.restricted) return campaignsRoadmap;
+    if (doctorAccess.keys.length === 0) return [];
+    return campaignsRoadmap.filter(c => isCampaignAllowedForUser(c, user));
+  }, [campaignsRoadmap, doctorAccess, user]);
+
+  const rawItems = scheduleData?.items || [];
+  const items = useMemo(() => {
+    if (!doctorAccess.restricted) return rawItems;
+    if (doctorAccess.keys.length === 0) return [];
+    return rawItems.filter(it => isPatientAssignedToDoctor(it, user));
+  }, [rawItems, doctorAccess, user]);
+
+  const visibleIndividualRoadmap = useMemo(() => {
+    if (!doctorAccess.restricted) return individualRoadmap;
+    if (doctorAccess.keys.length === 0) return [];
+    const allowedIds = new Set();
+    const allowedDocs = new Set();
+    visibleResolutionRoadmap.forEach(r => {
+      if (r.pacienteId) allowedIds.add(String(r.pacienteId));
+      if (r.documento) allowedDocs.add(String(r.documento).trim());
+    });
+    items.forEach(it => {
+      if (it.patientId) allowedIds.add(String(it.patientId));
+      if (it.documento) allowedDocs.add(String(it.documento).trim());
+    });
+    return individualRoadmap.filter(log => {
+      const cKey = canonicalizeCursoKey(log.curso_vida);
+      if (cKey && doctorAccess.keySet.has(cKey)) return true;
+      if (log.patient_id && allowedIds.has(String(log.patient_id))) return true;
+      if (log.documento && allowedDocs.has(String(log.documento).trim())) return true;
+      return false;
+    });
+  }, [individualRoadmap, doctorAccess, visibleResolutionRoadmap, items]);
+
   // Filtrado de pacientes de la sección Resolución del Roadmap
-  const filteredResolutionItems = resolutionRoadmap.filter(item => {
+  const filteredResolutionItems = visibleResolutionRoadmap.filter(item => {
     const matchesCourse = filterCursoVida === 'todos' || item.cursoVida === filterCursoVida;
     const matchesSearch = roadmapSearch === '' ||
       item.nombre.toLowerCase().includes(roadmapSearch.toLowerCase()) ||
@@ -287,7 +350,6 @@ export default function IvrSchedulePage() {
   });
 
   // Métricas calculadas para Tandas Diarias
-  const items = scheduleData?.items || [];
   const totalPacientes = items.length;
   const confirmados = items.filter(i => i.estado === 'confirmada').length;
   const reagendados = items.filter(i => i.estado === 'reagendada').length;
@@ -334,6 +396,12 @@ export default function IvrSchedulePage() {
                 <p className="text-xs text-cyan-200 mt-0.5">
                   Planificación inamovible de llamadas Res. 3280, Campañas y Trazabilidad de Atenciones Particulares
                 </p>
+                {doctorAccess.restricted && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 border border-white/25 text-[11px] font-bold text-white">
+                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>Cursos de Vida autorizados: {formatCursosVidaLabel(user?.cursos_vida_asignados)}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

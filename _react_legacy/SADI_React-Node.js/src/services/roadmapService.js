@@ -14,6 +14,11 @@ import { supabase } from '@/lib/supabase';
 import { IVR_TIME_SLOTS } from './ivrScheduleService';
 import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from './rias3280Catalog';
 import { getCursoVida3280 } from './rias3280Engine';
+import {
+  classifyPatientCursoVidaKey,
+  CURSO_KEY_TO_CODE,
+  CURSO_VIDA_CONFIG,
+} from './cursoVidaConfig';
 
 export const MESES_DEL_ANIO = [
   { id: 1, nombre: 'Enero' },
@@ -227,7 +232,7 @@ export const roadmapService = {
         const cached = localStorage.getItem(storageKey);
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (parsed && parsed.length > 0) {
+          if (parsed && parsed.length > 0 && parsed.every(it => 'curso_vida_key' in it)) {
             return parsed;
           }
         }
@@ -268,6 +273,12 @@ export const roadmapService = {
     // 4. Distribuir pacientes ordenadamente en el mes según su fecha de nacimiento y reglas 3280
     const roadmapItems = patients.map((patient, index) => {
       const milestone = this.calculatePatientMilestones(patient, year, month);
+      const cursoKey = classifyPatientCursoVidaKey(patient);
+      const isTransversal = ['preventivo_mujer', 'planificacion_familiar', 'vacunacion', 'salud_oral'].includes(cursoKey);
+      const resolvedCursoLabel = isTransversal
+        ? (CURSO_VIDA_CONFIG[cursoKey]?.nombre || milestone.cursoVidaLabel)
+        : milestone.cursoVidaLabel;
+      const resolvedCursoVida = isTransversal ? cursoKey : milestone.cursoVida;
 
       // Asignar día preferido según el día de nacimiento del paciente
       let targetDayNum = (index % daysInMonth) + 1;
@@ -312,9 +323,14 @@ export const roadmapService = {
         ciudad: patient.city || 'Caldas',
         sexo: patient.sex,
         fechaNacimiento: patient.birthdate,
+        birthdate: patient.birthdate,
+        program: patient.program || '',
+        es_gestante: Boolean(patient.es_gestante),
         edadFormato: milestone.edadFormato,
-        cursoVida: milestone.cursoVida,
-        cursoVidaLabel: milestone.cursoVidaLabel,
+        curso_vida_key: cursoKey,
+        cursoVidaId: CURSO_KEY_TO_CODE[cursoKey] || 'E',
+        cursoVida: resolvedCursoVida,
+        cursoVidaLabel: resolvedCursoLabel,
         programaPrincipal: milestone.programaPrincipal,
         hitoClinico: milestone.hitoClinico,
         codigoCups: milestone.codigoCups,
@@ -422,6 +438,12 @@ export const roadmapService = {
           diaInicio: diaInicio,
           horaProgramada: c.hora_programada || '10:00 AM',
           estado: c.estado || 'Activa',
+          tipo_origen: c.tipo_origen || 'curso_vida',
+          origen_id: c.origen_id || null,
+          origen_nombre: c.origen_nombre || null,
+          edad_curso_vida: c.edad_curso_vida || null,
+          segmento_cursos: Array.isArray(c.segmento_cursos) ? c.segmento_cursos : null,
+          segmento_riesgos: Array.isArray(c.segmento_riesgos) ? c.segmento_riesgos : null,
           edadTipo: c.edad_tipo || 'cualquiera',
           rangoEdadDisplay: rangoEdadDisplay,
           modoReintento: modoReintento,
@@ -507,6 +529,8 @@ export const roadmapService = {
 
         return {
           id: log.id || `indiv_${idx}`,
+          patient_id: log.patient_id || null,
+          curso_vida: log.curso_vida || null,
           fechaHora: fechaHoraFormateada,
           rawDate: createdDate,
           diaNumero: createdDate.getDate(),

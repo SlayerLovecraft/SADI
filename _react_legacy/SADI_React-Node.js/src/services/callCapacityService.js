@@ -9,6 +9,11 @@
 import { CURSOS_VIDA_PALETTE, GRUPOS_RIESGO_PALETTE } from './clinicalPalettes';
 import { GRUPOS_RIESGO_10 } from './gruposRiesgoCatalog';
 import { PROGRAMAS_3280 } from './census400kService';
+import {
+  classifyPatientCursoVidaKey,
+  canonicalizeCursoKey,
+  CURSO_KEY_TO_CODE,
+} from './cursoVidaConfig';
 
 export const DAILY_CALL_CAPACITY = 3500; // 350 llamadas/hora x 10 horas
 export const HOURLY_CALL_CAPACITY = 350;
@@ -362,24 +367,20 @@ function calculatePatientAge(birthdate) {
 }
 
 /**
- * Obtiene el Curso de Vida exacto de un paciente según su edad y metadatos clínicos
+ * Obtiene el Curso de Vida exacto de un paciente según rutas transversales (G-J) y edad/ciclo vital (A-F)
  */
 export function getPatientCursoVida(pat) {
   if (!pat) return { id: 'E', key: 'adultez', nombre: 'Adultez', colorHex: '#3B82F6' };
-  const cvText = (pat.curso_vida || pat.ciclo_vida || pat.grupo_vida || pat.programa || '').toLowerCase();
-  const fn = pat.fecha_nacimiento || pat.fechaNacimiento || pat.birthdate;
-  const edad = Number(pat.edad) || (fn ? calculatePatientAge(fn) : 0);
-
-  let code = 'E';
-  if (cvText.includes('primera') || (edad >= 0 && edad <= 5)) code = 'A';
-  else if (cvText.includes('infancia') || (edad >= 6 && edad <= 11)) code = 'B';
-  else if (cvText.includes('adolescen') || (edad >= 12 && edad <= 17)) code = 'C';
-  else if (cvText.includes('juventud') || (edad >= 18 && edad <= 28)) code = 'D';
-  else if (cvText.includes('adultez') || (edad >= 29 && edad <= 59)) code = 'E';
-  else if (cvText.includes('vejez') || edad >= 60) code = 'F';
-
+  const canonicalKey = classifyPatientCursoVidaKey(pat);
+  const code = CURSO_KEY_TO_CODE[canonicalKey] || 'E';
   const pal = CURSOS_VIDA_PALETTE[code] || CURSOS_VIDA_PALETTE['E'];
-  return { id: code, key: pal.key, nombre: pal.nombre, colorHex: pal.colorHex };
+  const progMeta = PROGRAMAS_3280.find(p => p.id === code);
+  return {
+    id: code,
+    key: canonicalKey,
+    nombre: progMeta?.nombre || pal.nombre,
+    colorHex: pal.colorHex,
+  };
 }
 
 /**
@@ -424,7 +425,11 @@ export function getCampaignFilteredPatients(patients, tipoOrigen, origenItem, cr
 
     if (tipoOrigen === 'curso_vida') {
       // 1. Debe pertenecer ESTRICTAMENTE al Curso de Vida de origen
-      const matchCurso = cv.id === origenItem.id || cv.nombre.toLowerCase() === (origenItem.nombre || '').toLowerCase();
+      const origenKey = canonicalizeCursoKey(origenItem.key || origenItem.id || origenItem.nombre);
+      const matchCurso =
+        cv.id === origenItem.id ||
+        (origenKey && origenKey === canonicalizeCursoKey(cv.key || cv.id)) ||
+        cv.nombre.toLowerCase() === (origenItem.nombre || '').toLowerCase();
       if (!matchCurso) return false;
 
       // 2. Si se seleccionaron grupos de riesgo en el Paso 2, filtrar estrictamente por ellos
@@ -467,7 +472,10 @@ export function getCampaignFilteredPatients(patients, tipoOrigen, origenItem, cr
 
       // 2. Si se seleccionaron cursos de vida en el Paso 2, filtrar estrictamente por ellos
       if (Array.isArray(crossSegments) && crossSegments.length > 0) {
+        const cvCanon = canonicalizeCursoKey(cv.key || cv.id || cv.nombre);
         return crossSegments.some(seg => {
+          const segCanon = canonicalizeCursoKey(seg);
+          if (segCanon && cvCanon && segCanon === cvCanon) return true;
           const s = (seg || '').toLowerCase().trim();
           const cvName = cv.nombre.toLowerCase().trim();
           return cvName.includes(s) || s.includes(cvName) || cv.id === seg;

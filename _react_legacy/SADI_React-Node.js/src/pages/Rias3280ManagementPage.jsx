@@ -1,6 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  getAllowedCursoKeysForUser,
+  canonicalizeCursoKey,
+  formatCursosVidaLabel,
+} from '@/services/cursoVidaConfig';
+import { isPatientAssignedToDoctor } from '@/pages/doctor/doctorUtils';
 import { 
   ShieldCheck, Send, PhoneCall, MessageSquare, Users, 
   Sparkles, CheckCircle2, Calendar, FileText, ArrowRight, HeartPulse,
@@ -25,6 +32,8 @@ import MonthlyInteractionsListTable from '@/components/MonthlyInteractionsListTa
 
 export default function Rias3280ManagementPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const doctorAccess = useMemo(() => getAllowedCursoKeysForUser(user), [user]);
   
   // Tab activa en Demanda Res. 3280
   const [activeTab, setActiveTab] = useState('lista_mensual'); // 'lista_mensual' | 'disparo_individual' | 'logs'
@@ -75,17 +84,71 @@ export default function Rias3280ManagementPage() {
     }
   }, [selectedProgram]);
 
+  // Población, Cursos, Programas y LOGs restringidos por Cursos de Vida asignados al doctor
+  const visiblePatients = useMemo(() => {
+    if (!doctorAccess.restricted) return patients;
+    if (doctorAccess.keys.length === 0) return [];
+    return patients.filter(p => isPatientAssignedToDoctor(p, user));
+  }, [patients, doctorAccess, user]);
+
+  const visibleCursos = useMemo(() => {
+    if (!doctorAccess.restricted) return CURSOS_DE_VIDA_3280;
+    if (doctorAccess.keys.length === 0) return [];
+    return CURSOS_DE_VIDA_3280.filter(curso => {
+      const cKey = canonicalizeCursoKey(curso.id);
+      return cKey && doctorAccess.keySet.has(cKey);
+    });
+  }, [doctorAccess]);
+
+  const visibleAllPrograms = useMemo(() => {
+    if (!doctorAccess.restricted) return PROGRAMAS_Y_TAMIZAJES_3280;
+    if (doctorAccess.keys.length === 0) return [];
+    return PROGRAMAS_Y_TAMIZAJES_3280.filter(prog => {
+      const pKey = canonicalizeCursoKey(prog.curso_vida);
+      return pKey && doctorAccess.keySet.has(pKey);
+    });
+  }, [doctorAccess]);
+
+  const visibleCallLogs = useMemo(() => {
+    if (!doctorAccess.restricted) return callLogs;
+    if (doctorAccess.keys.length === 0) return [];
+    const allowedIds = new Set(visiblePatients.map(p => String(p.id || p.patient_id)));
+    const allowedDocs = new Set(visiblePatients.map(p => String(p.documento || p.document || '').trim()).filter(Boolean));
+    return callLogs.filter(log => {
+      const cKey = canonicalizeCursoKey(log.curso_vida);
+      if (cKey && doctorAccess.keySet.has(cKey)) return true;
+      if (log.patient_id && allowedIds.has(String(log.patient_id))) return true;
+      if (log.documento && allowedDocs.has(String(log.documento).trim())) return true;
+      return false;
+    });
+  }, [callLogs, doctorAccess, visiblePatients]);
+
+  // Mantener selecciones activas dentro del subconjunto permitido
+  useEffect(() => {
+    if (!doctorAccess.restricted) return;
+    if (visibleAllPrograms.length === 0) {
+      setSelectedProgram(null);
+    } else if (!selectedProgram || !visibleAllPrograms.some(p => p.id === selectedProgram.id)) {
+      setSelectedProgram(visibleAllPrograms[0]);
+    }
+    if (visiblePatients.length === 0) {
+      setSelectedPatient(null);
+    } else if (!selectedPatient || !visiblePatients.some(p => p.id === selectedPatient.id)) {
+      setSelectedPatient(visiblePatients[0]);
+    }
+  }, [doctorAccess.restricted, visibleAllPrograms, visiblePatients, selectedProgram, selectedPatient]);
+
   // Si cambia el programa y hay pacientes, sugerir uno del curso de vida del programa
   useEffect(() => {
-    if (!selectedProgram || patients.length === 0) return;
-    const match = patients.find(p => p.curso_vida === selectedProgram.curso_vida);
+    if (!selectedProgram || visiblePatients.length === 0) return;
+    const match = visiblePatients.find(p => canonicalizeCursoKey(p.curso_vida) === canonicalizeCursoKey(selectedProgram.curso_vida));
     if (match) {
       setSelectedPatient(match);
     }
-  }, [selectedProgram, patients]);
+  }, [selectedProgram, visiblePatients]);
 
   // Filtrado de programas
-  const filteredPrograms = PROGRAMAS_Y_TAMIZAJES_3280.filter(p => {
+  const filteredPrograms = visibleAllPrograms.filter(p => {
     const matchesCourse = selectedCourseFilter === 'todos' || p.curso_vida === selectedCourseFilter;
     const matchesSearch = p.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           p.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -98,7 +161,9 @@ export default function Rias3280ManagementPage() {
   const compileDynamicScript = () => {
     if (!selectedProgram) return '';
     const name = selectedPatient?.nombre || 'Paciente';
-    const age = selectedPatient ? (new Date().getFullYear() - new Date(selectedPatient.fecha_nacimiento).getFullYear()) : 'su';
+    const rawFn = selectedPatient?.fecha_nacimiento || selectedPatient?.birthdate;
+    const parsedFn = rawFn ? new Date(rawFn) : null;
+    const age = parsedFn && !isNaN(parsedFn.getTime()) ? (new Date().getFullYear() - parsedFn.getFullYear()) : 'su';
     const sem = selectedPatient?.semana_gestacional || '28';
 
     return selectedProgram.guion_ia_base
@@ -112,6 +177,14 @@ export default function Rias3280ManagementPage() {
       toast({
         title: "Selecciona un paciente",
         description: "Debes seleccionar un paciente de la lista para emitir la atención.",
+        variant: "destructive"
+      });
+      return;
+    }
+    if (doctorAccess.restricted && (!selectedProgram || !isPatientAssignedToDoctor(selectedPatient, user))) {
+      toast({
+        title: "Acceso Restringido",
+        description: "Solo puedes emitir atenciones para pacientes dentro de tus Cursos de Vida asignados.",
         variant: "destructive"
       });
       return;
@@ -212,11 +285,16 @@ export default function Rias3280ManagementPage() {
             <BookOpen className="h-8 w-8 text-emerald-600 shrink-0" />
             <div>
               <p className="text-xs font-black text-emerald-900">
-                {PROGRAMAS_Y_TAMIZAJES_3280.length} Protocolos Clínicos Indexados
+                {visibleAllPrograms.length} Protocolos Clínicos Indexados
               </p>
               <p className="text-[11px] text-emerald-700">
-                {patients.length} pacientes reales y variables dinámicas en vivo
+                {visiblePatients.length} pacientes reales y variables dinámicas en vivo
               </p>
+              {doctorAccess.restricted && (
+                <p className="text-[10px] font-bold text-amber-800 mt-0.5">
+                  Acceso limitado a: {formatCursosVidaLabel(user?.cursos_vida_asignados)}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -249,7 +327,7 @@ export default function Rias3280ManagementPage() {
             <PhoneForwarded className="w-4 h-4 text-blue-400" />
             <span>Catálogo y Llamadas Individuales</span>
             <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded-full">
-              {PROGRAMAS_Y_TAMIZAJES_3280.length}
+              {visibleAllPrograms.length}
             </span>
           </button>
 
@@ -264,7 +342,7 @@ export default function Rias3280ManagementPage() {
             <History className="w-4 h-4 text-purple-400" />
             <span>Historial y LOGs Clínicos</span>
             <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded-full">
-              {callLogs.length}
+              {visibleCallLogs.length}
             </span>
           </button>
         </div>
@@ -291,11 +369,11 @@ export default function Rias3280ManagementPage() {
                     : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
                 }`}
               >
-                Todos ({PROGRAMAS_Y_TAMIZAJES_3280.length})
+                Todos ({visibleAllPrograms.length})
               </button>
 
-              {CURSOS_DE_VIDA_3280.map(curso => {
-                const count = PROGRAMAS_Y_TAMIZAJES_3280.filter(p => p.curso_vida === curso.id).length;
+              {visibleCursos.map(curso => {
+                const count = visibleAllPrograms.filter(p => p.curso_vida === curso.id).length;
                 const isSelected = selectedCourseFilter === curso.id;
                 return (
                   <button
@@ -409,18 +487,22 @@ export default function Rias3280ManagementPage() {
                         Paciente Destinatario (Datos Reales):
                       </label>
                       <select
-                        value={selectedPatient?.id}
+                        value={selectedPatient?.id || ''}
                         onChange={(e) => {
-                          const p = patients.find(pat => pat.id === e.target.value);
+                          const p = visiblePatients.find(pat => pat.id === e.target.value);
                           if (p) setSelectedPatient(p);
                         }}
                         className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       >
-                        {patients.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.nombre} ({p.tipo_documento} {p.documento}) - {p.curso_vida?.replace('_', ' ')}
-                          </option>
-                        ))}
+                        {visiblePatients.length === 0 ? (
+                          <option value="">Sin pacientes asignados</option>
+                        ) : (
+                          visiblePatients.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.nombre} ({p.tipo_documento} {p.documento}) - {(p.curso_vida || '').replace('_', ' ')}
+                            </option>
+                          ))
+                        )}
                       </select>
 
                       {selectedPatient && (
@@ -487,7 +569,7 @@ export default function Rias3280ManagementPage() {
                     {/* Botón de Disparo Funcional */}
                     <Button
                       onClick={handleDispatch}
-                      disabled={sending}
+                      disabled={sending || !selectedProgram || !selectedPatient}
                       className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 gap-2 shadow-md transition-all"
                     >
                       <PhoneCall className="h-4 w-4" />
@@ -530,7 +612,7 @@ export default function Rias3280ManagementPage() {
 
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold bg-blue-50 text-blue-800 px-3 py-1.5 rounded-xl border border-blue-200">
-                {callLogs.length} llamadas registradas
+                {visibleCallLogs.length} llamadas registradas
               </span>
               <Button
                 variant="outline"
@@ -558,14 +640,14 @@ export default function Rias3280ManagementPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {callLogs.length === 0 ? (
+                {visibleCallLogs.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center p-8 text-gray-400">
                       No hay llamadas individuales registradas aún. Emite una llamada desde el panel superior para generar el primer LOG.
                     </td>
                   </tr>
                 ) : (
-                  callLogs.map((log) => (
+                  visibleCallLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-gray-50/60 transition-colors">
                       <td className="p-3 font-semibold text-gray-900 whitespace-nowrap">
                         {log.fechaHora}

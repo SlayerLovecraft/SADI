@@ -30,6 +30,15 @@ import {
   OPERATING_HOURS_END 
 } from '@/services/callCapacityService';
 import { patientService } from '@/services/patientService';
+import { telemonitoringService } from '@/services/telemonitoringService';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  getAllowedCursoKeysForUser,
+  isCampaignAllowedForUser,
+  canonicalizeCursoKey,
+  formatCursosVidaLabel,
+} from '@/services/cursoVidaConfig';
+import { isPatientAssignedToDoctor } from '@/pages/doctor/doctorUtils';
 import { 
   Users, Calendar, Phone, Mail, MessageSquare, Send, 
   CheckCircle2, Clock, ChevronRight, X, AlertCircle,
@@ -60,6 +69,10 @@ function ResolutionAnnualMatrix({
   onDownloadExcel = () => {}
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Permisos efectivos del usuario por Cursos de Vida (A - J)
+  const doctorAccess = useMemo(() => getAllowedCursoKeysForUser(user), [user]);
 
   // Estados de datos reales
   const [patients, setPatients] = useState([]);
@@ -103,14 +116,39 @@ function ResolutionAnnualMatrix({
   const [sedeLugar, setSedeLugar] = useState('Sede Principal - Manizales (Caldas)');
   const [promptDirectriz, setPromptDirectriz] = useState('');
 
-  // 1. Cargar los 56 pacientes reales desde Supabase y campañas previas
+  // 1. Cargar pacientes reales desde Supabase (conservando programa transversal) y campañas previas
   useEffect(() => {
     async function loadInitialData() {
       setLoadingPatients(true);
       try {
-        const res = await patientService.getAll();
-        const data = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
-        setPatients(data);
+        const [res, teleList] = await Promise.all([
+          patientService.getAll(),
+          telemonitoringService.getPatients().catch(() => [])
+        ]);
+        const basePatients = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+        const telePatients = Array.isArray(teleList) ? teleList : [];
+
+        let mergedPatients = basePatients;
+        if (telePatients.length > 0) {
+          const baseById = new Map();
+          basePatients.forEach((bp) => {
+            if (bp?.id) baseById.set(bp.id, bp);
+            if (bp?.patient_id) baseById.set(bp.patient_id, bp);
+          });
+          mergedPatients = telePatients.map((tp) => {
+            const bp = baseById.get(tp.id) || baseById.get(tp.patient_id) || {};
+            return {
+              ...bp,
+              ...tp,
+              program: tp.program || bp.program || tp.programa || bp.programa || '',
+              programa: tp.program || tp.programa || bp.programa || bp.program || '',
+              curso_vida: tp.curso_vida || bp.curso_vida || '',
+              birthdate: tp.birthdate || bp.birthdate || tp.fecha_nacimiento || bp.fecha_nacimiento,
+              fecha_nacimiento: tp.fecha_nacimiento || tp.birthdate || bp.fecha_nacimiento || bp.birthdate
+            };
+          });
+        }
+        setPatients(mergedPatients);
 
         const stored = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
         setExistingCampaigns(Array.isArray(stored) ? stored : []);
@@ -164,10 +202,32 @@ function ResolutionAnnualMatrix({
     return false;
   };
 
+  // Pacientes, programas y campañas filtrados según Cursos de Vida permitidos al doctor
+  const visiblePatients = useMemo(() => {
+    if (!doctorAccess.restricted) return patients;
+    if (doctorAccess.keys.length === 0) return [];
+    return patients.filter(p => isPatientAssignedToDoctor(p, user));
+  }, [patients, doctorAccess, user]);
+
+  const visibleProgramas = useMemo(() => {
+    if (!doctorAccess.restricted) return PROGRAMAS_3280;
+    if (doctorAccess.keys.length === 0) return [];
+    return PROGRAMAS_3280.filter(prog => {
+      const canon = canonicalizeCursoKey(prog.key || prog.id || prog.nombre);
+      return doctorAccess.codeSet.has(prog.id) || (canon && doctorAccess.keySet.has(canon));
+    });
+  }, [doctorAccess]);
+
+  const visibleCampaigns = useMemo(() => {
+    if (!doctorAccess.restricted) return existingCampaigns;
+    if (doctorAccess.keys.length === 0) return [];
+    return existingCampaigns.filter(c => isCampaignAllowedForUser(c, user));
+  }, [existingCampaigns, doctorAccess, user]);
+
   // 2. Generar la Ruta Anual de 365 días repartiendo por ventana de oportunidad clínica
   const roadmap365 = useMemo(() => {
-    return generateAnnualResolutionRoadmap(patients, activeYear);
-  }, [patients, activeYear]);
+    return generateAnnualResolutionRoadmap(visiblePatients, activeYear);
+  }, [visiblePatients, activeYear]);
 
   // Modal de Detalle de Día de la Ruta 3280 y Prompt IA
   const [selectedRoadmapDay, setSelectedRoadmapDay] = useState(null);
@@ -176,15 +236,18 @@ function ResolutionAnnualMatrix({
 
   // Helper: Campañas asociadas a una celda específica (por programa, mes y año)
   const getCellCampaigns = (type, item, monthIndex) => {
-    if (!Array.isArray(existingCampaigns)) return [];
-    return existingCampaigns.filter(c => {
+    if (!Array.isArray(visibleCampaigns)) return [];
+    return visibleCampaigns.filter(c => {
       if (!c) return false;
 
       // 1. Coincidencia de tipo y programa
       let matchesItem = false;
       if (type === 'curso_vida') {
-        matchesItem = (c.tipo_origen === 'curso_vida' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
-          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item?.nombre));
+        const itemKey = canonicalizeCursoKey(item?.key || item?.id || item?.nombre);
+        const origKey = c.tipo_origen === 'curso_vida' ? canonicalizeCursoKey(c.origen_id || c.origen_nombre) : null;
+        matchesItem =
+          (c.tipo_origen === 'curso_vida' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre || (itemKey && origKey === itemKey))) ||
+          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.some(seg => seg === item?.nombre || (itemKey && canonicalizeCursoKey(seg) === itemKey)));
       } else {
         matchesItem = (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
           (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item?.nombre));
@@ -226,7 +289,7 @@ function ResolutionAnnualMatrix({
     }
 
     // Filtrar campañas que tengan programada esta fecha de forma segura
-    let dayCampaigns = (Array.isArray(existingCampaigns) ? existingCampaigns : []).filter(c => {
+    let dayCampaigns = (Array.isArray(visibleCampaigns) ? visibleCampaigns : []).filter(c => {
       if (!c) return false;
       const rawDates = Array.isArray(c.fechas_ejecucion)
         ? c.fechas_ejecucion
@@ -234,8 +297,10 @@ function ResolutionAnnualMatrix({
       if (!rawDates.includes(iso)) return false;
       if (!item) return true;
       if (type === 'curso_vida') {
-        return (c.tipo_origen === 'curso_vida' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
-          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.includes(item?.nombre));
+        const itemKey = canonicalizeCursoKey(item?.key || item?.id || item?.nombre);
+        const origKey = c.tipo_origen === 'curso_vida' ? canonicalizeCursoKey(c.origen_id || c.origen_nombre) : null;
+        return (c.tipo_origen === 'curso_vida' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre || (itemKey && origKey === itemKey))) ||
+          (Array.isArray(c.segmento_cursos) && c.segmento_cursos.some(seg => seg === item?.nombre || (itemKey && canonicalizeCursoKey(seg) === itemKey)));
       } else {
         return (c.tipo_origen === 'grupo_riesgo' && (c.origen_id === item?.id || c.origen_nombre === item?.nombre)) ||
           (Array.isArray(c.segmento_riesgos) && c.segmento_riesgos.includes(item?.nombre));
@@ -298,7 +363,7 @@ function ResolutionAnnualMatrix({
       grid[prog.id] = Array.from({ length: 12 }, () => []);
     });
 
-    patients.forEach(pat => {
+    visiblePatients.forEach(pat => {
       const cv = getPatientCursoVida(pat);
       const matchedProgId = cv.id;
 
@@ -320,7 +385,7 @@ function ResolutionAnnualMatrix({
     });
 
     return grid;
-  }, [patients]);
+  }, [visiblePatients]);
 
   // 4. Mapeo de pacientes a Grupos de Riesgo y Meses
   const matrixRiesgosData = useMemo(() => {
@@ -329,7 +394,7 @@ function ResolutionAnnualMatrix({
       grid[rg.id] = Array.from({ length: 12 }, () => []);
     });
 
-    patients.forEach(pat => {
+    visiblePatients.forEach(pat => {
       const gr = getPatientGrupoRiesgo(pat);
       const matchedRgId = gr.id;
 
@@ -351,12 +416,35 @@ function ResolutionAnnualMatrix({
     });
 
     return grid;
-  }, [patients]);
+  }, [visiblePatients]);
 
   // Abrir Modal para crear campaña o ver cohorte desde una celda
   const handleCellClick = (type, item, monthIndex, mode = 'wizard', targetDateISO = null) => {
     const mObj = MESES_TITULOS[monthIndex];
     const monthName = typeof mObj === 'string' ? mObj : (mObj?.nombre || `Mes ${monthIndex + 1}`);
+
+    // Restricción por Cursos de Vida asignados al doctor
+    if (doctorAccess.restricted) {
+      if (doctorAccess.keys.length === 0) {
+        toast({
+          title: 'Sin Cursos de Vida Asignados',
+          description: 'Actualmente tu perfil no tiene Cursos de Vida asignados ("Sin Asignación"). Solicita al administrador que habilite tus cursos antes de programar o consultar campañas.',
+          variant: 'destructive'
+        });
+        return;
+      }
+      if (type === 'curso_vida') {
+        const itemKey = canonicalizeCursoKey(item?.key || item?.id || item?.nombre);
+        if (!itemKey || !doctorAccess.keySet.has(itemKey)) {
+          toast({
+            title: 'Acceso Restringido por Curso de Vida',
+            description: `Tu perfil solo tiene acceso a: ${formatCursosVidaLabel(user?.cursos_vida_asignados)}.`,
+            variant: 'destructive'
+          });
+          return;
+        }
+      }
+    }
 
     // Bloqueo estricto: NO permitir programar campañas en meses pasados
     if (mode === 'wizard' && isMonthPast(activeYear, monthIndex)) {
@@ -407,12 +495,12 @@ function ResolutionAnnualMatrix({
   const campaignTargetPatients = useMemo(() => {
     if (!selectedContext) return [];
     return getCampaignFilteredPatients(
-      patients,
+      visiblePatients,
       selectedContext.type,
       selectedContext.item,
       crossSegmentSelection
     );
-  }, [patients, selectedContext, crossSegmentSelection]);
+  }, [visiblePatients, selectedContext, crossSegmentSelection]);
 
   // Configuración estable memorizada para el calendario del Wizard
   const initialCalendarConfig = useMemo(() => {
@@ -534,6 +622,42 @@ function ResolutionAnnualMatrix({
 
   // Guardar y Lanzar Campaña
   const handleLaunchCampaign = () => {
+    let effectiveCrossCursos = crossSegmentSelection;
+    if (doctorAccess.restricted) {
+      if (doctorAccess.keys.length === 0) {
+        toast({
+          title: 'Sin Permisos de Creación',
+          description: 'No tienes Cursos de Vida asignados para programar campañas.',
+          variant: 'destructive'
+        });
+        return;
+      }
+      if (selectedContext?.type === 'curso_vida') {
+        const itemKey = canonicalizeCursoKey(selectedContext.item?.key || selectedContext.item?.id || selectedContext.item?.nombre);
+        if (!itemKey || !doctorAccess.keySet.has(itemKey)) {
+          toast({
+            title: 'Curso de Vida No Autorizado',
+            description: 'Solo puedes crear programaciones dentro de tus Cursos de Vida asignados.',
+            variant: 'destructive'
+          });
+          return;
+        }
+      } else {
+        effectiveCrossCursos = (Array.isArray(crossSegmentSelection) ? crossSegmentSelection : []).filter(seg => {
+          const canon = canonicalizeCursoKey(seg);
+          return canon && doctorAccess.keySet.has(canon);
+        });
+        if (effectiveCrossCursos.length === 0) {
+          toast({
+            title: 'Selección Restringida',
+            description: 'Debes seleccionar al menos uno de tus Cursos de Vida permitidos para lanzar esta campaña.',
+            variant: 'destructive'
+          });
+          return;
+        }
+      }
+    }
+
     // Validación final estricta de saldo residual
     if (selectedChannels.call) {
       const check = validateCampaignCallCapacity(
@@ -595,8 +719,11 @@ function ResolutionAnnualMatrix({
       fecha_creacion: new Date().toISOString(),
       config_frecuencia: campaignSchedule,
       fechas_ejecucion: campaignSchedule.selectedDates,
-      segmento_cursos: selectedContext.type === 'curso_vida' ? [selectedContext.item.nombre] : crossSegmentSelection,
+      segmento_cursos: selectedContext.type === 'curso_vida' ? [selectedContext.item.nombre] : effectiveCrossCursos,
       segmento_riesgos: selectedContext.type === 'grupo_riesgo' ? [selectedContext.item.nombre] : crossSegmentSelection,
+      creado_por_id: user?.id || null,
+      creado_por_email: user?.email || null,
+      creado_por_nombre: user?.name || user?.nombre || null,
       pacientes_asignados: assignedPatientsList.length,
       pacientes_ids: assignedPatientsList.map(p => p.id),
       pacientes_detalle: assignedPatientsList,
@@ -738,11 +865,19 @@ function ResolutionAnnualMatrix({
                 1
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 dark:text-white text-lg flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg flex items-center gap-2 flex-wrap">
                   <span>Cronograma por Cursos de Vida (Resolución 3280 de 2018)</span>
                   <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-md border border-blue-200 dark:border-blue-900/50">
-                    10 Rutas Integrales de Atención
+                    {doctorAccess.restricted
+                      ? `${visibleProgramas.length} ${visibleProgramas.length === 1 ? 'Ruta Asignada' : 'Rutas Asignadas'}`
+                      : `${visibleProgramas.length} Rutas Integrales de Atención`}
                   </span>
+                  {doctorAccess.restricted && (
+                    <span className="text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-0.5 rounded-md border border-amber-200 dark:border-amber-800/60 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Acceso exclusivo: {formatCursosVidaLabel(user?.cursos_vida_asignados)}
+                    </span>
+                  )}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Líneas separadas claramente por programa etario con colores unificados y badges clínicos.
@@ -878,7 +1013,21 @@ function ResolutionAnnualMatrix({
                   })}
                 </tr>
 
-                {PROGRAMAS_3280.map(prog => {
+                {visibleProgramas.length === 0 ? (
+                  <tr>
+                    <td colSpan={13} className="p-8 text-center bg-slate-50/70 dark:bg-slate-900/60">
+                      <div className="max-w-md mx-auto flex flex-col items-center gap-2">
+                        <AlertCircle className="w-8 h-8 text-amber-500" />
+                        <div className="text-sm font-black text-slate-900 dark:text-white">
+                          Sin Asignación de Cursos de Vida
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Tu perfil clínico aún no tiene Cursos de Vida habilitados. Solicita al administrador hospitalario asignar tus categorías en Gestión de Personal para ver y programar en el cronograma.
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : visibleProgramas.map(prog => {
                   const pal = CURSOS_VIDA_PALETTE[prog.id] || CURSOS_VIDA_PALETTE['E'];
                   const IconComponent = getCursoVidaIcon(prog.id);
 
@@ -1628,8 +1777,12 @@ function ResolutionAnnualMatrix({
                             </div>
                           );
                         })
+                      ) : visibleProgramas.length === 0 ? (
+                        <div className="col-span-full p-6 text-center rounded-2xl border border-amber-200 bg-amber-50 text-amber-900 text-xs font-semibold">
+                          Sin Cursos de Vida asignados a tu perfil. No puedes programar campañas hasta recibir asignación.
+                        </div>
                       ) : (
-                        PROGRAMAS_3280.map(cv => {
+                        visibleProgramas.map(cv => {
                           const pal = CURSOS_VIDA_PALETTE[cv.id] || CURSOS_VIDA_PALETTE['E'];
                           const IconComponent = getCursoVidaIcon(cv.id);
                           const isSelected = crossSegmentSelection.includes(cv.nombre);
@@ -1988,10 +2141,10 @@ function ResolutionAnnualMatrix({
 
                     <div className="space-y-3">
                       {selectedRoadmapDay.campaigns.map((camp, campIdx) => {
-                        const campPatients = (Array.isArray(camp.pacientes_detalle) && camp.pacientes_detalle.length > 0)
+                        const rawCampPatients = (Array.isArray(camp.pacientes_detalle) && camp.pacientes_detalle.length > 0)
                           ? camp.pacientes_detalle
                           : getCampaignFilteredPatients(
-                              patients,
+                              visiblePatients,
                               camp.tipo_origen,
                               { id: camp.origen_id, nombre: camp.origen_nombre },
                               camp.tipo_origen === 'curso_vida' ? camp.segmento_riesgos : camp.segmento_cursos
@@ -2012,6 +2165,10 @@ function ResolutionAnnualMatrix({
                                 grupoRiesgoColorHex: gr.colorHex
                               };
                             });
+
+                        const campPatients = doctorAccess.restricted
+                          ? rawCampPatients.filter(p => isPatientAssignedToDoctor(p, user))
+                          : rawCampPatients;
 
                         return (
                           <div key={campIdx} className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 text-xs space-y-2">
@@ -2216,20 +2373,29 @@ function ResolutionAnnualMatrix({
 
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2 border-t border-slate-100">
                   {/* Botón rápido para agregar campaña en esta fecha */}
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setIsRoadmapDayOpen(false);
-                      const mIdx = new Date(selectedRoadmapDay.isoDate + 'T12:00:00').getMonth();
-                      const item = selectedRoadmapDay.specificItem || PROGRAMAS_3280[0];
-                      const type = selectedRoadmapDay.specificType || 'curso_vida';
-                      handleCellClick(type, item, mIdx, 'wizard', selectedRoadmapDay.isoDate);
-                    }}
-                    className="text-xs rounded-xl font-bold border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Programar Nueva Campaña en esta Fecha
-                  </Button>
+                  {!(doctorAccess.restricted && visibleProgramas.length === 0) ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsRoadmapDayOpen(false);
+                        const mIdx = new Date(selectedRoadmapDay.isoDate + 'T12:00:00').getMonth();
+                        const hasSpecific =
+                          selectedRoadmapDay.specificItem &&
+                          (selectedRoadmapDay.specificType === 'curso_vida' || selectedRoadmapDay.specificType === 'grupo_riesgo');
+                        const item = hasSpecific ? selectedRoadmapDay.specificItem : (visibleProgramas[0] || PROGRAMAS_3280[0]);
+                        const type = hasSpecific ? selectedRoadmapDay.specificType : 'curso_vida';
+                        handleCellClick(type, item, mIdx, 'wizard', selectedRoadmapDay.isoDate);
+                      }}
+                      className="text-xs rounded-xl font-bold border-blue-200 text-blue-700 hover:bg-blue-50 gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Programar Nueva Campaña en esta Fecha
+                    </Button>
+                  ) : (
+                    <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl">
+                      Sin Cursos de Vida asignados para crear campañas
+                    </span>
+                  )}
 
                   <Button
                     onClick={() => setIsRoadmapDayOpen(false)}
