@@ -329,6 +329,23 @@ def ari_request(ari_base_url: str, ari_user: str, ari_pass: str, method: str, pa
         return resp.status, (json.loads(txt) if txt else {})
 
 
+def _cleanup_ari_resources(ari_base_url: str, ari_user: str, ari_pass: str, extra_channel_ids=(), bridge_ids=()):
+    if not ari_base_url:
+        return
+    for cid in extra_channel_ids:
+        if cid:
+            try:
+                ari_request(ari_base_url, ari_user, ari_pass, "DELETE", f"/channels/{cid}")
+            except Exception:
+                pass
+    for bid in bridge_ids:
+        if bid:
+            try:
+                ari_request(ari_base_url, ari_user, ari_pass, "DELETE", f"/bridges/{bid}")
+            except Exception:
+                pass
+
+
 def cancel_ari_channel_and_notify(
     ari_base_url: str,
     ari_user: str,
@@ -338,6 +355,8 @@ def cancel_ari_channel_and_notify(
     webhook_secret: str,
     call_meta: dict,
     decision: EarlyMediaDecision,
+    extra_channel_ids: tuple = (),
+    bridge_ids: tuple = (),
 ) -> dict:
     ari_cancelled = False
     if ari_base_url and channel_id:
@@ -346,6 +365,7 @@ def cancel_ari_channel_and_notify(
             ari_cancelled = status in (200, 204)
         except Exception:
             ari_cancelled = False
+        _cleanup_ari_resources(ari_base_url, ari_user, ari_pass, extra_channel_ids=extra_channel_ids, bridge_ids=bridge_ids)
 
     webhook_payload = {
         "phase": decision.phase or "pre_answer_sip_183",
@@ -418,11 +438,30 @@ class EarlyMediaMonitorSession(threading.Thread):
         self.webhook_secret = webhook_secret
         self.analyzer = EarlyMediaAnalyzer(ring_timeout_sec=ring_timeout_sec)
         self.on_decision = on_decision
+        self.pre_bridge_id = f"pre-{channel_id}"
+        self.ext_channel_id: Optional[str] = None
+        self.vapi_channel_id: Optional[str] = None
         self.stop_event = threading.Event()
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(("0.0.0.0", 0))
         self.sock.settimeout(0.25)
         self.local_port = self.sock.getsockname()[1]
+
+    def _cancel_and_notify(self, decision: EarlyMediaDecision):
+        cancel_ari_channel_and_notify(
+            self.ari_cfg.get("url", ""),
+            self.ari_cfg.get("user", ""),
+            self.ari_cfg.get("password", ""),
+            self.channel_id,
+            self.webhook_url,
+            self.webhook_secret,
+            self.call_meta,
+            decision,
+            extra_channel_ids=(self.ext_channel_id, self.vapi_channel_id),
+            bridge_ids=(self.pre_bridge_id,),
+        )
+        if self.on_decision:
+            self.on_decision(decision)
 
     def run(self):
         try:
@@ -433,35 +472,13 @@ class EarlyMediaMonitorSession(threading.Thread):
                     if payload:
                         decision = self.analyzer.process_ulaw_frame(payload)
                         if decision.should_cancel:
-                            cancel_ari_channel_and_notify(
-                                self.ari_cfg.get("url", ""),
-                                self.ari_cfg.get("user", ""),
-                                self.ari_cfg.get("password", ""),
-                                self.channel_id,
-                                self.webhook_url,
-                                self.webhook_secret,
-                                self.call_meta,
-                                decision,
-                            )
-                            if self.on_decision:
-                                self.on_decision(decision)
+                            self._cancel_and_notify(decision)
                             break
                 except socket.timeout:
                     # Comprobar timeout incluso sin tráfico RTP constante
                     decision = self.analyzer.process_ulaw_frame(b"")
                     if decision.should_cancel:
-                        cancel_ari_channel_and_notify(
-                            self.ari_cfg.get("url", ""),
-                            self.ari_cfg.get("user", ""),
-                            self.ari_cfg.get("password", ""),
-                            self.channel_id,
-                            self.webhook_url,
-                            self.webhook_secret,
-                            self.call_meta,
-                            decision,
-                        )
-                        if self.on_decision:
-                            self.on_decision(decision)
+                        self._cancel_and_notify(decision)
                         break
         finally:
             self.sock.close()
@@ -470,29 +487,42 @@ class EarlyMediaMonitorSession(threading.Thread):
         self.stop_event.set()
 
 
-def bridge_human_call_to_vapi(ari_cfg: dict, channel_id: str, phone: str):
+def bridge_human_call_to_vapi(
+    ari_cfg: dict,
+    channel_id: str,
+    phone: str,
+    bridge_id: Optional[str] = None,
+    ext_channel_id: Optional[str] = None,
+):
     """
     Cuando la persona real contesta (ChannelStateChange -> Up / 200 OK),
-    crea un bridge ARI tipo mixing y enlaza el canal GSM hacia el troncal SIP de Vapi.
+    retira ExternalMedia y enlaza en caliente el canal GSM dentro del bridge
+    ARI hacia PJSIP/{phone}@vapi-sip-trunk usando create + addChannel + dial.
     """
-    bridge_id = f"br-{channel_id}"
-    ari_request(ari_cfg["url"], ari_cfg["user"], ari_cfg["password"], "POST", f"/bridges/{bridge_id}", {"type": "mixing"})
-    ari_request(ari_cfg["url"], ari_cfg["user"], ari_cfg["password"], "POST", f"/bridges/{bridge_id}/addChannel", {"channel": channel_id})
+    bridge_id = bridge_id or f"pre-{channel_id}"
+    if ext_channel_id:
+        try:
+            ari_request(ari_cfg["url"], ari_cfg["user"], ari_cfg["password"], "DELETE", f"/channels/{ext_channel_id}")
+        except Exception:
+            pass
+
     vapi_chan_id = f"vapi-{channel_id}"
     ari_request(
         ari_cfg["url"],
         ari_cfg["user"],
         ari_cfg["password"],
         "POST",
-        f"/channels/{vapi_chan_id}",
+        "/channels/create",
         {
             "endpoint": f"PJSIP/{phone}@vapi-sip-trunk",
             "app": ari_cfg["app"],
             "appArgs": f"vapi_bridge,{bridge_id}",
+            "channelId": vapi_chan_id,
         },
     )
     ari_request(ari_cfg["url"], ari_cfg["user"], ari_cfg["password"], "POST", f"/bridges/{bridge_id}/addChannel", {"channel": vapi_chan_id})
-    return bridge_id
+    ari_request(ari_cfg["url"], ari_cfg["user"], ari_cfg["password"], "POST", f"/channels/{vapi_chan_id}/dial", {"timeout": 30})
+    return bridge_id, vapi_chan_id
 
 
 def _ws_read_frame(sock: socket.socket) -> Optional[str]:
@@ -542,19 +572,48 @@ class AsteriskAriWsBridgeClient(threading.Thread):
             return
 
         if ev_type == "ChannelStateChange" and chan.get("state") == "Up":
-            sess = self.sessions.pop(cid, None)
-            if sess:
+            sess = self.sessions.get(cid)
+            if sess and not sess.stop_event.is_set():
                 sess.stop()
                 phone = (sess.call_meta or {}).get("phoneNumber") or chan.get("dialplan", {}).get("exten") or ""
                 try:
-                    bridge_human_call_to_vapi(self.ari_cfg, cid, phone)
+                    _, vapi_cid = bridge_human_call_to_vapi(
+                        self.ari_cfg,
+                        cid,
+                        phone,
+                        bridge_id=sess.pre_bridge_id,
+                        ext_channel_id=sess.ext_channel_id,
+                    )
+                    sess.ext_channel_id = None
+                    sess.vapi_channel_id = vapi_cid
                 except Exception as exc:
                     print(f"[ARI-WS] Error enlazando humano con Vapi ({cid}): {exc}")
 
         elif ev_type in ("ChannelDestroyed", "StasisEnd"):
+            if cid.startswith("vapi-"):
+                base_cid = cid[len("vapi-"):]
+                sess = self.sessions.pop(base_cid, None)
+                if sess:
+                    sess.stop()
+                    _cleanup_ari_resources(
+                        self.ari_cfg.get("url", ""),
+                        self.ari_cfg.get("user", ""),
+                        self.ari_cfg.get("password", ""),
+                        extra_channel_ids=(base_cid, sess.ext_channel_id),
+                        bridge_ids=(sess.pre_bridge_id,),
+                    )
+                return
+
             sess = self.sessions.pop(cid, None)
             if sess:
                 sess.stop()
+                _cleanup_ari_resources(
+                    self.ari_cfg.get("url", ""),
+                    self.ari_cfg.get("user", ""),
+                    self.ari_cfg.get("password", ""),
+                    extra_channel_ids=(sess.ext_channel_id, sess.vapi_channel_id),
+                    bridge_ids=(sess.pre_bridge_id,),
+                )
 
     def run(self):
         parsed = urlparse.urlparse(self.ari_cfg.get("url", "http://127.0.0.1:8088/ari"))
@@ -703,8 +762,8 @@ def run_bridge_http_server():
                     return
 
                 ring_timeout = float(data.get("ringTimeoutSeconds", 19.0))
-                webhook_url = str(data.get("webhookUrl", ""))
-                webhook_secret = str(data.get("webhookSecret", ""))
+                webhook_url = str(data.get("webhookUrl") or os.environ.get("SADI_WEBHOOK_URL") or "")
+                webhook_secret = str(data.get("webhookSecret") or os.environ.get("VAPI_WEBHOOK_SECRET") or "")
                 channel_id = f"sadi-{int(time.time() * 1000)}"
 
                 monitor = EarlyMediaMonitorSession(
@@ -718,19 +777,55 @@ def run_bridge_http_server():
                 monitor.start()
                 sessions[channel_id] = monitor
 
-                # Originar canal saliente hacia OpenVox GSM en Asterisk ARI con ExternalMedia pre-answer
+                # Bridge pre-answer + ExternalMedia + channels/create + dial para recibir SIP 183 antes del 200 OK
                 try:
                     ari_request(
                         ari_cfg["url"],
                         ari_cfg["user"],
                         ari_cfg["password"],
                         "POST",
-                        f"/channels/{channel_id}",
+                        f"/bridges/{monitor.pre_bridge_id}",
+                        {"type": "mixing"},
+                    )
+                    _, ext_data = ari_request(
+                        ari_cfg["url"],
+                        ari_cfg["user"],
+                        ari_cfg["password"],
+                        "POST",
+                        "/channels/externalMedia",
+                        {
+                            "app": ari_cfg["app"],
+                            "external_host": f"{ari_cfg['external_host']}:{monitor.local_port}",
+                            "encapsulation": "rtp",
+                            "transport": "udp",
+                            "connection_type": "client",
+                            "format": "ulaw",
+                            "direction": "both",
+                        },
+                    )
+                    ext_id = ext_data.get("id") if isinstance(ext_data, dict) else None
+                    monitor.ext_channel_id = ext_id
+                    if ext_id:
+                        ari_request(
+                            ari_cfg["url"],
+                            ari_cfg["user"],
+                            ari_cfg["password"],
+                            "POST",
+                            f"/bridges/{monitor.pre_bridge_id}/addChannel",
+                            {"channel": ext_id},
+                        )
+
+                    ari_request(
+                        ari_cfg["url"],
+                        ari_cfg["user"],
+                        ari_cfg["password"],
+                        "POST",
+                        "/channels/create",
                         {
                             "endpoint": f"PJSIP/{phone}@openvox-gsm-32p",
                             "app": ari_cfg["app"],
-                            "appArgs": "preanswer",
-                            "timeout": int(ring_timeout),
+                            "appArgs": f"preanswer,{monitor.pre_bridge_id}",
+                            "channelId": channel_id,
                             "variables": {
                                 "SADI_PATIENT_ID": str(data.get("patientId") or ""),
                                 "SADI_DOCTOR_ID": str(data.get("doctorId") or ""),
@@ -744,22 +839,34 @@ def run_bridge_http_server():
                         ari_cfg["user"],
                         ari_cfg["password"],
                         "POST",
-                        "/channels/externalMedia",
-                        {
-                            "app": ari_cfg["app"],
-                            "external_host": f"{ari_cfg['external_host']}:{monitor.local_port}",
-                            "format": "ulaw",
-                        },
+                        f"/bridges/{monitor.pre_bridge_id}/addChannel",
+                        {"channel": channel_id},
+                    )
+                    ari_request(
+                        ari_cfg["url"],
+                        ari_cfg["user"],
+                        ari_cfg["password"],
+                        "POST",
+                        f"/channels/{channel_id}/dial",
+                        {"timeout": int(ring_timeout)},
                     )
                     self._send(200, {
                         "ok": True,
                         "callId": channel_id,
+                        "preBridgeId": monitor.pre_bridge_id,
                         "rtpMonitorPort": monitor.local_port,
                         "ringTimeoutSeconds": ring_timeout,
                     })
                 except Exception as exc:
                     monitor.stop()
                     sessions.pop(channel_id, None)
+                    _cleanup_ari_resources(
+                        ari_cfg["url"],
+                        ari_cfg["user"],
+                        ari_cfg["password"],
+                        extra_channel_ids=(channel_id, monitor.ext_channel_id),
+                        bridge_ids=(monitor.pre_bridge_id,),
+                    )
                     self._send(502, {"ok": False, "error": f"ARI origen falló: {exc}"})
                 return
 
