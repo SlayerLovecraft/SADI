@@ -13,6 +13,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getAllowedCursoKeysForUser,
@@ -94,6 +95,43 @@ export default function IvrSchedulePage() {
   useEffect(() => {
     loadRoadmapData(selectedYear, selectedMonth);
     loadDailySchedule();
+
+    // Sincronización en tiempo real: si vapi-webhook registra corte anti-buzón, reencola la tanda en vivo
+    const channel = supabase
+      .channel('sadi-vapi-cuts-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vapi_agent_sessions' },
+        async (payload) => {
+          const row = payload?.new;
+          if (!row) return;
+          const isCutoff =
+            row.deteccion_buzon === true ||
+            row.estado_llamada === 'cancelada_pre_cobro' ||
+            row.estado_llamada === 'buzon_cortado';
+          if (!isCutoff) return;
+
+          try {
+            const res = await ivrScheduleService.applyVoicemailCutoffToSchedule(
+              row.patient_id || row.telefono_llamado,
+              {
+                capaDeteccion: row.capa_deteccion || 'pre_answer_sip_183',
+                reason: row.motivo_corte || row.estado_llamada
+              }
+            );
+            if (res?.schedule) {
+              setScheduleData(res.schedule);
+            }
+          } catch {
+            // No interrumpir interfaz si no aplica a cohorte actual
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel).catch(() => null);
+    };
   }, []);
 
   const loadRoadmapData = async (year = selectedYear, month = selectedMonth) => {
@@ -172,17 +210,24 @@ export default function IvrSchedulePage() {
 
     try {
       const res = await vapiIntegrationService.triggerLiveCall(item.telefono, {
+        patientId: item.patientId,
+        hospitalId: item.hospitalId || user?.hospital_id || null,
+        doctorId: user?.doctor_id || null,
+        slotTanda: item.slotId,
         nombre: item.nombre,
         cedula: item.documento,
         programa3280: item.programa3280 || item.programaPrincipal,
         hitoClinico: item.accion3280,
         cursoVida: item.cursoVida,
         direccion: item.direccion || 'Caldas'
-      });
+      }, config);
       if (res.ok) {
+        const capaMsg = res.mode === 'asterisk_preanswer_sip_183'
+          ? 'Protección Pre-Answer SIP 183 + Vapi AMD activa'
+          : `Motor Anti-Buzón Vapi (${config.voicemailProvider || 'vapi'}) activo`;
         toast({
           title: "🟢 Llamada Conectada con Éxito",
-          description: `La llamada a ${item.nombre} fue enviada al Gateway GSM (Puerto 22). ID: ${res.data?.id?.slice(0, 8)}...`
+          description: `${item.nombre} en curso (${capaMsg}). ID: ${res.data?.id?.slice(0, 8) || 'ARI'}...`
         });
       } else {
         toast({
@@ -222,7 +267,7 @@ export default function IvrSchedulePage() {
 
       toast({
         title: `⚡ Tanda ${slot?.hora} ejecutada`,
-        description: `Procesados: ${res.stats.processed} | Reasignados a tanda siguiente: ${res.stats.reassigned} | Derivados a gestión humana: ${res.stats.sentToHuman}`
+        description: `Procesados: ${res.stats.processed} | Reasignados: ${res.stats.reassigned} | Buzones cortados ($0): ${res.stats.voicemailCuts || 0} | Gestión humana: ${res.stats.sentToHuman}`
       });
     } catch (e) {
       toast({
@@ -273,8 +318,10 @@ export default function IvrSchedulePage() {
   };
 
   const handleToggleEngine = () => {
-    const updated = { ...config, isLiveEnabled: !config.isLiveEnabled };
-    ivrScheduleService.saveConfig(updated);
+    const updated = ivrScheduleService.saveConfig(
+      { ...config, isLiveEnabled: !config.isLiveEnabled },
+      user?.hospital_id || null
+    );
     setConfig(updated);
     toast({
       title: updated.isLiveEnabled ? "🟢 Motor IVR EN VIVO Activado" : "🟡 Motor IVR en Modo Standby Seguro",
@@ -285,8 +332,10 @@ export default function IvrSchedulePage() {
   };
 
   const handleToggleRetryUntilAnswered = () => {
-    const updated = { ...config, retryUntilAnswered: !config.retryUntilAnswered };
-    ivrScheduleService.saveConfig(updated);
+    const updated = ivrScheduleService.saveConfig(
+      { ...config, retryUntilAnswered: !config.retryUntilAnswered },
+      user?.hospital_id || null
+    );
     setConfig(updated);
     toast({
       title: updated.retryUntilAnswered ? "🔄 Reintentar hasta que conteste: ACTIVADO" : "⏸️ Reintento limitado",
@@ -294,6 +343,20 @@ export default function IvrSchedulePage() {
         ? "Las llamadas no contestadas pasarán automáticamente a la tanda siguiente a lo largo de las 24 tandas del día (08:30 AM a 08:00 PM)."
         : "Los reintentos se detendrán según el límite configurado."
     });
+  };
+
+  const handleUpdateAntiVoicemail = (patch, titleMsg) => {
+    const updated = ivrScheduleService.saveConfig(
+      { ...config, ...patch },
+      user?.hospital_id || null
+    );
+    setConfig(updated);
+    if (titleMsg) {
+      toast({
+        title: titleMsg,
+        description: 'Configuración anti-buzón y pre-cobro carrier actualizada para las tandas y llamadas en vivo.'
+      });
+    }
   };
 
   // Vistas del Roadmap filtradas por Cursos de Vida asignados al doctor
@@ -689,9 +752,26 @@ export default function IvrSchedulePage() {
                             )}
                           </td>
                           <td className="p-3">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
-                              {patient.estado}
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              patient.resultadoDTMF === 'buzon'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                : patient.estado === 'confirmada'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {patient.resultadoDTMF === 'buzon'
+                                ? `${patient.estado} · Buzón $0 COP`
+                                : patient.estado}
                             </span>
+                            {patient.capaDeteccion && patient.resultadoDTMF === 'buzon' && (
+                              <span className="block text-[9px] text-amber-700 font-semibold mt-0.5">
+                                {patient.capaDeteccion === 'pre_answer_sip_183'
+                                  ? 'SIP 183 Pre-200 OK'
+                                  : patient.capaDeteccion === 'ring_timeout_pre_answer'
+                                  ? 'Timeout Pre-Buzón'
+                                  : 'Vapi AMD Silencioso'}
+                              </span>
+                            )}
                           </td>
                           <td className="p-3 text-gray-700 font-semibold">{patient.intentos || 0}</td>
                           <td className="p-3 text-right">
@@ -821,10 +901,129 @@ export default function IvrSchedulePage() {
               </div>
 
               <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200">
-                <span className="font-bold text-indigo-950 block mb-1">Gateway GSM 32 Canales:</span>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-indigo-950">Gateway GSM 32 Canales:</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-600 text-white">
+                    {config.earlyMediaPreAnswer ? 'SIP 183 ACTIVO' : 'SOLO VAPI'}
+                  </span>
+                </div>
                 <span className="text-indigo-800 leading-relaxed block">
-                  OpenVox GSM conectado vía SIP/Vapi. Detección automática de buzón (Anti-voicemail) y captura DTMF teclas 1 y 2.
+                  OpenVox GSM conectado vía Asterisk PJSIP/ARI + Vapi. Cancela Early Media (<code>SIP 183</code>) antes del <code>200 OK</code> con $0 COP de cobro carrier.
                 </span>
+              </div>
+            </div>
+
+            {/* BLOQUE DUAL ANTI-BUZÓN Y PRE-COBRO CARRIER */}
+            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h4 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    Sistema Dual Anti-Buzón &amp; Cero Cobro Carrier (Pre-Answer SIP 183 + Vapi AMD)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Corta locuciones tempranas de Claro/Movistar/Tigo antes del SIP 200 OK y activa respaldo acústico silencioso en Vapi.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateAntiVoicemail(
+                    { antiVoicemail: !config.antiVoicemail },
+                    !config.antiVoicemail ? '🛡️ Anti-Buzón Dual Activado' : '⚠️ Anti-Buzón Desactivado'
+                  )}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                    config.antiVoicemail ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {config.antiVoicemail ? '✓ Protección Dual ACTIVA' : 'Protección Inactiva'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">Capa 1 · SIP 183 Pre-200 OK</span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateAntiVoicemail(
+                        { earlyMediaPreAnswer: !config.earlyMediaPreAnswer, sipCancelOn183Voicemail: !config.earlyMediaPreAnswer },
+                        !config.earlyMediaPreAnswer ? 'SIP 183 Early Media Activado' : 'SIP 183 Early Media Desactivado'
+                      )}
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        config.earlyMediaPreAnswer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {config.earlyMediaPreAnswer ? 'ACTIVO' : 'OFF'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Analiza RTP en fase 183 vía Asterisk ARI/OpenVox y envía <code>SIP CANCEL</code> antes de iniciar cobro carrier.
+                  </p>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                  <label className="font-bold text-slate-800 block">
+                    Timeout Pre-Buzón ({config.preAnswerRingTimeoutSec || 19}s)
+                  </label>
+                  <select
+                    value={config.preAnswerRingTimeoutSec || 19}
+                    onChange={(e) => handleUpdateAntiVoicemail(
+                      { preAnswerRingTimeoutSec: Number(e.target.value) },
+                      `Timeout pre-buzón fijado en ${e.target.value}s`
+                    )}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"
+                  >
+                    <option value={15}>15 seg (Agresivo anti-desvío)</option>
+                    <option value={17}>17 seg (Conservador alto)</option>
+                    <option value={19}>19 seg (Óptimo Claro/Movistar/Tigo)</option>
+                    <option value={21}>21 seg (Extendido)</option>
+                  </select>
+                  <p className="text-[11px] text-slate-500">
+                    Corta el repique antes de que la operadora transfiera al correo de voz (~22–25s).
+                  </p>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                  <label className="font-bold text-slate-800 block">
+                    Capa 2 · Proveedor AMD Vapi
+                  </label>
+                  <select
+                    value={config.voicemailProvider || 'vapi'}
+                    onChange={(e) => handleUpdateAntiVoicemail(
+                      { voicemailProvider: e.target.value },
+                      `Motor Vapi AMD cambiado a ${e.target.value.toUpperCase()}`
+                    )}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"
+                  >
+                    <option value="vapi">Vapi Nativo (Recomendado · Baja latencia)</option>
+                    <option value="google">Google Audio Classifier</option>
+                    <option value="openai">OpenAI Audio Classifier</option>
+                  </select>
+                  <p className="text-[11px] text-slate-500">
+                    Corte silencioso (<code>beepMaxAwait: 0s</code>) si el carrier abre <code>200 OK</code> directo.
+                  </p>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800">Respaldo SMS OpenVox</span>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateAntiVoicemail(
+                        { autoSmsFallbackOnExhausted: !config.autoSmsFallbackOnExhausted },
+                        !config.autoSmsFallbackOnExhausted ? 'Respaldo SMS OpenVox ACTIVADO' : 'Respaldo SMS OpenVox desactivado'
+                      )}
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        config.autoSmsFallbackOnExhausted ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {config.autoSmsFallbackOnExhausted ? 'ACTIVO' : 'OFF'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Reasigna a la siguiente tanda a $0 COP; al agotar jornada dispara SMS directo por SIM Cards OpenVox (failover puerto X→Y→Z con purga automática de cola).
+                  </p>
+                </div>
               </div>
             </div>
 

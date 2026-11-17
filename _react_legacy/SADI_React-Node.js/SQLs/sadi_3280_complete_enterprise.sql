@@ -28,6 +28,29 @@ CREATE TABLE IF NOT EXISTS public.rias_protocols_3280 (
   activo BOOLEAN NOT NULL DEFAULT TRUE
 );
 
+-- Asegurar que si rias_protocols_3280 ya existía desde startup_schema, permita 'educacion_salud'
+DO $$
+DECLARE
+  c_name TEXT;
+BEGIN
+  FOR c_name IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+    WHERE nsp.nspname = 'public'
+      AND rel.relname = 'rias_protocols_3280'
+      AND con.contype = 'c'
+      AND pg_get_constraintdef(con.oid) ILIKE '%tipo_atencion%'
+  LOOP
+    EXECUTE format('ALTER TABLE public.rias_protocols_3280 DROP CONSTRAINT IF EXISTS %I', c_name);
+  END LOOP;
+END $$;
+
+ALTER TABLE public.rias_protocols_3280
+  ADD CONSTRAINT rias_protocols_3280_tipo_atencion_check
+  CHECK (tipo_atencion IN ('valoracion_integral', 'tamizaje', 'proteccion_especifica', 'paraclinico', 'educacion_salud'));
+
 -- 2. PERFILES ENRIQUECIDOS 3280
 CREATE TABLE IF NOT EXISTS public.patient_profiles_3280 (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

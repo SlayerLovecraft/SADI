@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS public.rias_protocols_3280 (
   frecuencia_meses INTEGER NOT NULL,
   requiere_embarazo BOOLEAN NOT NULL DEFAULT FALSE,
   profesional_requerido TEXT NOT NULL,
-  tipo_atencion TEXT NOT NULL CHECK (tipo_atencion IN ('valoracion_integral', 'tamizaje', 'proteccion_especifica', 'paraclinico')),
+  tipo_atencion TEXT NOT NULL CHECK (tipo_atencion IN ('valoracion_integral', 'tamizaje', 'proteccion_especifica', 'paraclinico', 'educacion_salud')),
   descripcion TEXT NOT NULL,
   pagina_res_3280 INTEGER NOT NULL,
   activo BOOLEAN NOT NULL DEFAULT TRUE

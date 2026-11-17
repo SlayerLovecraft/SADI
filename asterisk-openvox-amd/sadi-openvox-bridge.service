@@ -1,0 +1,15 @@
+[Unit]
+Description=SADI OpenVox SIP 183 Early Media & GSM SMS Failover Bridge
+After=network-online.target asterisk.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sadi/asterisk-openvox-amd
+EnvironmentFile=/opt/sadi/asterisk-openvox-amd/.env
+ExecStart=/usr/bin/python3 /opt/sadi/asterisk-openvox-amd/early_media_detector.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 
 import { createClient } from "npm:@supabase/supabase-js@2.86.0";
+import { dispatchOpenVoxSmsWithFailover } from "../_shared/openvoxSms.ts";
 
 type Json =
   | string
@@ -165,72 +166,6 @@ const matchesSegment = (patient: PatientRow, segment: SegmentRow) => {
   return true;
 };
 
-const sendTwilioSms = async (params: {
-  accountSid: string;
-  authToken: string;
-  to: string;
-  body: string;
-  fromPhone?: string | null;
-  messagingServiceSid?: string | null;
-  statusCallbackUrl?: string | null;
-}) => {
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${params.accountSid}/Messages.json`;
-  const payload = new URLSearchParams();
-  payload.set("To", params.to);
-  payload.set("Body", params.body);
-
-  if (params.statusCallbackUrl) payload.set("StatusCallback", params.statusCallbackUrl);
-
-  const messagingServiceSid = params.messagingServiceSid?.trim();
-  const fromPhone = params.fromPhone?.trim();
-
-  if (messagingServiceSid) payload.set("MessagingServiceSid", messagingServiceSid);
-  else if (fromPhone) payload.set("From", fromPhone);
-  else throw new Error("Missing Twilio sender configuration");
-
-  const basic = btoa(`${params.accountSid}:${params.authToken}`);
-  const controller = new AbortController();
-  const timeoutMs = Math.max(1_000, Math.min(60_000, Number(Deno.env.get("TWILIO_HTTP_TIMEOUT_MS") || "20000")));
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: payload.toString(),
-    signal: controller.signal,
-  });
-  clearTimeout(timeoutId);
-
-  const text = await res.text();
-  if (!res.ok) {
-    let message = text;
-    try {
-      const parsed = JSON.parse(text);
-      message = parsed?.message || parsed?.detail || message;
-    } catch {
-      // ignore
-    }
-    const err = new Error(message);
-    (err as any).status = res.status;
-    throw err;
-  }
-
-  try {
-    return JSON.parse(text) as {
-      sid: string;
-      status: string;
-      error_code: string | null;
-      error_message: string | null;
-      to: string;
-      from: string;
-    };
-  } catch {
-    throw new Error("Unexpected Twilio response");
-  }
-};
-
 export const handleSendSms = async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: corsHeaders(req) });
   if (req.method !== "POST") return jsonResponse(req, 405, { error: "Method not allowed" });
@@ -329,14 +264,18 @@ export const handleSendSms = async (req: Request) => {
 
     const filtered = ((patients || []) as unknown as PatientRow[]).filter((p) => matchesSegment(p, segmentRow));
 
-    const twilioAccountSid = requireEnv("TWILIO_ACCOUNT_SID");
-    const twilioAuthToken = requireEnv("TWILIO_AUTH_TOKEN");
-    const twilioMessagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-    const twilioFromPhone = Deno.env.get("TWILIO_FROM_PHONE");
-    const twilioStatusCallbackUrl = Deno.env.get("TWILIO_STATUS_CALLBACK_URL");
+    const bridgeConfigured = Boolean(
+      (Deno.env.get("OPENVOX_BRIDGE_URL") || Deno.env.get("ASTERISK_ARI_URL") || "").trim(),
+    );
+    if (!bridgeConfigured) {
+      return jsonResponse(req, 503, {
+        success: false,
+        error: "OPENVOX_BRIDGE_URL no configurado. Los SMS de SADI se envían exclusivamente mediante SIM Cards del Gateway OpenVox (cero Twilio).",
+      });
+    }
 
     const maxToSend = Number(Deno.env.get("CAMPAIGN_SEND_MAX") || "200");
-    const batchSize = Math.max(1, Math.min(20, Number(Deno.env.get("CAMPAIGN_SEND_BATCH") || "5")));
+    const batchSize = Math.max(1, Math.min(10, Number(Deno.env.get("CAMPAIGN_SEND_BATCH") || "4")));
 
     const toSend = filtered.slice(0, maxToSend);
 
@@ -423,29 +362,48 @@ export const handleSendSms = async (req: Request) => {
         }
 
         try {
-          const twilio = await sendTwilioSms({
-            accountSid: twilioAccountSid,
-            authToken: twilioAuthToken,
-            to,
-            body: row.body,
-            fromPhone: twilioFromPhone,
-            messagingServiceSid: twilioMessagingServiceSid,
-            statusCallbackUrl: twilioStatusCallbackUrl || undefined,
+          const idemKey = `camp-${campaignRow.id}-pat-${row.patient_id}-${row.message_id || "raw"}`;
+          const gw = await dispatchOpenVoxSmsWithFailover({
+            supabaseAdmin,
+            phoneNumber: to,
+            message: row.body,
+            idempotencyKey: idemKey,
+            patientId: row.patient_id,
+            campaignId: campaignRow.id,
+            hospitalId: campaignRow.hospital_id || segmentRow.hospital_id,
           });
 
-          enviados += 1;
-
-          if (trackingEnabled && row.message_id) {
-            await supabaseAdmin
-              .from("campaign_messages")
-              .update({
-                twilio_sid: twilio.sid,
-                status: "enviado",
-                from_phone: twilio.from || null,
-                sent_at: nowIso(),
-                updated_at: nowIso(),
-              } as any)
-              .eq("message_id", row.message_id);
+          if (gw.ok) {
+            enviados += 1;
+            entregados += 1;
+            if (trackingEnabled && row.message_id) {
+              await supabaseAdmin
+                .from("campaign_messages")
+                .update({
+                  status: "entregado",
+                  from_phone: gw.winningPort ? `SIM-Port-${gw.winningPort}` : null,
+                  openvox_port: gw.winningPort,
+                  purged_ports: gw.purgedPorts,
+                  gateway_message_id: gw.gatewayMessageId,
+                  sent_at: nowIso(),
+                  delivered_at: nowIso(),
+                  updated_at: nowIso(),
+                } as any)
+                .eq("message_id", row.message_id);
+            }
+          } else {
+            fallidos += 1;
+            if (trackingEnabled && row.message_id) {
+              await supabaseAdmin
+                .from("campaign_messages")
+                .update({
+                  status: "fallido",
+                  purged_ports: gw.purgedPorts,
+                  error_message: gw.errorReason || "Puertos OpenVox sin señal (intentos purgados)",
+                  updated_at: nowIso(),
+                } as any)
+                .eq("message_id", row.message_id);
+            }
           }
         } catch (e) {
           fallidos += 1;
@@ -454,7 +412,7 @@ export const handleSendSms = async (req: Request) => {
               .from("campaign_messages")
               .update({
                 status: "fallido",
-                error_message: e instanceof Error ? e.message : "Error enviando SMS",
+                error_message: e instanceof Error ? e.message : "Error enviando SMS por OpenVox",
                 updated_at: nowIso(),
               } as any)
               .eq("message_id", row.message_id);
@@ -475,7 +433,9 @@ export const handleSendSms = async (req: Request) => {
         updated_at: nowIso(),
       });
 
-      await supabaseAdmin.rpc("recompute_campaign_counts", { p_campaign_id: campaignRow.id }).catch(() => null);
+      await Promise.resolve(
+        supabaseAdmin.rpc("recompute_campaign_counts", { p_campaign_id: campaignRow.id }),
+      ).catch(() => null);
 
       return { enviados, entregados, fallidos };
     };

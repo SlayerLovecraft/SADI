@@ -17,18 +17,19 @@ import {
   CURSO_KEY_TO_CODE,
   CURSO_VIDA_CONFIG,
 } from './cursoVidaConfig';
+import { DEFAULT_ANTI_VOICEMAIL_CONFIG } from './antiVoicemailConfig';
 
 // Slots oficiales de tandas: 24 intervalos de 30 min desde las 08:30 AM hasta las 08:00 PM
 export const IVR_TIME_SLOTS = [
-  { id: 't1',  hora: '08:30 AM', label: 'Tanda 1 (08:30 AM)', horaNum: 8.5 },
-  { id: 't2',  hora: '09:00 AM', label: 'Tanda 2 (09:00 AM)', horaNum: 9.0 },
-  { id: 't3',  hora: '09:30 AM', label: 'Tanda 3 (09:30 AM)', horaNum: 9.5 },
-  { id: 't4',  hora: '10:00 AM', label: 'Tanda 4 (10:00 AM)', horaNum: 10.0 },
-  { id: 't5',  hora: '10:30 AM', label: 'Tanda 5 (10:30 AM)', horaNum: 10.5 },
-  { id: 't6',  hora: '11:00 AM', label: 'Tanda 6 (11:00 AM)', horaNum: 11.0 },
-  { id: 't7',  hora: '11:30 AM', label: 'Tanda 7 (11:30 AM)', horaNum: 11.5 },
-  { id: 't8',  hora: '12:00 M',  label: 'Tanda 8 (12:00 M)',  horaNum: 12.0 },
-  { id: 't9',  hora: '12:30 PM', label: 'Tanda 9 (12:30 PM)', horaNum: 12.5 },
+  { id: 't1', hora: '08:30 AM', label: 'Tanda 1 (08:30 AM)', horaNum: 8.5 },
+  { id: 't2', hora: '09:00 AM', label: 'Tanda 2 (09:00 AM)', horaNum: 9.0 },
+  { id: 't3', hora: '09:30 AM', label: 'Tanda 3 (09:30 AM)', horaNum: 9.5 },
+  { id: 't4', hora: '10:00 AM', label: 'Tanda 4 (10:00 AM)', horaNum: 10.0 },
+  { id: 't5', hora: '10:30 AM', label: 'Tanda 5 (10:30 AM)', horaNum: 10.5 },
+  { id: 't6', hora: '11:00 AM', label: 'Tanda 6 (11:00 AM)', horaNum: 11.0 },
+  { id: 't7', hora: '11:30 AM', label: 'Tanda 7 (11:30 AM)', horaNum: 11.5 },
+  { id: 't8', hora: '12:00 M', label: 'Tanda 8 (12:00 M)', horaNum: 12.0 },
+  { id: 't9', hora: '12:30 PM', label: 'Tanda 9 (12:30 PM)', horaNum: 12.5 },
   { id: 't10', hora: '01:00 PM', label: 'Tanda 10 (01:00 PM)', horaNum: 13.0 },
   { id: 't11', hora: '01:30 PM', label: 'Tanda 11 (01:30 PM)', horaNum: 13.5 },
   { id: 't12', hora: '02:00 PM', label: 'Tanda 12 (02:00 PM)', horaNum: 14.0 },
@@ -125,8 +126,8 @@ export const ivrScheduleService = {
       startSlot: '08:30 AM',
       endSlot: '08:00 PM',
       voiceId: 'pFZP5JQG7iQjIQuC4Bku',
-      antiVoicemail: true,
-      dtmfConfirmation: true
+      dtmfConfirmation: true,
+      ...DEFAULT_ANTI_VOICEMAIL_CONFIG
     };
     try {
       const stored = localStorage.getItem(STORAGE_KEY_CONFIG);
@@ -137,11 +138,38 @@ export const ivrScheduleService = {
   },
 
   /**
-   * Guarda la configuración del motor
+   * Guarda la configuración del motor en localStorage y persiste parámetros
+   * anti-buzón en public.ivr_anti_voicemail_config cuando hay hospitalId disponible.
    */
-  saveConfig(newConfig) {
-    localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(newConfig));
-    return newConfig;
+  saveConfig(newConfig, hospitalId = null) {
+    const merged = { ...this.getConfig(), ...newConfig };
+    localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(merged));
+    if (hospitalId) {
+      supabase
+        .from('ivr_anti_voicemail_config')
+        .upsert(
+          {
+            hospital_id: hospitalId,
+            anti_voicemail_enabled: Boolean(merged.antiVoicemail),
+            early_media_pre_answer: Boolean(merged.earlyMediaPreAnswer),
+            pre_answer_ring_timeout_sec: Math.round(Number(merged.preAnswerRingTimeoutSec) || 19),
+            sip_cancel_on_183_voicemail: Boolean(merged.sipCancelOn183Voicemail),
+            voicemail_provider: merged.voicemailProvider || 'vapi',
+            backoff_start_seconds: Number(merged.backoffStartAtSeconds) || 1.5,
+            backoff_frequency_seconds: Math.max(2.5, Number(merged.backoffFrequencySeconds) || 2.5),
+            backoff_max_retries: Math.round(Number(merged.backoffMaxRetries) || 3),
+            beep_max_await_seconds: Math.round(Number(merged.beepMaxAwaitSeconds) || 0),
+            voicemail_action: merged.voicemailAction || 'hangup_silent',
+            auto_requeue_next_tanda: Boolean(merged.autoRequeueNextTanda),
+            auto_sms_fallback_exhausted: Boolean(merged.autoSmsFallbackOnExhausted),
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'hospital_id' }
+        )
+        .then(() => null)
+        .catch(() => null);
+    }
+    return merged;
   },
 
   /**
@@ -328,6 +356,9 @@ export const ivrScheduleService = {
     let updatedCount = 0;
     let reassignedCount = 0;
     let failedToHumanCount = 0;
+    let voicemailCutCount = 0;
+    let preAnswerSavedCount = 0;
+    const cfg = this.getConfig();
 
     currentSchedule.items = currentSchedule.items.map(item => {
       if (
@@ -347,6 +378,9 @@ export const ivrScheduleService = {
           // 60% Confirma asistencia presionando tecla 1
           item.estado = 'confirmada';
           item.resultadoDTMF = '1_confirmo';
+          item.cobroEvitado = false;
+          item.capaDeteccion = 'dtmf_human';
+          item.costoFacturaCop = null;
           item.ultimaInteraccion = `${nowStr} - Confirmó asistencia pulsando tecla 1`;
           item.historialIntentos.push({
             tanda: currentSlot.hora,
@@ -357,6 +391,9 @@ export const ivrScheduleService = {
           // 20% Reagenda presionando tecla 2
           item.estado = 'reagendada';
           item.resultadoDTMF = '2_reagendo';
+          item.cobroEvitado = false;
+          item.capaDeteccion = 'dtmf_human';
+          item.costoFacturaCop = null;
           item.ultimaInteraccion = `${nowStr} - Solicitó reagendamiento pulsando tecla 2`;
           item.historialIntentos.push({
             tanda: currentSlot.hora,
@@ -364,33 +401,55 @@ export const ivrScheduleService = {
             resultado: 'Llamada exitosa: Marcó 2 (Reagenda)'
           });
         } else {
-          // 20% No contesta o detecta buzón (Anti-voicemail)
+          // 20% Buzón o no contesta: corte anti-buzón dual con $0 COP en Facturación
           const esBuzon = randomRoll === 8;
-          const causaFallo = esBuzon ? 'Detección de buzón de voz (Llamada colgada)' : 'No contesta / Línea ocupada';
+          const esPreAnswer183 = esBuzon && Boolean(cfg.earlyMediaPreAnswer);
+          const capa = esPreAnswer183 ? 'pre_answer_sip_183' : (esBuzon ? 'vapi_amd_post_answer' : 'ring_timeout_pre_answer');
+          if (esBuzon) {
+            voicemailCutCount++;
+            if (esPreAnswer183) preAnswerSavedCount++;
+          } else if (cfg.earlyMediaPreAnswer) {
+            preAnswerSavedCount++;
+          }
+
+          const causaFallo = esPreAnswer183
+            ? 'Corte SIP 183 Early Media previo a 200 OK ($0 carrier)'
+            : esBuzon
+            ? 'Corte Vapi AMD al detectar buzón ($0 factura)'
+            : `Timeout previo a buzón (${cfg.preAnswerRingTimeoutSec || 19}s · SIP CANCEL)`;
+
+          item.resultadoDTMF = 'buzon';
+          item.deteccionBuzon = esBuzon;
+          item.cobroEvitado = Boolean(esPreAnswer183 || cfg.earlyMediaPreAnswer);
+          item.capaDeteccion = capa;
+          item.costoFacturaCop = 0;
 
           item.historialIntentos.push({
             tanda: currentSlot.hora,
             hora: nowStr,
-            resultado: `Intento ${item.intentos} fallido: ${causaFallo}`
+            capa,
+            costoCop: 0,
+            resultado: `Intento ${item.intentos}: ${causaFallo}`
           });
 
-          const cfg = this.getConfig();
-          const shouldRetry = cfg.retryUntilAnswered ? Boolean(nextSlot) : (Boolean(nextSlot) && item.intentos < (cfg.maxRetriesPerDay || 3));
+          const autoRetryEnabled = cfg.retryUntilAnswered || cfg.autoRequeueNextTanda;
+          const shouldRetry = autoRetryEnabled ? Boolean(nextSlot) : (Boolean(nextSlot) && item.intentos < (cfg.maxRetriesPerDay || 3));
 
           if (shouldRetry) {
-            // REASIGNAR AUTOMÁTICAMENTE A LA TANDA SIGUIENTE (POLÍTICA: REINTENTAR HASTA QUE CONTESTE)
+            // REASIGNAR AUTOMÁTICAMENTE A LA TANDA SIGUIENTE ($0 COP)
             item.estado = 'en_reintento';
             item.slotId = nextSlot.id;
             item.slotHora = nextSlot.hora;
             item.slotIndex = slotIdx + 1;
-            item.ultimaInteraccion = `${nowStr} - ${causaFallo}. Reasignado a tanda ${nextSlot.hora} (Reintento sucesivo por tanda)`;
+            item.ultimaInteraccion = `${nowStr} - ${causaFallo}. Reasignado a tanda ${nextSlot.hora} ($0 COP)`;
             reassignedCount++;
           } else {
-            // NO CONTESTÓ EN NINGUNA DE LAS 24 TANDAS DE LA JORNADA -> CASO AISLADO / GESTIÓN HUMANA
+            // AGOTÓ TODAS LAS TANDAS -> CASO AISLADO / GESTIÓN HUMANA + RESPALDO SMS/WA
             item.estado = 'caso_aislado_humano';
             item.gestionHumana.requerida = true;
             item.gestionHumana.atendido = false;
-            item.ultimaInteraccion = `${nowStr} - Agotó todas las tandas operativas sin contestar. Derivado a Gestión Humana`;
+            item.fallbackSmsPendiente = Boolean(cfg.autoSmsFallbackOnExhausted);
+            item.ultimaInteraccion = `${nowStr} - Agotó tandas (${causaFallo}). Derivado a Gestión Humana${cfg.autoSmsFallbackOnExhausted ? ' + Respaldo SMS/WA' : ''}`;
             failedToHumanCount++;
           }
         }
@@ -406,9 +465,69 @@ export const ivrScheduleService = {
       stats: {
         processed: updatedCount,
         reassigned: reassignedCount,
-        sentToHuman: failedToHumanCount
+        sentToHuman: failedToHumanCount,
+        voicemailCuts: voicemailCutCount,
+        preAnswerSaved: preAnswerSavedCount
       }
     };
+  },
+
+  /**
+   * Registra un evento en vivo de corte por buzón de voz (Pre-Answer SIP 183 o Vapi AMD)
+   * actualizando la tanda del paciente sin cobro ($0 COP) y moviéndolo al siguiente turno.
+   */
+  async applyVoicemailCutoffToSchedule(patientIdOrPhone, { capaDeteccion = 'pre_answer_sip_183', reason = 'voicemail-cutoff' } = {}) {
+    const currentSchedule = await this.getDailySchedule();
+    const cfg = this.getConfig();
+    const cleanPhone = String(patientIdOrPhone || '').replace(/\D/g, '').slice(-10);
+    const nowStr = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+    let matchedItem = null;
+
+    currentSchedule.items = currentSchedule.items.map(item => {
+      const itemPhone = String(item.telefono || '').replace(/\D/g, '').slice(-10);
+      const isMatch = String(item.patientId) === String(patientIdOrPhone) || (cleanPhone && itemPhone === cleanPhone);
+      if (!isMatch) return item;
+
+      const curSlotIdx = IVR_TIME_SLOTS.findIndex(s => s.id === item.slotId);
+      const nextSlot = curSlotIdx >= 0 ? IVR_TIME_SLOTS[curSlotIdx + 1] || null : null;
+      item.intentos = (item.intentos || 0) + 1;
+      item.deteccionBuzon = true;
+      item.resultadoDTMF = 'buzon';
+      item.capaDeteccion = capaDeteccion;
+      item.cobroEvitado = capaDeteccion !== 'vapi_amd_post_answer';
+      item.costoFacturaCop = 0;
+
+      item.historialIntentos = [
+        ...(item.historialIntentos || []),
+        {
+          tanda: item.slotHora || 'En vivo',
+          hora: nowStr,
+          capa: capaDeteccion,
+          costoCop: 0,
+          resultado: `Corte anti-buzón (${capaDeteccion}): ${reason} · $0 COP`
+        }
+      ];
+
+      if (nextSlot && (cfg.retryUntilAnswered || cfg.autoRequeueNextTanda)) {
+        item.estado = 'en_reintento';
+        item.slotId = nextSlot.id;
+        item.slotHora = nextSlot.hora;
+        item.slotIndex = curSlotIdx + 1;
+        item.ultimaInteraccion = `${nowStr} - Buzón cortado sin cobro (${capaDeteccion}). Reasignado a ${nextSlot.hora}`;
+      } else {
+        item.estado = 'caso_aislado_humano';
+        item.gestionHumana.requerida = true;
+        item.gestionHumana.atendido = false;
+        item.fallbackSmsPendiente = Boolean(cfg.autoSmsFallbackOnExhausted);
+        item.ultimaInteraccion = `${nowStr} - Buzón cortado sin cobro; agotó tandas -> Gestión Humana`;
+      }
+      matchedItem = item;
+      return item;
+    });
+
+    currentSchedule.updatedAt = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEY_SCHEDULE, JSON.stringify(currentSchedule));
+    return { schedule: currentSchedule, updatedItem: matchedItem };
   },
 
   /**

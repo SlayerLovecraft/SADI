@@ -423,3 +423,15 @@ entrypoint = "./functions/twilio-status-webhook/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/twilio-inbound-webhook/index.ts"
+
+[functions.vapi-outbound-call]
+enabled = true
+verify_jwt = true
+import_map = "./functions/vapi-outbound-call/deno.json"
+entrypoint = "./functions/vapi-outbound-call/index.ts"
+
+[functions.vapi-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/vapi-webhook/deno.json"
+entrypoint = "./functions/vapi-webhook/index.ts"

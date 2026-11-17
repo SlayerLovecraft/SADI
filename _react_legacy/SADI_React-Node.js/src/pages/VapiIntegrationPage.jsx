@@ -264,6 +264,10 @@ export default function VapiIntegrationPage() {
                         setSimulatedArgs('{"sintoma": "cefalea intensa y fosfenos", "severidad": "severa_emergencia"}');
                       } else if (e.target.value === 'schedule3280Appointment') {
                         setSimulatedArgs('{"programa_nombre": "Ecografía de Detalle Anatómico", "jornada": "manana"}');
+                      } else if (e.target.value === 'simulatePreAnswerSip183Cancel') {
+                        setSimulatedArgs('{"transcript": "Claro te informa: su llamada está siendo transferida al correo de voz"}');
+                      } else if (e.target.value === 'simulateVapiVoicemailReport') {
+                        setSimulatedArgs('{"endedReason": "voicemail-reached", "transcript": "El usuario no está disponible, deje su mensaje después del tono"}');
                       } else {
                         setSimulatedArgs('{"documento": "' + (vapiContext?.patient.documento || '') + '"}');
                       }
@@ -273,6 +277,8 @@ export default function VapiIntegrationPage() {
                     <option value="getPatientClinicalContext">getPatientClinicalContext (Consulta datos y alertas)</option>
                     <option value="reportPatientSymptom">reportPatientSymptom (Reporta síntoma en vivo)</option>
                     <option value="schedule3280Appointment">schedule3280Appointment (Agenda cita Res. 3280)</option>
+                    <option value="simulatePreAnswerSip183Cancel">simulatePreAnswerSip183Cancel (Corte SIP 183 Pre-200 OK · $0 carrier)</option>
+                    <option value="simulateVapiVoicemailReport">simulateVapiVoicemailReport (Corte Vapi AMD · $0 IPS)</option>
                   </select>
                 </div>
 

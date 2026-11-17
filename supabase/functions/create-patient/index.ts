@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2.86.0";
+import { dispatchOpenVoxSmsWithFailover } from "../_shared/openvoxSms.ts";
 
 type Json =
   | string
@@ -69,58 +70,6 @@ const normalizePhoneE164 = (raw: string) => {
   if (digits.length === 12 && digits.startsWith("57")) return `+${digits}`;
   if (digits.length >= 10) return `+${digits}`;
   return null;
-};
-
-const sendTwilioSms = async (params: { to: string; body: string }) => {
-  const accountSid = requireEnv("TWILIO_ACCOUNT_SID");
-  const authToken = requireEnv("TWILIO_AUTH_TOKEN");
-  const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-  const fromPhone = Deno.env.get("TWILIO_FROM_PHONE");
-
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-  const payload = new URLSearchParams();
-  payload.set("To", params.to);
-  payload.set("Body", params.body);
-
-  const mss = messagingServiceSid?.trim();
-  const fp = fromPhone?.trim();
-  if (mss) payload.set("MessagingServiceSid", mss);
-  else if (fp) payload.set("From", fp);
-  else throw new Error("Missing Twilio sender configuration");
-
-  const basic = btoa(`${accountSid}:${authToken}`);
-  const controller = new AbortController();
-  const timeoutMs = Math.max(1_000, Math.min(60_000, Number(Deno.env.get("TWILIO_HTTP_TIMEOUT_MS") || "20000")));
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: payload.toString(),
-    signal: controller.signal,
-  });
-  clearTimeout(timeoutId);
-
-  const text = await res.text();
-  if (!res.ok) {
-    let message = text;
-    try {
-      const parsed = JSON.parse(text);
-      message = parsed?.message || parsed?.detail || message;
-    } catch {
-    }
-    const err = new Error(message);
-    (err as any).status = res.status;
-    throw err;
-  }
-
-  try {
-    return JSON.parse(text) as { sid: string; status: string; to: string; from: string };
-  } catch {
-    throw new Error("Unexpected Twilio response");
-  }
 };
 
 Deno.serve(async (req) => {
@@ -229,6 +178,8 @@ Deno.serve(async (req) => {
     let smsSent = false;
     let smsSid: string | null = null;
     let smsError: string | null = null;
+    let winningPort: number | null = null;
+    let purgedPorts: number[] = [];
 
     if (smsTo) {
       const bodyParts = [
@@ -240,11 +191,24 @@ Deno.serve(async (req) => {
       ].filter(Boolean);
 
       try {
-        const twilio = await sendTwilioSms({ to: smsTo, body: bodyParts.join(" ") });
-        smsSent = true;
-        smsSid = twilio.sid || null;
+        const patientId = (data as any)?.patient_id ? String((data as any).patient_id) : null;
+        const ovRes = await dispatchOpenVoxSmsWithFailover({
+          supabaseAdmin,
+          phoneNumber: smsTo,
+          message: bodyParts.join(" "),
+          idempotencyKey: `sadi_welcome_${patientId || email}_${Date.now()}`,
+          patientId,
+          hospitalId: hospital_id,
+        });
+        smsSent = ovRes.ok;
+        smsSid = ovRes.gatewayMessageId || null;
+        winningPort = ovRes.winningPort;
+        purgedPorts = ovRes.purgedPorts || [];
+        if (!ovRes.ok) {
+          smsError = ovRes.errorReason || "No fue posible enviar SMS vía SIM Cards OpenVox";
+        }
       } catch (e) {
-        smsError = e instanceof Error ? e.message : "Error enviando SMS";
+        smsError = e instanceof Error ? e.message : "Error enviando SMS OpenVox";
       }
     }
 
@@ -257,6 +221,8 @@ Deno.serve(async (req) => {
         sent: smsSent,
         to: smsTo,
         sid: smsSid,
+        winningPort,
+        purgedPorts,
         error: smsError,
       },
     });

@@ -543,6 +543,10 @@ const CampaignsPage = () => {
     setCallingId(item.id);
     try {
       const res = await vapiIntegrationService.makeOutboundCall({
+        patientId: item.patientId || null,
+        hospitalId: item.hospitalId || user?.hospital_id || null,
+        doctorId: user?.doctor_id || null,
+        slotId: item.slotId || null,
         patientPhone: item.telefono || '+573002938450',
         patientName: item.nombre || 'Paciente',
         patientDoc: item.documento,
@@ -550,12 +554,13 @@ const CampaignsPage = () => {
         accion3280: item.accion3280 || 'Control Preventivo de Salud',
         hitoClinico: item.accion3280 || 'Jornada Preventiva',
         cursoVida: item.cursoVida,
-        direccion: item.direccion || 'Caldas'
+        direccion: item.direccion || 'Caldas',
+        antiVoicemailConfig: config
       });
       if (res.ok) {
         toast({
           title: "🟢 Llamada de Campaña Conectada",
-          description: `Enviada al Gateway GSM (Puerto 22). ID: ${res.data?.id?.slice(0, 8)}...`
+          description: `Enviada con protección dual Anti-Buzón ($0 carrier). ID: ${res.data?.id?.slice(0, 8) || 'ARI'}...`
         });
       } else {
         toast({
@@ -1255,7 +1260,7 @@ const CampaignsPage = () => {
               <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200">
                 <span className="font-bold text-indigo-950 block mb-1">Gateway GSM 32 Canales:</span>
                 <span className="text-indigo-800 leading-relaxed block">
-                  OpenVox GSM conectado vía SIP/Vapi. Detección automática de buzón (Anti-voicemail) y captura DTMF teclas 1 y 2.
+                  OpenVox GSM conectado vía Asterisk PJSIP/ARI + Vapi. Detección Pre-Answer (<code>SIP 183</code>) y corte silencioso antes del cobro carrier.
                 </span>
               </div>
             </div>

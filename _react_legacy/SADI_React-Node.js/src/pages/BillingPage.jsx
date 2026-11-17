@@ -354,6 +354,12 @@ const BillingPage = () => {
                   ${monthData.desgloseCanales.llamadas.facturado.toLocaleString('es-CO')} COP
                 </span>
               </div>
+              {monthData.desgloseCanales.llamadas.buzonesCortados > 0 && (
+                <div className="mt-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 flex items-center justify-between">
+                  <span>Buzones cortados: {monthData.desgloseCanales.llamadas.buzonesCortados}</span>
+                  <span>$0 COP (Ahorro carrier)</span>
+                </div>
+              )}
             </div>
 
             {/* WhatsApp */}
@@ -706,6 +712,11 @@ const BillingPage = () => {
                           {log.exito ? (
                             <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-200">
                               <CheckCircle className="h-3 w-3" />
+                              {log.estado}
+                            </span>
+                          ) : log.esBuzonCortado ? (
+                            <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-amber-100 text-amber-800 border border-amber-200">
+                              <XCircle className="h-3 w-3" />
                               {log.estado}
                             </span>
                           ) : (

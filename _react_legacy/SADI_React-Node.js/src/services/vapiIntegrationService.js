@@ -3,9 +3,24 @@
 // Conexión y alimentación automática del Agente de Voz IA (Vapi)
 // con datos clínicos en tiempo real, alertas de la Res. 3280 y documentos de historias clínicas
 // ==============================================================================
+import { supabase } from '@/lib/supabase';
 import { telemonitoringService } from './telemonitoringService';
 import { clinicalRecordsService, sanitizePatientFolder } from './clinicalRecordsService';
 import { getRequiredRIASAppointments, getCursoVida3280 } from './rias3280Engine';
+import {
+  buildVapiVoicemailDetectionConfig,
+  DEFAULT_ANTI_VOICEMAIL_CONFIG,
+  isVoicemailOutcome,
+} from './antiVoicemailConfig';
+
+function readStoredAntiVoicemailConfig() {
+  try {
+    const raw = localStorage.getItem('sadi_ivr_config');
+    return raw ? { ...DEFAULT_ANTI_VOICEMAIL_CONFIG, ...JSON.parse(raw) } : { ...DEFAULT_ANTI_VOICEMAIL_CONFIG };
+  } catch {
+    return { ...DEFAULT_ANTI_VOICEMAIL_CONFIG };
+  }
+}
 
 export function formatLast3DigitsInWords(doc) {
   const digits = String(doc || '').replace(/\D/g, '').slice(-3);
@@ -141,8 +156,9 @@ ${docsSummary}
 ${atencionesSummary}
 
 === PROTOCOLO IVR Y DIRECTRICES DE CONVERSACIÓN TELEFÓNICA (VAPI) ===
-1. DETECCIÓN DE CONTESTADOR / BUZÓN DE VOZ (ANTI-VOICEMAIL):
-   Si detectas que responde un contestador automático ("deje su mensaje", "buzón de voz", pitido prolongado o mensaje de operadora), termina la llamada inmediatamente con 'hangUp' sin dejar mensaje ni gastar minutos.
+1. DETECCIÓN DUAL DE BUZÓN DE VOZ (PRE-ANSWER SIP 183 + VAPI AMD NATIVO):
+   - Capa 1 (Gateway OpenVox / Asterisk SIP 183): Corta con SIP CANCEL antes del 200 OK si detecta locución o tono de buzón en Early Media ($0 COP de carrier).
+   - Capa 2 (Motor nativo Vapi voicemailDetection): Activo en el payload de llamada con corte silencioso inmediato (voicemailMessage vacío); evita interactuar si responde un contestador automático.
 
 2. SALUDO E IDENTIFICACIÓN INSTITUCIONAL:
    "Hola ${patient.nombre.split(' ')[0]}, te habla Camila, tu asistente de salud del ${patient.hospital_name || 'Hospital Central SADI'} en convenio con tu EPS ${patient.eps}."
@@ -164,14 +180,19 @@ ${atencionesSummary}
 
   /**
    * Genera el payload de configuración completa para el Asistente de Vapi
-   * listo para ser enviado a la API de Vapi (POST https://api.vapi.ai/assistant)
-   * o pegado en el panel de control de Vapi.
+   * incluyendo detección nativa de buzón de voz (`voicemailDetection`) y webhook real.
    */
-  generateVapiAssistantConfig(vapiContext) {
+  generateVapiAssistantConfig(vapiContext, customAntiVoicemailCfg = null) {
     if (!vapiContext) return null;
 
     const dynamicPrompt = this.generateVapiDynamicPrompt(vapiContext);
     const { patient, activeAlert } = vapiContext;
+    const antiVoicemailCfg = customAntiVoicemailCfg || readStoredAntiVoicemailConfig();
+    const { voicemailDetection, voicemailMessage } = buildVapiVoicemailDetectionConfig(antiVoicemailCfg);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const webhookUrl = supabaseUrl
+      ? `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-webhook`
+      : 'https://tu-proyecto.supabase.co/functions/v1/vapi-webhook';
 
     return {
       name: `SADI-3280-${patient.nombre.replace(/\s+/g, '-')}`,
@@ -267,8 +288,14 @@ ${atencionesSummary}
         stability: 0.5,
         similarityBoost: 0.8
       },
+      voicemailDetection,
+      voicemailMessage,
+      silenceTimeoutSeconds: 18,
       firstMessage: `Hola ${patient.nombre.split(' ')[0]}, te habla Camila del ${patient.hospital_name || 'Hospital Central SADI'}. ${activeAlert ? 'Te contacto de urgencia por la medición alterada que registraste en tu equipo domiciliario.' : 'Te llamamos para coordinar tu cita preventiva de la Resolución 3280. Por favor marca 1 en tu teléfono si confirmas tu asistencia, o marca 2 si deseas reagendar.'}`,
-      serverUrl: 'https://api.sadi.med.co/api/vapi/webhook',
+      server: {
+        url: webhookUrl
+      },
+      serverMessages: ['status-update', 'transcript', 'end-of-call-report'],
       variableValues: {
         patient_id: patient.id,
         patient_name: patient.nombre,
@@ -276,15 +303,16 @@ ${atencionesSummary}
         curso_vida: patient.curso_vida,
         es_gestante: patient.es_gestante ? 'true' : 'false',
         semana_gestacional: patient.semana_gestacional || 0,
-        doctor_asignado: patient.doctor_nombre || 'Especialista SADI'
+        doctor_asignado: patient.doctor_nombre || 'Especialista SADI',
+        anti_voicemail: antiVoicemailCfg.antiVoicemail ? 'true' : 'false',
+        early_media_pre_answer: antiVoicemailCfg.earlyMediaPreAnswer ? 'true' : 'false'
       }
     };
   },
 
   /**
-   * Simulador del Webhook de Vapi
-   * Permite probar localmente cómo respondería nuestro servidor SADI
-   * cuando el agente de Vapi hace un tool-call en vivo.
+   * Simulador del Webhook de Vapi y Detector SIP 183 Pre-Answer
+   * Permite probar localmente respuestas de herramientas y cortes anti-buzón sin costo.
    */
   async simulateVapiWebhookCall(toolName, args, patientId) {
     const context = await this.buildPatientVapiContext(patientId);
@@ -318,24 +346,116 @@ ${atencionesSummary}
       };
     }
 
+    if (toolName === 'simulatePreAnswerSip183Cancel') {
+      const samplePhrase = args?.transcript || 'Claro te informa: su llamada está siendo transferida al correo de voz';
+      const verdict = isVoicemailOutcome({
+        endedReason: 'sip-183-voicemail-cancel',
+        transcript: samplePhrase
+      });
+      return {
+        status: 'cancelled_before_200_ok',
+        phase: 'pre_answer_sip_183',
+        sipCode: 183,
+        carrierBilled: false,
+        facturableIps: false,
+        costoCop: 0,
+        detectedVoicemail: verdict.isVoicemail,
+        reason: verdict.reason,
+        nextAction: 'Reasignado a siguiente tanda del día ($0 COP)'
+      };
+    }
+
+    if (toolName === 'simulateVapiVoicemailReport') {
+      const endedReason = args?.endedReason || 'voicemail-reached';
+      const transcript = args?.transcript || 'Deje su mensaje después del tono.';
+      const verdict = isVoicemailOutcome({ endedReason, transcript });
+      return {
+        status: verdict.isVoicemail ? 'buzon_cortado' : 'completada',
+        capaDeteccion: 'vapi_amd_post_answer',
+        voicemailDetected: verdict.isVoicemail,
+        reason: verdict.reason,
+        duracionFacturadaSeg: verdict.isVoicemail ? 0 : 75,
+        facturableIps: !verdict.isVoicemail,
+        costoCop: verdict.isVoicemail ? 0 : 900,
+        nextAction: verdict.isVoicemail ? 'Corte silencioso inmediato + reintento en siguiente tanda' : 'Atención facturable CUPS 890201'
+      };
+    }
+
     return { status: 'unknown_tool', tool: toolName };
   },
 
   /**
-   * Dispara una llamada saliente real en vivo a través de Vapi y el Gateway GSM (Puerto 22)
+   * Dispara una llamada saliente real con Protección Dual Anti-Buzón:
+   * 1) Invoca la Edge Function segura `vapi-outbound-call` (que soporta puente Asterisk ARI SIP 183 y Vapi AMD nativo).
+   * 2) Solo usa fallback directo en Vite si se configuró una clave explícita en variables de entorno de desarrollo.
    */
-  async triggerLiveCall(phoneNumber, patientData = {}) {
-    const defaultPhoneId = import.meta.env.VITE_VAPI_PHONE_NUMBER_ID || 'e8c40cb0-dd96-4131-bc44-a8a43fc603bb';
-    const defaultAssistantId = import.meta.env.VITE_VAPI_ASSISTANT_ID || '0c149a8e-f677-4c95-b61d-466426f70ba4';
-    const apiKey = 'aa03f387-f4b8-4bae-a3da-74aed240ad39';
+  async triggerLiveCall(phoneNumber, patientData = {}, customAntiVoicemailCfg = null) {
+    const antiVoicemailCfg = customAntiVoicemailCfg || readStoredAntiVoicemailConfig();
+    const { voicemailDetection, voicemailMessage } = buildVapiVoicemailDetectionConfig(antiVoicemailCfg);
 
-    let formattedPhone = String(phoneNumber).trim();
+    let formattedPhone = String(phoneNumber || '').trim();
     if (!formattedPhone.startsWith('+')) {
-      if (formattedPhone.startsWith('57')) {
-        formattedPhone = '+' + formattedPhone;
-      } else {
-        formattedPhone = '+57' + formattedPhone;
+      formattedPhone = formattedPhone.startsWith('57') ? `+${formattedPhone}` : `+57${formattedPhone}`;
+    }
+
+    const variableValues = {
+      name: (patientData.nombre || patientData.name || 'Paciente').split(' ')[0],
+      documento: String(patientData.documento || patientData.document || patientData.cedula || '1006010518'),
+      cedula_ultimos_3: formatLast3DigitsInWords(patientData.documento || patientData.document || patientData.cedula || '518'),
+      programa_3280: (patientData.programa3280 || patientData.programa || patientData.program || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho'),
+      hospital_nombre: patientData.hospital_nombre || patientData.hospitalName || 'Hospital Central SADI',
+      direccion: patientData.direccion || patientData.address || 'Calle 15 #14-112',
+      saludo_hora: new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'),
+      anti_voicemail: antiVoicemailCfg.antiVoicemail ? 'true' : 'false'
+    };
+
+    // Camino principal seguro: Edge Function `vapi-outbound-call` (con SIP 183 ARI si aplica + Vapi AMD)
+    try {
+      const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
+        body: {
+          phoneNumber: formattedPhone,
+          patientId: patientData.patientId || patientData.id || null,
+          hospitalId: patientData.hospitalId || patientData.hospital_id || null,
+          doctorId: patientData.doctorId || patientData.doctor_id || null,
+          slotTanda: patientData.slotTanda || patientData.slotId || null,
+          motivoLlamada: patientData.motivoLlamada || patientData.programa3280 || 'Demanda Inducida Res. 3280',
+          patientData,
+          antiVoicemailConfig: antiVoicemailCfg,
+          assistantOverrides: {
+            voicemailDetection,
+            voicemailMessage,
+            silenceTimeoutSeconds: 18,
+            variableValues
+          }
+        }
+      });
+
+      if (!error && data) {
+        return {
+          ok: Boolean(data.ok ?? true),
+          status: data.status || 200,
+          mode: data.mode || 'vapi_edge_function',
+          voicemailProtection: data.voicemailProtection || { postAnswerVapi: voicemailDetection },
+          data: data.data || data
+        };
       }
+    } catch (edgeErr) {
+      console.warn('Edge Function vapi-outbound-call no disponible aún, verificando env local:', edgeErr?.message);
+    }
+
+    // Fallback exclusivo para entorno de desarrollo si se definió una variable de entorno local explícita
+    const devApiKey = import.meta.env.VITE_VAPI_PRIVATE_KEY || import.meta.env.VITE_VAPI_API_KEY;
+    const defaultPhoneId = import.meta.env.VITE_VAPI_PHONE_NUMBER_ID;
+    const defaultAssistantId = import.meta.env.VITE_VAPI_ASSISTANT_ID;
+
+    if (!devApiKey || !defaultPhoneId || !defaultAssistantId) {
+      return {
+        ok: false,
+        status: 503,
+        data: {
+          message: 'Despliega la Edge Function `vapi-outbound-call` con tus secretos VAPI/ASTERISK para emitir llamadas reales con corte anti-buzón sin exponer llaves en el navegador.'
+        }
+      };
     }
 
     const payload = {
@@ -346,28 +466,52 @@ ${atencionesSummary}
         name: patientData.nombre || patientData.name || 'Paciente SADI'
       },
       assistantOverrides: {
-        variableValues: {
-          name: (patientData.nombre || patientData.name || 'Paciente').split(' ')[0],
-          documento: String(patientData.documento || patientData.document || '1006010518'),
-          cedula_ultimos_3: formatLast3DigitsInWords(patientData.documento || patientData.document || '518'),
-          programa_3280: (patientData.programa3280 || patientData.program || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho'),
-          hospital_nombre: patientData.hospital_nombre || patientData.hospitalName || 'Hospital Regional San Andrés',
-          direccion: patientData.direccion || patientData.address || 'Calle 15 #14-112',
-          saludo_hora: new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches')
-        }
+        voicemailDetection,
+        voicemailMessage,
+        silenceTimeoutSeconds: 18,
+        variableValues
       }
     };
 
     const res = await fetch('https://api.vapi.ai/call/phone', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${devApiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     });
 
     const data = await res.json();
-    return { ok: res.ok, status: res.status, data };
+    return {
+      ok: res.ok,
+      status: res.status,
+      mode: 'direct_dev_with_amd',
+      voicemailProtection: { postAnswerVapi: voicemailDetection },
+      data
+    };
+  },
+
+  /**
+   * Alias unificado usado desde CampaignsPage.jsx para despachar llamadas individuales de campaña
+   * heredando la misma protección anti-buzón dual.
+   */
+  async makeOutboundCall(options = {}) {
+    const phone = options.patientPhone || options.phoneNumber || options.telefono;
+    return this.triggerLiveCall(
+      phone,
+      {
+        nombre: options.patientName || options.nombre,
+        documento: options.patientDoc || options.documento,
+        patientId: options.patientId || null,
+        hospitalId: options.hospitalId || null,
+        doctorId: options.doctorId || null,
+        motivoLlamada: options.motivoLlamada,
+        programa3280: options.accion3280 || options.hitoClinico || options.motivoLlamada,
+        cursoVida: options.cursoVida,
+        direccion: options.direccion
+      },
+      options.antiVoicemailConfig || null
+    );
   }
 };

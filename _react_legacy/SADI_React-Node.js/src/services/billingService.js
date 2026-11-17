@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { PROGRAMAS_3280 } from './census400kService';
+import { isSessionBillable } from './antiVoicemailConfig';
 import * as XLSX from 'xlsx';
 
 // ------------------------------------------------------------------------------
@@ -66,12 +67,69 @@ export const billingService = {
       console.warn('Error cargando pacientes de Supabase para facturación:', error);
     }
 
+    // Consultar sesiones reales de Vapi / SIP 183 para descontar buzones cortados ($0 COP)
+    const sessionsByPatient = new Map();
+    try {
+      const startIso = `${year}-${String(safeMonth).padStart(2, '0')}-01T00:00:00.000Z`;
+      const endMonth = safeMonth === 12 ? 1 : safeMonth + 1;
+      const endYear = safeMonth === 12 ? year + 1 : year;
+      const endIso = `${endYear}-${String(endMonth).padStart(2, '0')}-01T00:00:00.000Z`;
+
+      let sessQuery = supabase
+        .from('vapi_agent_sessions')
+        .select('*')
+        .gte('created_at', startIso)
+        .lt('created_at', endIso);
+      if (hospitalId) {
+        sessQuery = sessQuery.eq('hospital_id', hospitalId);
+      }
+      const { data: dbSessions } = await sessQuery;
+      (dbSessions || []).forEach(s => {
+        if (!s?.patient_id) return;
+        const pid = String(s.patient_id);
+        if (!sessionsByPatient.has(pid)) sessionsByPatient.set(pid, []);
+        sessionsByPatient.get(pid).push(s);
+      });
+    } catch {
+      // Si la migración aún no se ejecuta en BD, continúa con fallback determinista
+    }
+
+    // Consultar despachos SMS reales en OpenVox SIMs (Puertos 1..32, sin Twilio)
+    const smsByPatient = new Map();
+    try {
+      const startIso = `${year}-${String(safeMonth).padStart(2, '0')}-01T00:00:00.000Z`;
+      const endMonth = safeMonth === 12 ? 1 : safeMonth + 1;
+      const endYear = safeMonth === 12 ? year + 1 : year;
+      const endIso = `${endYear}-${String(endMonth).padStart(2, '0')}-01T00:00:00.000Z`;
+
+      let smsQuery = supabase
+        .from('openvox_sms_dispatches')
+        .select('*')
+        .gte('created_at', startIso)
+        .lt('created_at', endIso);
+      if (hospitalId) {
+        smsQuery = smsQuery.eq('hospital_id', hospitalId);
+      }
+      const { data: dbSms } = await smsQuery;
+      (dbSms || []).forEach(row => {
+        if (!row?.patient_id) return;
+        const pid = String(row.patient_id);
+        if (!smsByPatient.has(pid)) smsByPatient.set(pid, []);
+        smsByPatient.get(pid).push(row);
+      });
+    } catch {
+      // Fallback limpio si tabla OpenVox aún no existe
+    }
+
     const patientsRaw = (dbPatients && dbPatients.length > 0) ? dbPatients : [];
     const patients = [];
     const logs = [];
 
     patientsRaw.forEach((p, idx) => {
       const rng = pseudoRng((idx + 1) * 777 + safeMonth * 33 + year);
+      const patientIdStr = String(p.patient_id || p.id || '');
+      const realSessions = sessionsByPatient.get(patientIdStr) || [];
+      const realSms = smsByPatient.get(patientIdStr) || [];
       
       const edad = p.edad || (p.birthdate ? (new Date().getFullYear() - new Date(p.birthdate).getFullYear()) : 35);
       const isFemale = (p.sex || 'F').toUpperCase() === 'F';
@@ -106,12 +164,56 @@ export const billingService = {
       // ----------------------------------------------------------------------
       const canalesRegistrados = p.conteo_canales || {};
 
-      // 1. LLAMADA IA
-      // 88% de llamadas son contestadas efectivamente; el 12% no contesta / ocupado
-      const llamadaContestada = rng() > 0.12;
-      const segundosLlamada = llamadaContestada ? Math.floor(65 + rng() * 95) : 0; // Entre 65s y 160s si contestó, 0s si no contestó
-      const llamadasIntentos = 1;
-      const llamadasExitosas = llamadaContestada ? 1 : 0;
+      // 1. LLAMADA IA (Regla estricta: buzón cortado o pre-answer SIP 183 = $0 COP)
+      let llamadaContestada = false;
+      let llamadaCortadaPorBuzon = false;
+      let cortePreCobroCarrier = false;
+      let capaDeteccionBuzon = 'none';
+      let segundosLlamada = 0;
+      let llamadasIntentos = 1;
+      let llamadasExitosas = 0;
+      let buzonesCortadosPaciente = 0;
+      let cortesPreCobroPaciente = 0;
+
+      if (realSessions.length > 0) {
+        llamadasIntentos = realSessions.length;
+        realSessions.forEach(sess => {
+          const isBuzon =
+            Boolean(sess.deteccion_buzon) ||
+            sess.estado_llamada === 'buzon_cortado' ||
+            sess.estado_llamada === 'cancelada_pre_cobro';
+          if (isBuzon) {
+            llamadaCortadaPorBuzon = true;
+            buzonesCortadosPaciente += 1;
+            if (sess.cobro_carrier_evitado) {
+              cortePreCobroCarrier = true;
+              cortesPreCobroPaciente += 1;
+            }
+            capaDeteccionBuzon = sess.capa_deteccion || 'pre_answer_sip_183';
+          } else if (isSessionBillable(sess)) {
+            llamadaContestada = true;
+            llamadasExitosas += 1;
+            segundosLlamada += Math.max(0, Number(sess.duracion_segundos) || 0);
+          }
+        });
+      } else {
+        const callRoll = rng();
+        llamadaContestada = callRoll > 0.14;
+        if (llamadaContestada) {
+          segundosLlamada = Math.floor(65 + rng() * 95);
+          llamadasExitosas = 1;
+        } else {
+          // Del 14% sin respuesta: mitad interceptada en buzón antes del cobro carrier (SIP 183)
+          llamadaCortadaPorBuzon = callRoll <= 0.08;
+          cortePreCobroCarrier = llamadaCortadaPorBuzon;
+          capaDeteccionBuzon = llamadaCortadaPorBuzon ? 'pre_answer_sip_183' : 'ring_timeout_pre_answer';
+          if (llamadaCortadaPorBuzon) {
+            buzonesCortadosPaciente = 1;
+            cortesPreCobroPaciente = 1;
+          }
+        }
+      }
+
       const cobroLlamada = llamadaContestada ? (segundosLlamada * PRICING_CONSTANTS.PRICE_CALL_PER_SECOND) : 0;
 
       // 2. WHATSAPP
@@ -121,12 +223,30 @@ export const billingService = {
       const waExitosos = waEntregado ? 1 : 0;
       const cobroWa = waEntregado ? PRICING_CONSTANTS.PRICE_WA_UTILITY : 0;
 
-      // 3. SMS
-      // 92% de entrega efectiva (confirmación de operador)
-      const smsIntentos = (canalesRegistrados.sms && canalesRegistrados.sms > 0) ? 1 : (rng() > 0.3 ? 1 : 0);
-      const smsEntregado = smsIntentos > 0 ? (rng() > 0.08) : false;
-      const smsExitosos = smsEntregado ? 1 : 0;
-      const cobroSms = smsEntregado ? PRICING_CONSTANTS.PRICE_SMS : 0;
+      // 3. SMS (Exclusivo vía OpenVox SIM Cards 1..32; intentos fallidos purgados = $0 COP)
+      let smsIntentos = 0;
+      let smsExitosos = 0;
+      let smsWinningPort = null;
+      let smsPurgedCount = 0;
+
+      if (realSms.length > 0) {
+        smsIntentos = realSms.length;
+        realSms.forEach(s => {
+          if (s.status === 'sent') {
+            smsExitosos += 1;
+            smsWinningPort = s.winning_port || smsWinningPort;
+          }
+          if (Array.isArray(s.purged_ports)) {
+            smsPurgedCount += s.purged_ports.length;
+          }
+        });
+      } else {
+        smsIntentos = (canalesRegistrados.sms && canalesRegistrados.sms > 0) ? 1 : (rng() > 0.3 ? 1 : 0);
+        const smsEntregado = smsIntentos > 0 ? (rng() > 0.08) : false;
+        smsExitosos = smsEntregado ? 1 : 0;
+      }
+      const smsEntregado = smsExitosos > 0;
+      const cobroSms = smsExitosos * PRICING_CONSTANTS.PRICE_SMS;
 
       // 4. E-MAIL
       // 95% de entrega en bandeja (no rebotado)
@@ -164,6 +284,11 @@ export const billingService = {
 
         // Métricas de entrega y éxito
         contactadoExitoso: llamadaContestada,
+        llamadaCortadaPorBuzon,
+        cortePreCobroCarrier,
+        capaDeteccionBuzon,
+        buzonesCortados: buzonesCortadosPaciente,
+        cortesPreCobro: cortesPreCobroPaciente,
         segundosLlamada,
         llamadasIntentos,
         llamadasExitosas,
@@ -187,15 +312,28 @@ export const billingService = {
       patients.push(pacienteData);
 
       // Crear logs detallados de eventos para auditoría de facturación
+      const callEstado = llamadaContestada
+        ? 'Contestada'
+        : llamadaCortadaPorBuzon
+        ? (cortePreCobroCarrier ? 'Buzón Pre-Cobro ($0 COP)' : 'Buzón Cortado ($0 COP)')
+        : 'No Contestó';
+      const callDetalle = llamadaContestada
+        ? `${segundosLlamada} seg hablados con IA`
+        : llamadaCortadaPorBuzon
+        ? `Corte automático anti-buzón (${capaDeteccionBuzon}) antes de facturación`
+        : '0 seg hablados (corte previo al salto a buzón)';
+
       logs.push({
         id: `log-call-${pacienteData.id}`,
         timestamp: `${fechaAtencion} ${horaAtencion}`,
         paciente: nombreCompleto,
         documento: docNum,
         canal: 'Llamada IA',
-        estado: llamadaContestada ? 'Contestada' : 'No Contestó',
+        estado: callEstado,
         exito: llamadaContestada,
-        detalle: llamadaContestada ? `${segundosLlamada} seg hablados con IA` : '0 seg hablados (timbró sin respuesta)',
+        esBuzonCortado: llamadaCortadaPorBuzon,
+        cobroEvitadoCarrier: cortePreCobroCarrier,
+        detalle: callDetalle,
         facturable: llamadaContestada,
         valorCobrado: Math.round(cobroLlamada)
       });
@@ -219,10 +357,12 @@ export const billingService = {
           timestamp: `${fechaAtencion} ${horaAtencion}`,
           paciente: nombreCompleto,
           documento: docNum,
-          canal: 'SMS',
-          estado: smsEntregado ? 'Entregado' : 'No Entregado',
+          canal: 'SMS OpenVox GSM',
+          estado: smsEntregado ? 'Entregado SIM' : 'Sin Señal (Purgado $0 COP)',
           exito: smsEntregado,
-          detalle: smsEntregado ? 'Confirmación DLR operador (DELIVRD)' : 'Fallo de cobertura operador móvil',
+          detalle: smsEntregado
+            ? (smsWinningPort ? `Enviado vía Puerto SIM ${smsWinningPort} (purgados: ${smsPurgedCount})` : 'Confirmación SIM Gateway OpenVox')
+            : 'Puertos SIM sin señal — intento eliminado para evitar reenvío',
           facturable: smsEntregado,
           valorCobrado: Math.round(cobroSms)
         });
@@ -250,6 +390,10 @@ export const billingService = {
     const totalSegundosExitosos = patients.reduce((acc, p) => acc + p.segundosLlamada, 0);
     const totalLlamadasExitosas = patients.reduce((acc, p) => acc + p.llamadasExitosas, 0);
     const totalLlamadasIntentos = patients.reduce((acc, p) => acc + p.llamadasIntentos, 0);
+    const totalBuzonesCortados = patients.reduce((acc, p) => acc + (p.buzonesCortados || 0), 0);
+    const totalCortesPreCobro = patients.reduce((acc, p) => acc + (p.cortesPreCobro || 0), 0);
+    // Estimado conservador: cada buzón cortado ahorra un minuto base ($720 COP venta / ~$360 costo) frente a contestador sin corte
+    const ahorroAntiBuzonCop = totalBuzonesCortados * Math.round(60 * PRICING_CONSTANTS.PRICE_CALL_PER_SECOND);
 
     const totalWaExitosos = patients.reduce((acc, p) => acc + p.waExitosos, 0);
     const totalWaIntentos = patients.reduce((acc, p) => acc + p.waIntentos, 0);
@@ -289,6 +433,9 @@ export const billingService = {
         totalSegundosExitosos,
         totalLlamadasExitosas,
         totalLlamadasIntentos,
+        totalBuzonesCortados,
+        totalCortesPreCobro,
+        ahorroAntiBuzonCop,
         totalWaExitosos,
         totalWaIntentos,
         totalSmsExitosos,
@@ -302,6 +449,9 @@ export const billingService = {
           exitosas: totalLlamadasExitosas,
           intentos: totalLlamadasIntentos,
           fallidas: totalLlamadasIntentos - totalLlamadasExitosas,
+          buzonesCortados: totalBuzonesCortados,
+          cortesPreCobro: totalCortesPreCobro,
+          ahorroAntiBuzonCop,
           tasaExito: totalLlamadasIntentos > 0 ? ((totalLlamadasExitosas / totalLlamadasIntentos) * 100).toFixed(1) : '100.0',
           facturado: totalFacturadoLlamadas,
           tarifa: `$${PRICING_CONSTANTS.PRICE_CALL_PER_SECOND.toFixed(2)} / seg`
