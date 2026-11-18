@@ -63,6 +63,27 @@ const DashboardPage = () => {
 
   const fetchPatientsSummary = useCallback(async (hospital_id) => {
     try {
+      const { data: rpcRows, error: rpcErr } = await withTimeout(
+        supabase.rpc('get_dashboard_patient_demography', {
+          p_hospital_id: hospital_id || null,
+        }),
+        15000
+      );
+
+      if (!rpcErr && Array.isArray(rpcRows) && rpcRows.length > 0) {
+        const row = rpcRows[0];
+        return {
+          count: Number(row.total_patients || 0),
+          demography: {
+            hombres: Number(row.hombres || 0),
+            mujeres: Number(row.mujeres || 0),
+            ninos: Number(row.ninos || 0),
+            ninas: Number(row.ninas || 0),
+          },
+          patients: [],
+        };
+      }
+
       let query = supabase
         .from('patients')
         .select('patient_id, name, sex, birthdate, program, zona, grupo_riesgo, created_at', { count: 'exact' });
@@ -74,10 +95,11 @@ const DashboardPage = () => {
       const list = data || [];
       return {
         count: typeof count === 'number' ? count : list.length,
+        demography: null,
         patients: list,
       };
     } catch {
-      return { count: 0, patients: [] };
+      return { count: 0, demography: null, patients: [] };
     }
   }, []);
 
@@ -155,7 +177,7 @@ const DashboardPage = () => {
       const vapiSessions = vapiRes?.data || [];
       const smsDispatches = smsRes?.data || [];
       const rawEvidence = evidenceRes?.data || [];
-      const hospitalEvidence = hospital_id
+      const hospitalEvidence = hospital_id && allowedPatientIds.size > 0
         ? rawEvidence.filter((ev) => ev?.patient_id && allowedPatientIds.has(String(ev.patient_id)))
         : rawEvidence;
 
@@ -232,7 +254,7 @@ const DashboardPage = () => {
         totalInteractions: interactionsSummary.count || 0,
       });
 
-      calculateCampaignStats(campaignsData, patientsSummary.patients);
+      calculateCampaignStats(campaignsData, patientsSummary.patients, patientsSummary.demography);
       generateRecentActivity(campaignsData, interactionsSummary);
     } catch (err) {
       setError(err?.message || 'Error cargando dashboard');
@@ -290,26 +312,33 @@ const DashboardPage = () => {
     return age;
   };
 
-  const calculateCampaignStats = (campaigns = [], realPatients = []) => {
+  const calculateCampaignStats = (campaigns = [], realPatients = [], serverDemography = null) => {
     const statuses = campaigns.map(getEffectiveCampaignStatus);
     const enProgreso = statuses.filter((s) => s === 'Activa').length;
     const completadas = statuses.filter((s) => s === 'Completada').length;
     const programadas = statuses.filter((s) => s === 'Programada' || s === 'No Enviada').length;
 
-    // Calcular demografía real a partir de los pacientes registrados en Supabase
+    // Calcular demografía real a partir de RPC de BD (o pacientes cargados como respaldo)
     let hombres = 0, mujeres = 0, ninos = 0, ninas = 0;
-    (realPatients || []).forEach((p) => {
-      const sexNorm = String(p?.sex || p?.sexo || '').trim().toLowerCase();
-      const isFemale = sexNorm === 'f' || sexNorm === 'femenino' || sexNorm === 'mujer' || sexNorm === 'female';
-      const age = calculateAgeFromBirthdate(p?.birthdate || p?.fecha_nacimiento);
-      if (age !== null && age < 18) {
-        if (isFemale) ninas++;
-        else ninos++;
-      } else {
-        if (isFemale) mujeres++;
-        else hombres++;
-      }
-    });
+    if (serverDemography) {
+      hombres = Number(serverDemography.hombres || 0);
+      mujeres = Number(serverDemography.mujeres || 0);
+      ninos = Number(serverDemography.ninos || 0);
+      ninas = Number(serverDemography.ninas || 0);
+    } else {
+      (realPatients || []).forEach((p) => {
+        const sexNorm = String(p?.sex || p?.sexo || '').trim().toLowerCase();
+        const isFemale = sexNorm === 'f' || sexNorm === 'femenino' || sexNorm === 'mujer' || sexNorm === 'female';
+        const age = calculateAgeFromBirthdate(p?.birthdate || p?.fecha_nacimiento);
+        if (age !== null && age < 18) {
+          if (isFemale) ninas++;
+          else ninos++;
+        } else {
+          if (isFemale) mujeres++;
+          else hombres++;
+        }
+      });
+    }
 
     setCampaignStats({
       enProgreso,

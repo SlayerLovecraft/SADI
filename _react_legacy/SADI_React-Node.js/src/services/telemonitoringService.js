@@ -1199,7 +1199,7 @@ export const telemonitoringService = {
         return data.map(p => {
           const birthdate = p.birthdate || p.birth_date || p.fecha_nacimiento;
           let curso = p.curso_vida || 'adultez';
-          if (birthdate) {
+          if (!p.curso_vida && birthdate) {
             const b = new Date(birthdate);
             if (!isNaN(b.getTime())) {
               const now = new Date();
@@ -1214,13 +1214,13 @@ export const telemonitoringService = {
               else curso = 'vejez';
             }
           }
-          if (p.program?.toLowerCase().includes('embarazo') || p.program?.toLowerCase().includes('materno') || p.es_gestante) {
-            curso = 'materno_perinatal';
+          if (!p.curso_vida && (p.program?.toLowerCase().includes('embarazo') || p.program?.toLowerCase().includes('materno') || p.es_gestante)) {
+            curso = 'preventivo_mujer';
           }
 
           const assignedEmail = getAssignedDoctorEmailForPatient(p);
           const docInfoMap = {
-            'paola.gil@sadi.med.co': { id: 'd1111111-1111-1111-1111-111111111111', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
+            'paola.gil@sadi.med.co': { id: 'a9165a9c-ebb5-4419-8499-dfce0b5c9c0c', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
             'juan.bermudez@sadi.med.co': { id: 'd2222222-2222-2222-2222-222222222222', name: 'Dr. Juan Camilo Bermúdez Orozco', email: 'juan.bermudez@sadi.med.co' },
             'sandra.castano@sadi.med.co': { id: 'd3333333-3333-3333-3333-333333333333', name: 'Dra. Sandra Milena Castaño Ríos', email: 'sandra.castano@sadi.med.co' },
             'fernando.rincon@sadi.med.co': { id: 'd4444444-4444-4444-4444-444444444444', name: 'Dr. Fernando Rincón Velásquez', email: 'fernando.rincon@sadi.med.co' },
@@ -1228,7 +1228,7 @@ export const telemonitoringService = {
             'mauricio.villa@sadi.med.co': { id: 'd6666666-6666-6666-6666-666666666666', name: 'Dr. Mauricio Villa Cardona', email: 'mauricio.villa@sadi.med.co' },
             'natalia.ocampo@sadi.med.co': { id: 'd7777777-7777-7777-7777-777777777777', name: 'Dra. Natalia Ocampo Henao', email: 'natalia.ocampo@sadi.med.co' },
             'carlos.salazar@sadi.med.co': { id: 'd8888888-8888-8888-8888-888888888888', name: 'Dr. Carlos Eduardo Salazar Montoya', email: 'carlos.salazar@sadi.med.co' },
-            'alejandro.morales@sadi.med.co': { id: 'd0100000-0000-0000-0000-000000000001', name: 'Dr. Alejandro Morales Restrepo', email: 'alejandro.morales@sadi.med.co' },
+            'alejandro.morales@sadi.med.co': { id: 'd39515b8-39cb-41e7-b1f8-ceb5fa778371', name: 'Dr. Alejandro Morales Restrepo', email: 'alejandro.morales@sadi.med.co' },
             'valentina.gomez@sadi.med.co': { id: 'd0200000-0000-0000-0000-000000000002', name: 'Dra. Valentina Gómez Salazar', email: 'valentina.gomez@sadi.med.co' },
             'daniel.vargas@sadi.med.co': { id: 'd0300000-0000-0000-0000-000000000003', name: 'Dr. Daniel Felipe Vargas Ruiz', email: 'daniel.vargas@sadi.med.co' }
           };
@@ -1244,7 +1244,7 @@ export const telemonitoringService = {
             telefono: p.phone || p.telefono,
             fecha_nacimiento: birthdate,
             curso_vida: curso,
-            doctor_asignado_id: assignedDoc.id,
+            doctor_asignado_id: p.doctor_id || assignedDoc.id,
             doctor_nombre: assignedDoc.name,
             doctor_email: assignedDoc.email,
             dispositivos_caseros: p.program?.toLowerCase().includes('hipertension')

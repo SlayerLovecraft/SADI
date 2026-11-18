@@ -126,7 +126,7 @@ export default function PatientTelemetryTable({
                             {patient.nombre}
                           </div>
                           <div className="text-[10px] text-gray-500 dark:text-slate-400 font-mono">
-                            CC: {patient.cc || patient.cedula || 'N/A'} {patient.edad ? `· ${patient.edad} años` : ''} {patient.sexo ? `(${patient.sexo})` : ''}
+                            {patient.tipo_documento || 'CC'}: {patient.cc || patient.cedula || 'N/A'} {patient.edad !== null && patient.edad !== undefined ? `· ${patient.edad} años` : ''} {patient.sexo ? `(${patient.sexo})` : ''}
                           </div>
                         </div>
                       </div>
@@ -154,11 +154,22 @@ export default function PatientTelemetryTable({
                       )}
                     </td>
 
-                    {/* 3. Grupos de Vida */}
+                    {/* 3. Grupos de Vida y Profesional Asignado */}
                     <td className="p-3.5 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60">
-                        {patient.grupo_vida || patient.curso_vida || 'Primera Infancia'}
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60">
+                          {patient.grupo_vida || patient.curso_vida || 'Primera Infancia'}
+                        </span>
+                        {patient.doctor_nombre && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-slate-400 max-w-[190px] truncate"
+                            title={`Profesional asignado: ${patient.doctor_nombre}`}
+                          >
+                            <User className="w-2.5 h-2.5 text-blue-500 shrink-0" />
+                            <span className="truncate">{patient.doctor_nombre}</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* 4. Grupos de Riesgo */}

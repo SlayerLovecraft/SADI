@@ -86,15 +86,21 @@ function mapSupabaseToFrontend(patient) {
 
   return {
     id: patient.patient_id || patient.id,
+    patient_id: patient.patient_id || patient.id,
     nombre: patient.name || patient.nombre,
     telefono: patient.phone || patient.telefono,
     email: patient.email,
     cc: patient.document || patient.cc || patient.numero_documento,
+    tipo_documento: patient.tipo_documento || 'CC',
+    llave: patient.llave || null,
+    eps: patient.eps || null,
+    ips_asignada: patient.ips_asignada || null,
     edad: age,
     fechaNacimiento: patient.birthdate || patient.fecha_nacimiento,
     sexo: patient.sex === 'Masculino' || patient.sexo === 'masculino' || patient.sexo === 'M' ? 'M' : 'F',
     ciudad: patient.city || patient.ciudad || '',
-    programa: cursoVida,
+    programa: patient.program || cursoVida,
+    program: patient.program || cursoVida,
     direccion: patient.address || patient.direccion || '',
     hospitalId: patient.hospital_id || patient.hospitalId,
     fechaRegistro: patient.created_at || new Date().toISOString(),
@@ -104,6 +110,11 @@ function mapSupabaseToFrontend(patient) {
     grupo_riesgo: grupoRiesgo,
     grupo_vida: cursoVida,
     curso_vida: cursoVida,
+    curso_vida_key: cvObj.key,
+    doctor_id: patient.doctor_id || null,
+    doctor_nombre: patient.doctor_name || patient.doctor_nombre || null,
+    doctor_email: patient.doctor_email || null,
+    doctor_specialty: patient.doctor_specialty || null,
     tipo_usuario: patient.tipo_usuario || 'Activo',
     dispositivos: dispositivos,
     dispositivos_caseros: dispositivos,
@@ -145,6 +156,160 @@ function getCurrentHospitalId() {
 }
 
 export const patientService = {
+  /**
+   * Obtener pacientes paginados y filtrados en servidor (soporta 142k+ registros sin truncar a 1,000)
+   */
+  async getPaginated({
+    page = 1,
+    pageSize = 50,
+    search = '',
+    cursoVida = 'todos',
+    doctorId = null,
+    hospitalId: overrideHospitalId = null,
+  } = {}) {
+    try {
+      const hospitalId = overrideHospitalId || getCurrentHospitalId();
+      if (!hospitalId) {
+        return { success: false, error: 'No se pudo identificar el hospital del usuario', data: [], totalCount: 0 };
+      }
+
+      const safePage = Math.max(1, Number(page) || 1);
+      const safeSize = Math.max(1, Math.min(250, Number(pageSize) || 50));
+
+      const { data: rpcData, error: rpcError } = await withTimeout(
+        supabase.rpc('get_patients_paginated', {
+          p_hospital_id: hospitalId,
+          p_search: search?.trim() || null,
+          p_curso_vida: cursoVida || 'todos',
+          p_doctor_id: doctorId || null,
+          p_page: safePage,
+          p_page_size: safeSize,
+        }),
+        15000,
+        'Tiempo de espera agotado al consultar pacientes paginados'
+      );
+
+      if (!rpcError && Array.isArray(rpcData)) {
+        const totalCount = rpcData.length > 0 ? Number(rpcData[0].total_count || 0) : 0;
+        let mappedData = rpcData.map(mapSupabaseToFrontend);
+
+        // Si estamos buscando o filtrando en una página <=50, el total exacto viene en row.total_count;
+        // si rpcData viene vacío y page === 1 con filtros, totalCount es 0.
+        if (mappedData.length > 0) {
+          try {
+            const patientIds = mappedData.map((p) => p.patient_id || p.id).filter(Boolean);
+            const { data: vitals } = await supabase
+              .from('signos_vitales')
+              .select('*')
+              .in('paciente_id', patientIds)
+              .order('fecha', { ascending: true });
+
+            if (vitals && vitals.length > 0) {
+              const vitalsByPatient = {};
+              vitals.forEach((v) => {
+                if (!v.paciente_id) return;
+                if (!vitalsByPatient[v.paciente_id]) vitalsByPatient[v.paciente_id] = [];
+                const fStr = new Date(v.fecha).toISOString().replace('T', ' ').substring(0, 16);
+                const temp = parseFloat(v.temperatura) || 36.5;
+                const pa = (v.presion_sistolica && v.presion_diastolica) ? ` · PA: ${v.presion_sistolica}/${v.presion_diastolica}` : '';
+                const glu = v.glucometria ? ` · Gluc: ${v.glucometria} mg/dL` : '';
+                const fc = v.ritmo_cardiaco ? ` · FC: ${v.ritmo_cardiaco} lpm` : '';
+                const peso = v.peso ? ` · Peso: ${v.peso} kg` : '';
+                vitalsByPatient[v.paciente_id].push({
+                  fecha: fStr,
+                  valor: temp,
+                  etiqueta: `${temp} °C${pa}${glu}${fc}${peso}`,
+                });
+              });
+              mappedData = mappedData.map((p) => {
+                const extraVitals = vitalsByPatient[p.id] || vitalsByPatient[p.patient_id];
+                if (extraVitals && extraVitals.length > 0) {
+                  const lastVital = extraVitals[extraVitals.length - 1];
+                  return {
+                    ...p,
+                    historial_medidas: extraVitals,
+                    valores_criticos: {
+                      tiene_critico: false,
+                      tipo: 'Signos Vitales Registrados por Paciente',
+                      valor: lastVital.etiqueta,
+                      estado: 'Normal / Estable',
+                      fecha_hora: lastVital.fecha,
+                    },
+                  };
+                }
+                return p;
+              });
+            }
+          } catch {
+            // signos_vitales enrichment is optional
+          }
+        }
+
+        return {
+          success: true,
+          data: mappedData,
+          totalCount,
+          page: safePage,
+          pageSize: safeSize,
+        };
+      }
+
+      // Fallback directo por rango si el RPC aún no existiera
+      const from = (safePage - 1) * safeSize;
+      const to = from + safeSize - 1;
+      let query = supabase
+        .from('patients')
+        .select('*', { count: 'exact' })
+        .eq('hospital_id', hospitalId)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (search?.trim()) {
+        const q = search.trim();
+        query = query.or(`name.ilike.%${q}%,document.ilike.%${q}%,phone.ilike.%${q}%,city.ilike.%${q}%`);
+      }
+      if (cursoVida && cursoVida !== 'todos') {
+        query = query.eq('curso_vida', cursoVida);
+      }
+      if (doctorId) {
+        query = query.eq('doctor_id', doctorId);
+      }
+
+      const { data, count, error } = await withTimeout(query, 15000, 'Tiempo de espera agotado');
+      if (error) throw error;
+      return {
+        success: true,
+        data: (data || []).map(mapSupabaseToFrontend),
+        totalCount: Number(count || 0),
+        page: safePage,
+        pageSize: safeSize,
+      };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Error consultando pacientes paginados', data: [], totalCount: 0 };
+    }
+  },
+
+  /**
+   * Ejecutar motor automático en BD de clasificación por edad (Res. 3280) y asignación 1:1 a doctores
+   */
+  async autoAssignDoctors(onlyUnassigned = false, overrideHospitalId = null) {
+    try {
+      const hospitalId = overrideHospitalId || getCurrentHospitalId();
+      const { data, error } = await withTimeout(
+        supabase.rpc('auto_assign_patients_doctors', {
+          p_hospital_id: hospitalId || null,
+          p_only_unassigned: Boolean(onlyUnassigned),
+        }),
+        45000,
+        'Tiempo de espera agotado al ejecutar asignación automática'
+      );
+      if (error) return { success: false, error: error.message };
+      return { success: true, ...(data || {}) };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Error en asignación automática' };
+    }
+  },
+
   /**
    * Obtener SOLO los pacientes del hospital logueado
    * Filtrado manual por hospital_id
@@ -314,7 +479,7 @@ export const patientService = {
     } catch (error) {
       console.warn('⚠️ Excepción al cargar pacientes, fallback a pacientes 3280 con segmentación clínica:', error);
       return {
-        success: true, 
+        success: true,
         data: SEED_PATIENTS_3280.map(p => {
           const cvObj = getPatientCursoVida(p);
           const grObj = getPatientGrupoRiesgo(p);
@@ -772,23 +937,26 @@ export const patientService = {
       if (ids.length === 0) return { success: true, updated: 0 };
 
       const payload = { doctor_id: doctorId };
+      const chunkSize = 150;
+      let totalUpdated = 0;
 
-      const run = async () => withTimeout(
-        supabase
-          .from('patients')
-          .update(payload)
-          .in('patient_id', ids)
-          .eq('hospital_id', hospitalId)
-          .select('patient_id'),
-        20000, // Mayor timeout para bulk update
-        'Tiempo de espera agotado al asignar doctores'
-      );
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const { data, error } = await withTimeout(
+          supabase
+            .from('patients')
+            .update(payload)
+            .in('patient_id', chunk)
+            .eq('hospital_id', hospitalId)
+            .select('patient_id'),
+          20000,
+          'Tiempo de espera agotado al asignar doctores'
+        );
+        if (error) return { success: false, error: error.message, updated: totalUpdated };
+        totalUpdated += Array.isArray(data) ? data.length : 0;
+      }
 
-      const { data, error } = await run();
-
-      if (error) return { success: false, error: error.message, updated: 0 };
-
-      return { success: true, updated: Array.isArray(data) ? data.length : 0 };
+      return { success: true, updated: totalUpdated };
     } catch (error) {
       return { success: false, error: error?.message || 'Error asignando doctor', updated: 0 };
     }

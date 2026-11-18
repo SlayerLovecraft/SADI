@@ -31,6 +31,7 @@ import {
 } from '@/services/callCapacityService';
 import { patientService } from '@/services/patientService';
 import { telemonitoringService } from '@/services/telemonitoringService';
+import { staffService } from '@/services/staffService';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getAllowedCursoKeysForUser,
@@ -121,34 +122,46 @@ function ResolutionAnnualMatrix({
     async function loadInitialData() {
       setLoadingPatients(true);
       try {
-        const [res, teleList] = await Promise.all([
-          patientService.getAll(),
-          telemonitoringService.getPatients().catch(() => [])
-        ]);
-        const basePatients = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
-        const telePatients = Array.isArray(teleList) ? teleList : [];
+        if (doctorAccess.restricted) {
+          const docRes = await staffService.getAssignedPatientsPaginated({
+            doctorId: user?.doctor_id || user?.id,
+            cursos: doctorAccess.keys,
+            hospitalId: user?.hospitalId,
+            mode: 'scope',
+            page: 1,
+            pageSize: 250,
+          }).catch(() => ({ data: [] }));
+          setPatients(Array.isArray(docRes?.data) ? docRes.data : []);
+        } else {
+          const [res, teleList] = await Promise.all([
+            patientService.getAll(),
+            telemonitoringService.getPatients().catch(() => [])
+          ]);
+          const basePatients = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+          const telePatients = Array.isArray(teleList) ? teleList : [];
 
-        let mergedPatients = basePatients;
-        if (telePatients.length > 0) {
-          const baseById = new Map();
-          basePatients.forEach((bp) => {
-            if (bp?.id) baseById.set(bp.id, bp);
-            if (bp?.patient_id) baseById.set(bp.patient_id, bp);
-          });
-          mergedPatients = telePatients.map((tp) => {
-            const bp = baseById.get(tp.id) || baseById.get(tp.patient_id) || {};
-            return {
-              ...bp,
-              ...tp,
-              program: tp.program || bp.program || tp.programa || bp.programa || '',
-              programa: tp.program || tp.programa || bp.programa || bp.program || '',
-              curso_vida: tp.curso_vida || bp.curso_vida || '',
-              birthdate: tp.birthdate || bp.birthdate || tp.fecha_nacimiento || bp.fecha_nacimiento,
-              fecha_nacimiento: tp.fecha_nacimiento || tp.birthdate || bp.fecha_nacimiento || bp.birthdate
-            };
-          });
+          let mergedPatients = basePatients;
+          if (telePatients.length > 0) {
+            const baseById = new Map();
+            basePatients.forEach((bp) => {
+              if (bp?.id) baseById.set(bp.id, bp);
+              if (bp?.patient_id) baseById.set(bp.patient_id, bp);
+            });
+            mergedPatients = telePatients.map((tp) => {
+              const bp = baseById.get(tp.id) || baseById.get(tp.patient_id) || {};
+              return {
+                ...bp,
+                ...tp,
+                program: tp.program || bp.program || tp.programa || bp.programa || '',
+                programa: tp.program || tp.programa || bp.programa || bp.program || '',
+                curso_vida: tp.curso_vida || bp.curso_vida || '',
+                birthdate: tp.birthdate || bp.birthdate || tp.fecha_nacimiento || bp.fecha_nacimiento,
+                fecha_nacimiento: tp.fecha_nacimiento || tp.birthdate || bp.fecha_nacimiento || bp.birthdate
+              };
+            });
+          }
+          setPatients(mergedPatients);
         }
-        setPatients(mergedPatients);
 
         const stored = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
         setExistingCampaigns(Array.isArray(stored) ? stored : []);

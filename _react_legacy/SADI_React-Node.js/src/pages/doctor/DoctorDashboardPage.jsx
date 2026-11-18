@@ -9,10 +9,12 @@ import { Button } from '@/components/ui/button';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
+import { staffService } from '@/services/staffService';
 import { 
   getDoctorLifeCourseTheme, 
   formatCursosVidaLabel, 
-  CURSO_VIDA_CONFIG 
+  CURSO_VIDA_CONFIG,
+  canonicalizeCursoKey
 } from '@/services/cursoVidaConfig';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 
@@ -22,6 +24,8 @@ const DoctorDashboardPage = () => {
   const [error, setError] = useState(null);
   const [doctorProfile, setDoctorProfile] = useState(null);
   const [assignedPatients, setAssignedPatients] = useState([]);
+  const [assignedTotalCount, setAssignedTotalCount] = useState(0);
+  const [directAssignedCount, setDirectAssignedCount] = useState(0);
   const [alertsCount, setAlertsCount] = useState(0);
   const lastProfileSyncRef = useRef(0);
 
@@ -56,13 +60,50 @@ const DoctorDashboardPage = () => {
       };
       setDoctorProfile(currentDoc);
 
-      // 2. Obtener pacientes asignados (Estricto 1 a 1 según Resolución 3280, sin fallbacks cruzados)
-      const allPatients = await telemonitoringService.getPatients();
-      const myPatients = allPatients.filter(p => isPatientAssignedToDoctor(p, currentDoc));
+      // 2. Obtener estadísticas reales y muestra de pacientes asignados desde RPC SQL (soporta 142k+)
+      const docCursos = Array.isArray(currentDoc?.cursos_vida_asignados) ? currentDoc.cursos_vida_asignados : [];
+      const docId = currentDoc?.doctor_id || currentDoc?.id || null;
+      const hospId = currentDoc?.hospital_id || currentDoc?.hospitalId || user?.hospitalId || null;
+
+      const [statsRes, pageRes, allAlerts] = await Promise.all([
+        staffService.getAssignmentStats(hospId),
+        staffService.getAssignedPatientsPaginated({
+          doctorId: docId,
+          cursos: docCursos,
+          hospitalId: hospId,
+          mode: 'scope',
+          page: 1,
+          pageSize: 10,
+        }),
+        telemonitoringService.getAlerts().catch(() => []),
+      ]);
+
+      let scopeTotal = Number(pageRes?.totalCount || 0);
+      if (statsRes?.success) {
+        if (docCursos.length === 0) scopeTotal = 0;
+        else if (docCursos.includes('todos')) scopeTotal = Number(statsRes.totalPatients || 0);
+        else {
+          const seen = new Set();
+          let sum = 0;
+          docCursos.forEach((rk) => {
+            const ck = canonicalizeCursoKey(rk);
+            if (ck && !seen.has(ck)) {
+              seen.add(ck);
+              sum += Number(statsRes.byCurso?.[ck] || 0);
+            }
+          });
+          scopeTotal = sum;
+        }
+        setDirectAssignedCount(Number(statsRes.byDoctorDirect?.[String(docId)] || 0));
+      } else {
+        setDirectAssignedCount(0);
+      }
+
+      const myPatients = Array.isArray(pageRes?.data) ? pageRes.data : [];
+      setAssignedTotalCount(scopeTotal);
       setAssignedPatients(myPatients);
 
       // 3. Alertas de estos pacientes
-      const allAlerts = await telemonitoringService.getAlerts();
       const myAlerts = (allAlerts || []).filter(a => myPatients.some(p => p.patient_id === a.patient_id || p.id === a.patient_id));
       setAlertsCount(myAlerts.length);
 
@@ -161,9 +202,13 @@ const DoctorDashboardPage = () => {
           <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mis Pacientes</p>
-              <p className="text-2xl font-black text-gray-900 mt-1">{assignedPatients.length}</p>
+              <p className="text-2xl font-black text-gray-900 mt-1">{assignedTotalCount.toLocaleString('es-CO')}</p>
               <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">
-                {assignedPatients.length === 0 ? '0 bajo custodia' : 'Bajo su custodia'}
+                {assignedTotalCount === 0
+                  ? '0 bajo custodia'
+                  : directAssignedCount > 0
+                  ? `${directAssignedCount.toLocaleString('es-CO')} asignados 1:1 directo`
+                  : 'Bajo su custodia'}
               </p>
             </div>
             <div className="h-12 w-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
@@ -196,7 +241,7 @@ const DoctorDashboardPage = () => {
           <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-sm flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Expedientes 3280</p>
-              <p className="text-2xl font-black text-emerald-600 mt-1">{assignedPatients.length}</p>
+              <p className="text-2xl font-black text-emerald-600 mt-1">{assignedTotalCount.toLocaleString('es-CO')}</p>
               <p className="text-[11px] text-emerald-600 font-medium mt-0.5">Historias habilitadas</p>
             </div>
             <div className="h-12 w-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
@@ -217,7 +262,7 @@ const DoctorDashboardPage = () => {
               </div>
               <div>
                 <h3 className="font-bold text-gray-900 text-sm">Mis Pacientes</h3>
-                <p className="text-xs text-gray-500">{assignedPatients.length} pacientes</p>
+                <p className="text-xs text-gray-500">{assignedTotalCount.toLocaleString('es-CO')} pacientes</p>
               </div>
             </div>
             <ChevronRight className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors" />
@@ -288,7 +333,7 @@ const DoctorDashboardPage = () => {
               to="/doctor/patients"
               className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
             >
-              Ver todos ({assignedPatients.length}) <ChevronRight className="h-4 w-4" />
+              Ver todos ({assignedTotalCount.toLocaleString('es-CO')}) <ChevronRight className="h-4 w-4" />
             </Link>
           </div>
 

@@ -7,12 +7,13 @@ import Layout from '@/components/Layout';
 import CSVUploadDialog from '@/components/CSVUploadDialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, User, Users, Phone, MapPin, Edit, Trash2, Mail } from 'lucide-react';
+import { Search, Plus, User, Users, Phone, MapPin, Edit, Trash2, Mail, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
+import { CURSOS_VIDA_LIST } from '@/services/cursoVidaConfig';
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils';
 import PatientTelemetryTable from '@/components/PatientTelemetryTable';
 import { supabase } from '@/lib/supabase'
@@ -37,13 +38,20 @@ import {
 
 const PatientsPage = () => {
   const [patients, setPatients] = useState([]);
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [cursoFilter, setCursoFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
   const [creatingPatient, setCreatingPatient] = useState(false);
+  const [autoAssigning, setAutoAssigning] = useState(false);
   const [selectedPatientIds, setSelectedPatientIds] = useState([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [showBulkAssignDialog, setShowBulkAssignDialog] = useState(false);
@@ -83,18 +91,31 @@ const PatientsPage = () => {
   });
 
   useEffect(() => {
-    loadPatients();
-  }, [user]);
+    const t = setTimeout(() => {
+      setPage(1);
+      setDebouncedSearch(searchTerm);
+    }, 320);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
-  const loadPatients = async (showLoading = true) => {
-    if (showLoading) setLoading(true);
+  useEffect(() => {
+    loadPatients(patients.length === 0);
+  }, [user, page, pageSize, cursoFilter, debouncedSearch]);
+
+  const loadPatients = async (showFullSpinner = false) => {
+    if (showFullSpinner) setLoading(true);
+    else setTableLoading(true);
     try {
-      console.log('🔄 Cargando pacientes...');
-      const result = await patientService.getAll();
-      
+      const result = await patientService.getPaginated({
+        page,
+        pageSize,
+        search: debouncedSearch,
+        cursoVida: cursoFilter,
+      });
+
       if (result.success && result.data) {
         setPatients(result.data);
-        console.log(`✅ ${result.data.length} pacientes cargados`);
+        setTotalPatients(Number(result.totalCount ?? result.data.length));
       } else {
         toast({
           title: "Error al cargar pacientes",
@@ -110,7 +131,30 @@ const PatientsPage = () => {
         variant: "destructive"
       });
     } finally {
-      if (showLoading) setLoading(false);
+      if (showFullSpinner) setLoading(false);
+      setTableLoading(false);
+    }
+  };
+
+  const handleAutoAssignAll = async () => {
+    setAutoAssigning(true);
+    try {
+      const res = await patientService.autoAssignDoctors(false);
+      if (res.success) {
+        toast({
+          title: "✅ Clasificación y Asignación Automática 3280",
+          description: `Pacientes clasificados y sincronizados con profesionales de staff (actualizados: ${(res.updated ?? 0).toLocaleString('es-CO')}).`,
+        });
+        await loadPatients(false);
+      } else {
+        toast({
+          title: "No se pudo ejecutar asignación automática",
+          description: res.error || "Verifica la migración SQL en Supabase",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setAutoAssigning(false);
     }
   };
 
@@ -303,12 +347,8 @@ const PatientsPage = () => {
     setShowEditDialog(true);
   };
 
-  const filteredPatients = patients.filter(p =>
-    p.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.telefono?.includes(searchTerm) ||
-    p.ciudad?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.cc?.includes(searchTerm)
-  );
+  const filteredPatients = patients;
+  const totalPages = Math.max(1, Math.ceil(totalPatients / pageSize));
 
   const filteredPatientIds = useMemo(() => filteredPatients.map((p) => p.id), [filteredPatients]);
   const selectedIdSet = useMemo(() => new Set(selectedPatientIds), [selectedPatientIds]);
@@ -524,7 +564,7 @@ const PatientsPage = () => {
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                   Censo oficial y telemonitoreo clínico de pacientes registrados en el hospital •{' '}
                   <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60">
-                    {patients.length} pacientes vinculados
+                    {totalPatients.toLocaleString('es-CO')} pacientes vinculados
                   </span>
                 </p>
               </div>
@@ -532,9 +572,21 @@ const PatientsPage = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {(user.role === 'hospital_admin' || user.role === 'operator') && (
+              <Button
+                variant="outline"
+                onClick={handleAutoAssignAll}
+                disabled={autoAssigning}
+                className="bg-white dark:bg-slate-800 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 font-semibold flex items-center gap-2"
+                title="Clasifica por edad Res. 3280 y asigna automáticamente un médico/enfermero por paciente"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>{autoAssigning ? 'Asignando...' : 'Auto-Asignar 3280'}</span>
+              </Button>
+            )}
+            {(user.role === 'hospital_admin' || user.role === 'operator') && (
               <CSVUploadDialog 
                 hospitalId={user.hospitalId}
-                onUploadComplete={loadPatients}
+                onUploadComplete={() => loadPatients(false)}
               />
             )}
             
@@ -808,15 +860,46 @@ const PatientsPage = () => {
         {/* Contenedor Principal de Pacientes y Telemetría */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 transition-colors">
           <div className="mb-6 space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar por nombre, teléfono, ciudad o CC..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              />
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar en BD por nombre, CC, teléfono o barrio..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                />
+              </div>
+              <select
+                value={cursoFilter}
+                onChange={(e) => {
+                  setCursoFilter(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filtrar por Curso de Vida"
+                className="px-3.5 py-2.5 text-sm font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="todos">Todos los Cursos de Vida (Res. 3280)</option>
+                {CURSOS_VIDA_LIST.filter((c) => c.id !== 'todos' && c.id !== 'sin_asignacion').map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.letra}. {c.nombre} ({c.rango})
+                  </option>
+                ))}
+              </select>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                aria-label="Registros por página"
+                className="px-3 py-2.5 text-sm font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500"
+              >
+                <option value={25}>25 / pág.</option>
+                <option value={50}>50 / pág.</option>
+                <option value={100}>100 / pág.</option>
+              </select>
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
@@ -868,7 +951,7 @@ const PatientsPage = () => {
             </div>
           </div>
 
-          <div className="mt-4">
+          <div className={`mt-4 transition-opacity ${tableLoading ? 'opacity-60' : 'opacity-100'}`}>
             <PatientTelemetryTable
               patients={filteredPatients}
               selectable={true}
@@ -876,8 +959,51 @@ const PatientsPage = () => {
               onToggleSelect={togglePatientSelection}
               onEditPatient={openEditDialog}
               onDeletePatient={setPatientToDelete}
-              emptyMessage={searchTerm ? 'No se encontraron pacientes que coincidan con la búsqueda.' : 'No hay pacientes registrados en este hospital.'}
+              emptyMessage={searchTerm || cursoFilter !== 'todos' ? 'No se encontraron pacientes que coincidan con la búsqueda o curso de vida.' : 'No hay pacientes registrados en este hospital.'}
             />
+          </div>
+
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">
+            <div>
+              Mostrando{' '}
+              <span className="font-bold text-slate-900 dark:text-white">
+                {totalPatients === 0 ? 0 : ((page - 1) * pageSize + 1).toLocaleString('es-CO')}
+              </span>
+              {' – '}
+              <span className="font-bold text-slate-900 dark:text-white">
+                {Math.min(page * pageSize, totalPatients).toLocaleString('es-CO')}
+              </span>
+              {' de '}
+              <span className="font-bold text-blue-600 dark:text-blue-400">
+                {totalPatients.toLocaleString('es-CO')}
+              </span>
+              {' pacientes'}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || tableLoading}
+                className="bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 h-8 px-3"
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Anterior
+              </Button>
+              <span className="font-semibold px-2 text-slate-800 dark:text-slate-200">
+                Página {page.toLocaleString('es-CO')} de {totalPages.toLocaleString('es-CO')}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || tableLoading}
+                className="bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 h-8 px-3"
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

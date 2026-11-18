@@ -114,7 +114,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
               </h3>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-300 mt-0.5">
-              Desglose real en Supabase ({matrixData?.realPatientsCount ?? 0} pacientes) por Cursos de Vida (A - J) y Grupos de Riesgo Priorizados.
+              Desglose real en Supabase ({(matrixData?.realPatientsCount ?? 0).toLocaleString('es-CO')} pacientes) por Cursos de Vida (A - J) y Grupos de Riesgo Priorizados.
             </p>
           </div>
 
@@ -155,7 +155,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
                     <th key={c.id} className="p-2.5 text-center min-w-[105px] border-r border-slate-200/60 dark:border-slate-700/70">
                       <span className="block text-[10px] font-black text-teal-800 dark:text-teal-400">{c.id}</span>
                       <span className="block text-[10px] truncate" title={c.nombre}>{c.nombre}</span>
-                      <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{c.totalCenso ?? 0} pac.</span>
+                      <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{(c.totalCenso ?? 0).toLocaleString('es-CO')} pac.</span>
                     </th>
                   ))}
 
@@ -165,7 +165,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
                     <th key={r.id} className="p-2.5 text-center min-w-[110px] border-r border-slate-200/60 dark:border-slate-700/70 bg-amber-50/50 dark:bg-amber-950/35">
                       <span className="block text-[10px] font-black text-amber-900 dark:text-amber-400">Riesgo {r.id}</span>
                       <span className="block text-[10px] truncate" title={r.titulo}>{r.titulo}</span>
-                      <span className="block text-[9px] font-semibold text-amber-800/80 dark:text-amber-300/80">{r.totalCenso ?? 0} pac.</span>
+                      <span className="block text-[9px] font-semibold text-amber-800/80 dark:text-amber-300/80">{(r.totalCenso ?? 0).toLocaleString('es-CO')} pac.</span>
                     </th>
                   ))}
 

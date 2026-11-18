@@ -114,6 +114,92 @@ export const reportsAnalysisService = {
   },
 
   async getChannelMatrixHeader(hospitalId) {
+    try {
+      const { data: rpcSummary, error: rpcErr } = await supabase.rpc('get_reports_demanda_summary', {
+        p_hospital_id: hospitalId || null,
+        p_curso_vida: 'todos',
+        p_grupo_riesgo: 'todos',
+        p_zona: 'todos',
+        p_comuna: 'todos',
+        p_barrio: 'todos',
+      });
+
+      if (!rpcErr && rpcSummary && typeof rpcSummary === 'object') {
+        const cursoMap = new Map((rpcSummary.por_curso || []).map((c) => [String(c.id), c]));
+        const riesgoMap = new Map((rpcSummary.por_riesgo || []).map((r) => [Number(r.id), r]));
+        const unlinked = rpcSummary.event_totals || EMPTY_COUNTS();
+
+        const porCursoVida = PROGRAMAS_3280.map((prog) => {
+          const hit = cursoMap.get(String(prog.id)) || {};
+          return {
+            id: prog.id,
+            nombre: prog.nombre,
+            color: prog.color,
+            totalCenso: Number(hit.total_censo || 0),
+            sms: Number(hit.sms || 0),
+            email: Number(hit.email || 0),
+            call: Number(hit.call || 0),
+            whatsapp: Number(hit.whatsapp || 0),
+          };
+        });
+
+        const porGrupoRiesgo = GRUPOS_RIESGO_PRIORIZADOS.map((rg) => {
+          const hit = riesgoMap.get(Number(rg.id)) || {};
+          return {
+            id: rg.id,
+            titulo: rg.titulo,
+            codigo: rg.codigo,
+            totalCenso: Number(hit.total_censo || 0),
+            sms: Number(hit.sms || 0),
+            email: Number(hit.email || 0),
+            call: Number(hit.call || 0),
+            whatsapp: Number(hit.whatsapp || 0),
+          };
+        });
+
+        const chSum = (key) => porCursoVida.reduce((acc, c) => acc + Number(c[key] || 0), 0) + Number(unlinked[key] || 0);
+        const totalSms = chSum('sms');
+        const totalEmail = chSum('email');
+        const totalCall = chSum('call');
+        const totalWhatsapp = chSum('whatsapp');
+
+        const totales = {
+          sms: totalSms,
+          email: totalEmail,
+          call: totalCall,
+          whatsapp: totalWhatsapp,
+          general: totalSms + totalEmail + totalCall + totalWhatsapp,
+        };
+
+        const sortedComunas = Array.isArray(rpcSummary.comunas) ? [...rpcSummary.comunas] : [];
+        const sortedBarrios = Array.isArray(rpcSummary.barrios) ? [...rpcSummary.barrios] : [];
+
+        return {
+          totales,
+          porCursoVida,
+          porGrupoRiesgo,
+          patients: [],
+          fromServerRpc: true,
+          hospitalId: hospitalId || null,
+          unlinkedCounts: {
+            sms: Number(unlinked.sms || 0),
+            email: Number(unlinked.email || 0),
+            call: Number(unlinked.call || 0),
+            whatsapp: Number(unlinked.whatsapp || 0),
+          },
+          filteredChannelsBase: rpcSummary.filtered_channels || EMPTY_COUNTS(),
+          filterOptions: {
+            comunas: sortedComunas,
+            barrios: sortedBarrios,
+          },
+          realPatientsCount: Number(rpcSummary.total_patients || 0),
+          realInteractionsCount: totales.general,
+        };
+      }
+    } catch (rpcException) {
+      console.warn('Fallback getChannelMatrixHeader (RPC no disponible):', rpcException);
+    }
+
     const safeQuery = async (promise) => {
       try {
         const { data, error } = await promise;
@@ -330,6 +416,26 @@ export const reportsAnalysisService = {
     };
   },
 
+  async fetchFilteredPieStats({
+    hospitalId = null,
+    cursoVida = 'todos',
+    grupoRiesgo = 'todos',
+    barrio = 'todos',
+    comuna = 'todos',
+    zona = 'todos',
+  }) {
+    const { data, error } = await supabase.rpc('get_reports_demanda_summary', {
+      p_hospital_id: hospitalId || null,
+      p_curso_vida: cursoVida || 'todos',
+      p_grupo_riesgo: grupoRiesgo || 'todos',
+      p_zona: zona || 'todos',
+      p_comuna: comuna || 'todos',
+      p_barrio: barrio || 'todos',
+    });
+    if (error || !data) return null;
+    return data;
+  },
+
   computePieChartData({
     cursoVida = 'todos',
     grupoRiesgo = 'todos',
@@ -337,6 +443,7 @@ export const reportsAnalysisService = {
     comuna = 'todos',
     zona = 'todos',
     matrixData = null,
+    serverFilteredRpc = null,
   }) {
     const patients = matrixData?.patients || [];
     const hasFilter =
@@ -345,6 +452,38 @@ export const reportsAnalysisService = {
       (zona && zona !== 'todos') ||
       (comuna && comuna !== 'todos' && !comuna.startsWith('Todas')) ||
       (barrio && barrio !== 'todos' && !barrio.startsWith('Todos'));
+
+    if (matrixData?.fromServerRpc) {
+      const rpcChannels = serverFilteredRpc?.filtered_channels || matrixData?.filteredChannelsBase || EMPTY_COUNTS();
+      const matchingCount = Number(
+        serverFilteredRpc?.filtered_patients ?? (hasFilter ? 0 : matrixData?.realPatientsCount ?? 0)
+      );
+      const unlinked = !hasFilter ? (matrixData?.unlinkedCounts || EMPTY_COUNTS()) : EMPTY_COUNTS();
+      const countCall = Number(rpcChannels.call || 0) + Number(unlinked.call || 0);
+      const countWhatsapp = Number(rpcChannels.whatsapp || 0) + Number(unlinked.whatsapp || 0);
+      const countEmail = Number(rpcChannels.email || 0) + Number(unlinked.email || 0);
+      const countSms = Number(rpcChannels.sms || 0) + Number(unlinked.sms || 0);
+      const totalFiltered = countCall + countWhatsapp + countEmail + countSms;
+      const pct = (val) => (totalFiltered > 0 ? Number(((val / totalFiltered) * 100).toFixed(1)) : 0);
+      const pctCall = pct(countCall);
+      const pctWhatsapp = pct(countWhatsapp);
+      const pctEmail = pct(countEmail);
+      const pctSms = totalFiltered > 0 ? Number(Math.max(0, 100 - pctCall - pctWhatsapp - pctEmail).toFixed(1)) : 0;
+
+      const slices = [
+        { id: 'call', label: 'Llamada (Puerto 22)', canal: 'Llamada', count: countCall, percentage: pctCall, color: '#059669', icon: 'Phone' },
+        { id: 'whatsapp', label: 'WhatsApp', canal: 'WhatsApp', count: countWhatsapp, percentage: pctWhatsapp, color: '#25D366', icon: 'Send' },
+        { id: 'email', label: 'E-mail', canal: 'E-mail', count: countEmail, percentage: pctEmail, color: '#4F46E5', icon: 'Mail' },
+        { id: 'sms', label: 'SMS', canal: 'SMS', count: countSms, percentage: pctSms, color: '#0284C7', icon: 'MessageSquare' },
+      ].sort((a, b) => b.count - a.count);
+
+      return {
+        totalContacts: totalFiltered,
+        matchingPatientsCount: matchingCount,
+        slices,
+        appliedFilters: { cursoVida, grupoRiesgo, barrio, comuna, zona },
+      };
+    }
 
     const filteredPatients = patients.filter((p) => {
       if (cursoVida && cursoVida !== 'todos' && p.cursoVidaId !== cursoVida) return false;

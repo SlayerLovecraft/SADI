@@ -36,12 +36,10 @@ import {
   CURSO_VIDA_CONFIG, 
   CURSOS_VIDA_LIST, 
   getDoctorLifeCourseTheme, 
-  formatCursosVidaLabel 
+  formatCursosVidaLabel,
+  canonicalizeCursoKey
 } from '@/services/cursoVidaConfig';
-import { 
-  getCursoVidaFromPatient, 
-  isPatientAssignedToDoctor 
-} from './doctor/doctorUtils';
+import { getCursoVidaFromPatient } from './doctor/doctorUtils';
 
 const ROLES_PERSONAL = [
   { value: 'Enfermera', label: 'Enfermera Asistencial (Demanda Inducida)' },
@@ -69,10 +67,11 @@ export default function DoctorsPage() {
   const { toast } = useToast();
 
   const [staffList, setStaffList] = useState([]);
-  const [allPatients, setAllPatients] = useState([]);
+  const [assignmentStats, setAssignmentStats] = useState({ totalPatients: 0, byCurso: {}, byDoctorDirect: {} });
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('todos');
   const [loading, setLoading] = useState(true);
+  const [autoAssigning, setAutoAssigning] = useState(false);
 
   // Modales
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -81,9 +80,15 @@ export default function DoctorsPage() {
   const [personToDelete, setPersonToDelete] = useState(null);
   const [selectedStaff, setSelectedStaff] = useState(null);
 
-  // Modal para ver Pacientes Asignados de un Personal específico
+  // Modal paginado para ver Pacientes Asignados de un Personal específico
   const [viewingPatientsStaff, setViewingPatientsStaff] = useState(null);
+  const [modalPatients, setModalPatients] = useState([]);
+  const [modalTotalCount, setModalTotalCount] = useState(0);
+  const [modalPage, setModalPage] = useState(1);
+  const [modalMode, setModalMode] = useState('scope');
+  const [modalLoading, setModalLoading] = useState(false);
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
+  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState('');
 
   // Formulario Nuevo Personal (Sin asignación inicial)
   const [newStaff, setNewStaff] = useState({
@@ -124,10 +129,9 @@ export default function DoctorsPage() {
   const loadData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const [resStaff, resPatients, telePatients] = await Promise.all([
+      const [resStaff, resStats] = await Promise.all([
         staffService.getAll(),
-        patientService.getAll(),
-        telemonitoringService.getPatients()
+        staffService.getAssignmentStats(user?.hospitalId)
       ]);
 
       if (resStaff.success) {
@@ -143,32 +147,13 @@ export default function DoctorsPage() {
         }
       }
 
-      const basePatients = Array.isArray(resPatients?.data) ? resPatients.data : [];
-      const teleList = Array.isArray(telePatients) ? telePatients : [];
-
-      let pts = [];
-      if (teleList.length > 0) {
-        const baseById = new Map();
-        basePatients.forEach((bp) => {
-          if (bp?.id) baseById.set(bp.id, bp);
-          if (bp?.patient_id) baseById.set(bp.patient_id, bp);
+      if (resStats?.success) {
+        setAssignmentStats({
+          totalPatients: resStats.totalPatients || 0,
+          byCurso: resStats.byCurso || {},
+          byDoctorDirect: resStats.byDoctorDirect || {}
         });
-        pts = teleList.map((tp) => {
-          const bp = baseById.get(tp.id) || baseById.get(tp.patient_id) || {};
-          return {
-            ...bp,
-            ...tp,
-            program: tp.program || bp.program || tp.programa || bp.programa || '',
-            programa: tp.program || tp.programa || bp.programa || bp.program || '',
-            curso_vida: tp.curso_vida || bp.curso_vida || '',
-            birthdate: tp.birthdate || bp.birthdate || tp.fecha_nacimiento || bp.fecha_nacimiento,
-            fecha_nacimiento: tp.fecha_nacimiento || tp.birthdate || bp.fecha_nacimiento || bp.birthdate
-          };
-        });
-      } else {
-        pts = basePatients;
       }
-      setAllPatients(pts || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -179,6 +164,62 @@ export default function DoctorsPage() {
   useEffect(() => {
     loadData();
   }, [user?.hospitalId]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setModalPage(1);
+      setDebouncedPatientSearch(patientSearchTerm);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [patientSearchTerm]);
+
+  useEffect(() => {
+    if (!viewingPatientsStaff) return;
+    let cancelled = false;
+    setModalLoading(true);
+    staffService
+      .getAssignedPatientsPaginated({
+        doctorId: viewingPatientsStaff.doctor_id || viewingPatientsStaff.id,
+        cursos: Array.isArray(viewingPatientsStaff.cursos_vida_asignados) ? viewingPatientsStaff.cursos_vida_asignados : [],
+        hospitalId: user?.hospitalId,
+        search: debouncedPatientSearch,
+        mode: modalMode,
+        page: modalPage,
+        pageSize: 25,
+      })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success) {
+          setModalPatients(res.data || []);
+          setModalTotalCount(Number(res.totalCount || 0));
+        } else {
+          setModalPatients([]);
+          setModalTotalCount(0);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setModalLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [viewingPatientsStaff, modalPage, modalMode, debouncedPatientSearch, user?.hospitalId]);
+
+  const handleRunAutoAssign = async () => {
+    setAutoAssigning(true);
+    try {
+      const res = await patientService.autoAssignDoctors(false, user?.hospitalId);
+      if (res.success) {
+        toast({
+          title: "✅ Asignación Automática 3280 Actualizada",
+          description: `Población balanceada entre profesionales activos (cambios aplicados: ${(res.updated ?? 0).toLocaleString('es-CO')}).`
+        });
+        await loadData(false);
+      } else {
+        toast({ title: "Error en asignación automática", description: res.error, variant: "destructive" });
+      }
+    } finally {
+      setAutoAssigning(false);
+    }
+  };
 
   // Manejador: Crear Nuevo Personal
   const handleCreateStaff = async (e) => {
@@ -333,6 +374,7 @@ export default function DoctorsPage() {
         });
         setShowPermissionsDialog(false);
         setSelectedStaff(null);
+        await patientService.autoAssignDoctors(false, user?.hospitalId);
         await loadData(false);
       } else {
         toast({ title: "Error al guardar permisos", description: res.error, variant: "destructive" });
@@ -479,33 +521,38 @@ export default function DoctorsPage() {
     });
   }, [staffList, searchTerm, roleFilter]);
 
-  // Cálculo estricto de pacientes asignados a un miembro de personal
+  // Cálculo exacto por SQL (142k+ pacientes) del alcance clínico y asignación 1:1 directa
   // REGLA CLÍNICA SADI: Si no tiene Cursos de Vida asignados ([]), tiene CERO pacientes (0).
-  // Si tiene cursos asignados, tiene acceso a todos los pacientes de esos cursos, sin importar el grupo de riesgo.
-  const getStaffAssignedPatients = (staff, patientsList = allPatients) => {
-    if (!staff || !patientsList.length) return [];
+  const getStaffScopeCount = (staff) => {
+    if (!staff) return 0;
     const cursos = Array.isArray(staff.cursos_vida_asignados) ? staff.cursos_vida_asignados : [];
-
-    if (cursos.length === 0) return [];
-    if (cursos.includes('todos')) return patientsList;
-
-    return patientsList.filter(p => isPatientAssignedToDoctor(p, staff));
+    if (cursos.length === 0) return 0;
+    if (cursos.includes('todos')) return Number(assignmentStats.totalPatients || 0);
+    const seenKeys = new Set();
+    let total = 0;
+    cursos.forEach((rawKey) => {
+      const ck = canonicalizeCursoKey(rawKey);
+      if (ck && !seenKeys.has(ck)) {
+        seenKeys.add(ck);
+        total += Number(assignmentStats.byCurso?.[ck] || 0);
+      }
+    });
+    return total;
   };
 
-  // Pacientes asignados al profesional seleccionado en el modal
-  const assignedPatients = useMemo(() => {
-    return getStaffAssignedPatients(viewingPatientsStaff, allPatients);
-  }, [viewingPatientsStaff, allPatients]);
+  const getStaffDirectCount = (staff) => {
+    if (!staff) return 0;
+    const id = String(staff.doctor_id || staff.id || '');
+    return Number(assignmentStats.byDoctorDirect?.[id] || 0);
+  };
 
-  const filteredAssignedPatients = useMemo(() => {
-    if (!patientSearchTerm.trim()) return assignedPatients;
-    const term = patientSearchTerm.toLowerCase();
-    return assignedPatients.filter(p => 
-      (p.nombre || '').toLowerCase().includes(term) ||
-      (p.cc || '').includes(term) ||
-      (p.telefono || '').includes(term)
-    );
-  }, [assignedPatients, patientSearchTerm]);
+  const viewingScopeCount = useMemo(() => {
+    return getStaffScopeCount(viewingPatientsStaff);
+  }, [viewingPatientsStaff, assignmentStats]);
+
+  const viewingDirectCount = useMemo(() => {
+    return getStaffDirectCount(viewingPatientsStaff);
+  }, [viewingPatientsStaff, assignmentStats]);
 
   return (
     <Layout>
@@ -536,13 +583,25 @@ export default function DoctorsPage() {
             </div>
           </div>
 
-          <Button
-            onClick={() => setShowAddDialog(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md shadow-blue-600/20 flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Agregar Personal / Enfermera</span>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleRunAutoAssign}
+              disabled={autoAssigning}
+              className="bg-white dark:bg-slate-800 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 font-semibold flex items-center gap-2"
+              title="Clasificar por edad Res. 3280 y balancear asignación 1:1 en todos los pacientes"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>{autoAssigning ? 'Re-asignando...' : 'Auto-Asignar 3280'}</span>
+            </Button>
+            <Button
+              onClick={() => setShowAddDialog(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md shadow-blue-600/20 flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Agregar Personal / Enfermera</span>
+            </Button>
+          </div>
         </div>
 
         {/* Barra de Filtros y Búsqueda */}
@@ -607,7 +666,8 @@ export default function DoctorsPage() {
                     const cursos = Array.isArray(staff.cursos_vida_asignados) ? staff.cursos_vida_asignados : [];
                     const isSinAsignacion = cursos.length === 0;
                     const isAllCursos = cursos.includes('todos');
-                    const staffPatients = getStaffAssignedPatients(staff, allPatients);
+                    const scopeCount = getStaffScopeCount(staff);
+                    const directCount = getStaffDirectCount(staff);
 
                     return (
                       <tr key={staff.id} className="hover:bg-blue-50/40 dark:hover:bg-slate-800/50 transition-colors">
@@ -616,8 +676,11 @@ export default function DoctorsPage() {
                         <td className="p-4 whitespace-nowrap">
                           <button
                             onClick={() => {
-                              setViewingPatientsStaff(staff);
+                              setModalPage(1);
+                              setModalMode('scope');
                               setPatientSearchTerm('');
+                              setDebouncedPatientSearch('');
+                              setViewingPatientsStaff(staff);
                             }}
                             className="text-left group flex items-start gap-2.5 transition-transform active:scale-98"
                             title="Haz clic para ver los pacientes y llamadas de este profesional"
@@ -700,7 +763,14 @@ export default function DoctorsPage() {
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                <span className="font-black text-slate-900 dark:text-white text-xs">{staffPatients.length} pacientes</span>
+                                <span className="font-black text-slate-900 dark:text-white text-xs">
+                                  {scopeCount.toLocaleString('es-CO')} pacientes
+                                </span>
+                                {directCount > 0 && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
+                                    {directCount.toLocaleString('es-CO')} 1:1
+                                  </span>
+                                )}
                               </div>
                               <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800/60 inline-block mt-0.5">
                                 Universal a Grupos de Riesgo
@@ -771,16 +841,16 @@ export default function DoctorsPage() {
                   {viewingPatientsStaff?.nombre?.charAt(0) || 'P'}
                 </div>
                 <div>
-                  <DialogTitle className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2">
+                  <DialogTitle className="text-lg font-black text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
                     Llamadas e Interacciones de {viewingPatientsStaff?.nombre}
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
-                      assignedPatients.length === 0
+                      viewingScopeCount === 0
                         ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
                         : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/60'
                     }`}>
-                      {assignedPatients.length === 0
+                      {viewingScopeCount === 0
                         ? '0 pacientes asignados (Sin Asignación)'
-                        : `${assignedPatients.length} pacientes asignados`}
+                        : `${viewingScopeCount.toLocaleString('es-CO')} pacientes en cursos (${viewingDirectCount.toLocaleString('es-CO')} asignados 1:1)`}
                     </span>
                   </DialogTitle>
                   <DialogDescription className="text-xs text-gray-600 dark:text-slate-400 mt-0.5">
@@ -788,15 +858,48 @@ export default function DoctorsPage() {
                   </DialogDescription>
                 </div>
               </div>
+              {viewingScopeCount > 0 && (
+                <div className="flex bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => { setModalMode('scope'); setModalPage(1); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      modalMode === 'scope'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Cohorte Cursos ({viewingScopeCount.toLocaleString('es-CO')})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setModalMode('direct'); setModalPage(1); }}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${
+                      modalMode === 'direct'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Asignados 1:1 ({viewingDirectCount.toLocaleString('es-CO')})
+                  </button>
+                </div>
+              )}
             </div>
           </DialogHeader>
 
           {/* TABLA DE PACIENTES: CICLOS DE VIDA, MENSAJES, LLAMADAS, GRABACIONES DE AUDIO Y TRANSCRIPCIONES */}
           <div className="mt-4">
             <StaffPatientInteractionsTable
-              patients={assignedPatients}
+              patients={modalPatients}
               staff={viewingPatientsStaff}
-              emptyMessage={`No hay pacientes asignados bajo los Cursos de Vida o Riesgos de ${viewingPatientsStaff?.nombre}.`}
+              totalCount={modalTotalCount}
+              page={modalPage}
+              pageSize={25}
+              onPageChange={setModalPage}
+              searchTerm={patientSearchTerm}
+              onSearchChange={setPatientSearchTerm}
+              loading={modalLoading}
+              emptyMessage={`No hay pacientes asignados bajo los Cursos de Vida o asignación 1:1 de ${viewingPatientsStaff?.nombre}.`}
             />
           </div>
 

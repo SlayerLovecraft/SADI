@@ -22,6 +22,7 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      let handledCustomSession = false;
       try {
         console.log('🔔 Auth cambió:', event, session ? 'Con sesión' : 'Sin sesión');
         
@@ -31,6 +32,7 @@ export const AuthProvider = ({ children }) => {
             const parsedUser = JSON.parse(storedUser);
             if (parsedUser.role === 'patient' || parsedUser.role === 'doctor' || parsedUser.role === 'hospital_admin' || parsedUser.role === 'super_admin' || parsedUser.role === 'operator') {
               console.log('ℹ️ Usuario es paciente, ignorando evento de auth');
+              handledCustomSession = true;
               return;
             }
           } catch (e) {
@@ -61,7 +63,9 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {
         handleSignOut();
       } finally {
-        setLoading(false);
+        if (!handledCustomSession) {
+          setLoading(false);
+        }
       }
     });
 

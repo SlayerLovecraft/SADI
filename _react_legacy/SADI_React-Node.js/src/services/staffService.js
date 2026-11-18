@@ -438,4 +438,100 @@ export const staffService = {
       return { success: false, error: error?.message || 'Error eliminando doctor' };
     }
   },
+
+  async getAssignmentStats(overrideHospitalId = null) {
+    try {
+      const { role, hospitalId } = getCurrentUserContext();
+      const targetHospital = overrideHospitalId || (role === 'super_admin' ? null : hospitalId) || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
+      const { data, error } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase.rpc('get_staff_assignment_stats', {
+            p_hospital_id: targetHospital,
+          }),
+        15000,
+        'Tiempo de espera agotado al consultar estadísticas de asignación'
+      );
+      if (error || !data) {
+        return { success: false, error: error?.message || 'Sin estadísticas' };
+      }
+      return {
+        success: true,
+        totalPatients: Number(data.total_patients || 0),
+        byCurso: data.by_curso || {},
+        byDoctorDirect: data.by_doctor_direct || {},
+      };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Error obteniendo conteos de personal' };
+    }
+  },
+
+  async getAssignedPatientsPaginated({
+    doctorId = null,
+    cursos = null,
+    hospitalId: overrideHospitalId = null,
+    search = '',
+    mode = 'scope',
+    page = 1,
+    pageSize = 25,
+  } = {}) {
+    try {
+      const { role, hospitalId } = getCurrentUserContext();
+      const targetHospital = overrideHospitalId || (role === 'super_admin' ? null : hospitalId) || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
+      const { data, error } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase.rpc('get_doctor_assigned_patients_paginated', {
+            p_doctor_id: doctorId || null,
+            p_cursos: Array.isArray(cursos) ? cursos : null,
+            p_hospital_id: targetHospital,
+            p_search: search?.trim() || null,
+            p_mode: mode,
+            p_page: Math.max(1, Number(page) || 1),
+            p_page_size: Math.max(1, Math.min(250, Number(pageSize) || 25)),
+          }),
+        15000,
+        'Tiempo de espera agotado al consultar pacientes asignados'
+      );
+
+      if (error) {
+        return { success: false, error: error.message, data: [], totalCount: 0 };
+      }
+      const rows = Array.isArray(data) ? data : [];
+      const totalCount = rows.length > 0 ? Number(rows[0].total_count || 0) : 0;
+      const mapped = rows.map((p) => {
+        const bdate = p.birthdate;
+        let age = null;
+        if (bdate) {
+          const b = new Date(bdate);
+          if (!isNaN(b.getTime())) {
+            const now = new Date();
+            age = now.getFullYear() - b.getFullYear();
+            const m = now.getMonth() - b.getMonth();
+            if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+          }
+        }
+        return {
+          ...p,
+          id: p.patient_id,
+          nombre: p.name || '',
+          documento: p.document || '',
+          cc: p.document || '',
+          telefono: p.phone || '',
+          fechaNacimiento: p.birthdate,
+          fecha_nacimiento: p.birthdate,
+          edad: age,
+          sexo: p.sex === 'Femenino' || p.sex === 'F' ? 'F' : 'M',
+          curso_vida: p.curso_vida || 'adultez',
+          grupo_vida: p.curso_vida || 'adultez',
+          dispositivos: Array.isArray(p.dispositivos_caseros) ? p.dispositivos_caseros : [],
+          dispositivos_caseros: Array.isArray(p.dispositivos_caseros) ? p.dispositivos_caseros : [],
+          conteo_canales: p.conteo_canales || { sms: 0, call: 0, email: 0, whatsapp: 0 },
+        };
+      });
+      return { success: true, data: mapped, totalCount };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Error consultando cohorte asignada', data: [], totalCount: 0 };
+    }
+  },
 };

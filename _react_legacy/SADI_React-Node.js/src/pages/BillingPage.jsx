@@ -315,10 +315,10 @@ const BillingPage = () => {
               </div>
             </div>
             <div className="text-2xl font-black text-slate-900 dark:text-white mt-2">
-              {monthData.totales.pacientesCount} Pacientes
+              {(monthData.totales.pacientesBdCount ?? monthData.totales.pacientesCount ?? 0).toLocaleString('es-CO')} Pacientes
             </div>
             <p className="text-xs text-purple-600 dark:text-purple-400 font-medium mt-1">
-              Registros verificados en Supabase
+              {monthData.totales.pacientesCount.toLocaleString('es-CO')} con eventos este mes en Supabase
             </p>
           </div>
         </div>

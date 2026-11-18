@@ -3,22 +3,30 @@ import { Helmet } from 'react-helmet';
 import { Link } from 'react-router-dom';
 import { 
   User, Search, AlertTriangle, Loader2, Stethoscope, Phone, Mail, 
-  MapPin, Activity, FolderArchive, ShieldCheck, Heart 
+  MapPin, Activity, FolderArchive, ShieldCheck, Heart, ChevronLeft, ChevronRight 
 } from 'lucide-react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
-import { getDoctorLifeCourseTheme, formatCursosVidaLabel } from '@/services/cursoVidaConfig';
+import { staffService } from '@/services/staffService';
+import { getDoctorLifeCourseTheme, formatCursosVidaLabel, canonicalizeCursoKey } from '@/services/cursoVidaConfig';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 
 const DoctorPatientsPage = () => {
   const { user } = useAuth();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const pageSize = 24;
+  const [viewMode, setViewMode] = useState('scope'); // 'scope' | 'direct'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [patients, setPatients] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [scopeTotalCount, setScopeTotalCount] = useState(0);
+  const [directTotalCount, setDirectTotalCount] = useState(0);
   const [doctorProfile, setDoctorProfile] = useState(null);
 
   const theme = useMemo(() => {
@@ -32,6 +40,14 @@ const DoctorPatientsPage = () => {
   const isSinAsignacion = useMemo(() => {
     return !doctorProfile?.cursos_vida_asignados || doctorProfile.cursos_vida_asignados.length === 0;
   }, [doctorProfile?.cursos_vida_asignados]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPage(1);
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
   const loadPatients = useCallback(async () => {
     try {
@@ -55,38 +71,62 @@ const DoctorPatientsPage = () => {
       };
       setDoctorProfile(currentDoc);
 
-      // 2. Obtener lista de pacientes
-      const allPatients = await telemonitoringService.getPatients();
+      const docCursos = Array.isArray(currentDoc?.cursos_vida_asignados) ? currentDoc.cursos_vida_asignados : [];
+      const docId = currentDoc?.doctor_id || currentDoc?.id || null;
+      const hospId = currentDoc?.hospital_id || currentDoc?.hospitalId || user?.hospitalId || null;
 
-      // 3. RESTRICCIÓN DE SEGURIDAD ESTRICTA 1 A 1:
-      // Si un paciente está asignado a un doctor, NINGÚN OTRO doctor puede ver a ese paciente.
-      // Si el doctor no tiene pacientes en su rango de edad, verá 0 pacientes.
-      const myPatients = allPatients.filter((p) => isPatientAssignedToDoctor(p, currentDoc));
-      setPatients(myPatients);
+      // 2. Obtener página y conteos reales desde Postgres RPC (soporta 142k+)
+      const [statsRes, pageRes] = await Promise.all([
+        staffService.getAssignmentStats(hospId),
+        staffService.getAssignedPatientsPaginated({
+          doctorId: docId,
+          cursos: docCursos,
+          hospitalId: hospId,
+          search: debouncedSearch,
+          mode: viewMode,
+          page,
+          pageSize,
+        }),
+      ]);
+
+      if (statsRes?.success) {
+        let sTotal = 0;
+        if (docCursos.includes('todos')) sTotal = Number(statsRes.totalPatients || 0);
+        else {
+          const seen = new Set();
+          docCursos.forEach((rk) => {
+            const ck = canonicalizeCursoKey(rk);
+            if (ck && !seen.has(ck)) {
+              seen.add(ck);
+              sTotal += Number(statsRes.byCurso?.[ck] || 0);
+            }
+          });
+        }
+        setScopeTotalCount(sTotal);
+        setDirectTotalCount(Number(statsRes.byDoctorDirect?.[String(docId)] || 0));
+      }
+
+      if (!pageRes.success) {
+        throw new Error(pageRes.error || 'No se pudieron cargar los pacientes asignados');
+      }
+
+      setPatients(pageRes.data || []);
+      setTotalCount(Number(pageRes.totalCount || 0));
     } catch (e) {
       setPatients([]);
+      setTotalCount(0);
       setError(e?.message || 'No se pudieron cargar los pacientes asignados');
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, debouncedSearch, viewMode, page]);
 
   useEffect(() => {
     loadPatients();
   }, [loadPatients]);
 
-  const filteredPatients = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return patients;
-    return patients.filter((p) => {
-      const name = (p.nombre || p.name || '').toLowerCase();
-      const phone = String(p.telefono || p.phone || '');
-      const doc = String(p.documento || p.document || '');
-      const email = (p.email || '').toLowerCase();
-      const curso = (p.curso_vida || '').toLowerCase();
-      return name.includes(q) || phone.includes(q) || doc.includes(q) || email.includes(q) || curso.includes(q);
-    });
-  }, [patients, searchTerm]);
+  const filteredPatients = patients;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
     <Layout>
@@ -123,15 +163,15 @@ const DoctorPatientsPage = () => {
                 {isSinAsignacion ? 'Sin Asignación' : cursosLabel}
               </p>
               <p className="text-[10px] text-slate-500">
-                {patients.length} pacientes activos bajo custodia
+                {scopeTotalCount.toLocaleString('es-CO')} en curso(s) · {directTotalCount.toLocaleString('es-CO')} asignados 1:1
               </p>
             </div>
           </div>
         </div>
 
         {/* Buscador y Filtros */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-5">
-          <div className="relative">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+          <div className="relative flex-1">
             <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
@@ -140,6 +180,22 @@ const DoctorPatientsPage = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             />
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold shrink-0">
+            <button
+              type="button"
+              onClick={() => { setViewMode('scope'); setPage(1); }}
+              className={`px-3 py-2 rounded-lg transition-all ${viewMode === 'scope' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600'}`}
+            >
+              Por Curso ({scopeTotalCount.toLocaleString('es-CO')})
+            </button>
+            <button
+              type="button"
+              onClick={() => { setViewMode('direct'); setPage(1); }}
+              className={`px-3 py-2 rounded-lg transition-all ${viewMode === 'direct' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600'}`}
+            >
+              Asignados 1:1 ({directTotalCount.toLocaleString('es-CO')})
+            </button>
           </div>
         </div>
 
@@ -174,6 +230,10 @@ const DoctorPatientsPage = () => {
                 juventud: 'Juventud (18 a 28 años)',
                 adultez: 'Adultez (29 a 59 años)',
                 vejez: 'Vejez (60+ años)',
+                preventivo_mujer: 'Preventivo de la Mujer (RIAMP)',
+                planificacion_familiar: 'Planificación Familiar',
+                vacunacion: 'Vacunación (PAI)',
+                salud_oral: 'Salud Oral',
                 materno_perinatal: 'Ruta Materno Perinatal (RIAMP)'
               };
 
@@ -184,6 +244,10 @@ const DoctorPatientsPage = () => {
                 juventud: 'bg-indigo-100 text-indigo-800 border-indigo-200',
                 adultez: 'bg-purple-100 text-purple-800 border-purple-200',
                 vejez: 'bg-amber-100 text-amber-800 border-amber-200',
+                preventivo_mujer: 'bg-rose-100 text-rose-800 border-rose-200',
+                planificacion_familiar: 'bg-pink-100 text-pink-800 border-pink-200',
+                vacunacion: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+                salud_oral: 'bg-lime-100 text-lime-800 border-lime-200',
                 materno_perinatal: 'bg-rose-100 text-rose-800 border-rose-200'
               };
 
@@ -273,6 +337,49 @@ const DoctorPatientsPage = () => {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {totalCount > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-200/80 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
+            <div>
+              Mostrando{' '}
+              <span className="font-bold text-gray-900">
+                {((page - 1) * pageSize + 1).toLocaleString('es-CO')}
+              </span>
+              {' – '}
+              <span className="font-bold text-gray-900">
+                {Math.min(page * pageSize, totalCount).toLocaleString('es-CO')}
+              </span>
+              {' de '}
+              <span className="font-bold text-blue-600">
+                {totalCount.toLocaleString('es-CO')}
+              </span>
+              {' pacientes asignados'}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Anterior
+              </Button>
+              <span className="font-bold text-gray-800 px-2">
+                Pág. {page.toLocaleString('es-CO')} / {totalPages.toLocaleString('es-CO')}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
           </div>
         )}
       </div>

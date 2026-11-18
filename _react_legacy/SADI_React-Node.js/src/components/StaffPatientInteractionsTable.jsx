@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { 
   Phone, MessageSquare, Mail, Smartphone, Volume2, VolumeX, Play, Pause, 
   FileText, Clock, Calendar, CheckCircle2, AlertTriangle, User, Search,
-  Download, Copy, Check, Headphones, Sparkles
+  Download, Copy, Check, Headphones, Sparkles, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CURSO_VIDA_CONFIG } from '@/services/cursoVidaConfig';
 import {
   Dialog,
   DialogContent,
@@ -81,14 +82,23 @@ const generateTranscriptForPatient = (patient, staffName) => {
 export default function StaffPatientInteractionsTable({
   patients = [],
   staff = null,
-  emptyMessage = "No se encontraron pacientes para este personal."
+  emptyMessage = "No se encontraron pacientes para este personal.",
+  totalCount = null,
+  page = 1,
+  pageSize = 25,
+  onPageChange = null,
+  searchTerm: controlledSearch = null,
+  onSearchChange = null,
+  loading = false,
 }) {
   const [selectedTranscript, setSelectedTranscript] = useState(null);
   const [activeAudioPatient, setActiveAudioPatient] = useState(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [audioProgress, setAudioProgress] = useState(0);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [internalSearchTerm, setInternalSearchTerm] = useState('');
+  const isServerControlled = typeof onSearchChange === 'function' && typeof onPageChange === 'function';
+  const searchTerm = isServerControlled ? (controlledSearch ?? '') : internalSearchTerm;
 
   const staffName = staff?.nombre || 'Enfermera Asistencial';
 
@@ -157,15 +167,19 @@ export default function StaffPatientInteractionsTable({
     setTimeout(() => setCopiedTranscript(false), 2000);
   };
 
-  const filteredPatients = patients.filter(p => {
-    if (!searchTerm.trim()) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      (p.nombre || '').toLowerCase().includes(term) ||
-      (p.cc || '').includes(term) ||
-      (p.telefono || '').includes(term)
-    );
-  });
+  const filteredPatients = isServerControlled
+    ? patients
+    : patients.filter(p => {
+        if (!searchTerm.trim()) return true;
+        const term = searchTerm.toLowerCase();
+        return (
+          (p.nombre || '').toLowerCase().includes(term) ||
+          (p.cc || '').includes(term) ||
+          (p.telefono || '').includes(term)
+        );
+      });
+  const displayTotal = isServerControlled && totalCount !== null ? Number(totalCount) : filteredPatients.length;
+  const totalPages = Math.max(1, Math.ceil(displayTotal / Math.max(1, Number(pageSize) || 25)));
 
   return (
     <div className="w-full space-y-3">
@@ -177,12 +191,12 @@ export default function StaffPatientInteractionsTable({
             type="text"
             placeholder="Buscar paciente por nombre o documento..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => (isServerControlled ? onSearchChange(e.target.value) : setInternalSearchTerm(e.target.value))}
             className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
           />
         </div>
         <div className="text-xs font-bold text-gray-500 dark:text-slate-400">
-          Total: <span className="text-blue-600 dark:text-blue-400 font-black">{filteredPatients.length}</span> pacientes
+          Total: <span className="text-blue-600 dark:text-blue-400 font-black">{displayTotal.toLocaleString('es-CO')}</span> pacientes
         </div>
       </div>
 
@@ -211,7 +225,8 @@ export default function StaffPatientInteractionsTable({
               </tr>
             ) : (
               filteredPatients.map((patient) => {
-                const cVida = patient.grupo_vida || patient.curso_vida || 'Primera Infancia';
+                const rawCv = patient.grupo_vida || patient.curso_vida || 'Primera Infancia';
+                const cVida = CURSO_VIDA_CONFIG[rawCv]?.nombre || rawCv;
                 const conteo = patient.conteo_canales || { whatsapp: 3, email: 1, call: 2, sms: 1 };
                 
                 const isPlayingThis = (activeAudioPatient?.id === patient.id) && isPlayingAudio;
@@ -335,6 +350,52 @@ export default function StaffPatientInteractionsTable({
           </tbody>
         </table>
       </div>
+
+      {isServerControlled && displayTotal > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2 py-1 text-xs text-slate-500 dark:text-slate-400">
+          <div>
+            Mostrando{' '}
+            <span className="font-bold text-slate-900 dark:text-white">
+              {((page - 1) * pageSize + 1).toLocaleString('es-CO')}
+            </span>
+            {' – '}
+            <span className="font-bold text-slate-900 dark:text-white">
+              {Math.min(page * pageSize, displayTotal).toLocaleString('es-CO')}
+            </span>
+            {' de '}
+            <span className="font-bold text-blue-600 dark:text-blue-400">
+              {displayTotal.toLocaleString('es-CO')}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={page <= 1 || loading}
+              className="h-7 px-2.5 text-xs bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+            >
+              <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+              Anterior
+            </Button>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              Pág. {page.toLocaleString('es-CO')} / {totalPages.toLocaleString('es-CO')}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              disabled={page >= totalPages || loading}
+              className="h-7 px-2.5 text-xs bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+            >
+              Siguiente
+              <ChevronRight className="h-3.5 w-3.5 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* REPRODUCTOR FLOTANTE ACTIVO (SI HAY AUDIO EN REPRODUCCIÓN) */}
       {isPlayingAudio && activeAudioPatient && (

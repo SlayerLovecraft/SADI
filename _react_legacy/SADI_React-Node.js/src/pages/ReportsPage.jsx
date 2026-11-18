@@ -66,6 +66,7 @@ const ReportsPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [matrixData, setMatrixData] = useState(null);
+  const [serverFilteredRpc, setServerFilteredRpc] = useState(null);
   const [exporting, setExporting] = useState(false);
 
   // Estados de los 5 Filtros de la Columna Flotante (Boceto del Usuario)
@@ -113,6 +114,25 @@ const ReportsPage = () => {
     return dbBarrios && dbBarrios.length > 0 ? dbBarrios : BARRIOS_LIST.slice(1);
   }, [matrixData]);
 
+  useEffect(() => {
+    if (!matrixData?.fromServerRpc) return;
+    let cancelled = false;
+    reportsAnalysisService
+      .fetchFilteredPieStats({
+        hospitalId: resolvedHospitalId,
+        cursoVida: selectedCursoVida,
+        grupoRiesgo: selectedGrupoRiesgo,
+        barrio: selectedBarrio,
+        comuna: selectedComuna,
+        zona: selectedZona,
+      })
+      .then((res) => {
+        if (!cancelled && res) setServerFilteredRpc(res);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [matrixData?.fromServerRpc, resolvedHospitalId, selectedCursoVida, selectedGrupoRiesgo, selectedBarrio, selectedComuna, selectedZona]);
+
   // Cálculo reactivo de los datos para la gráfica de torta según los filtros seleccionados
   const pieChartData = useMemo(() => {
     return reportsAnalysisService.computePieChartData({
@@ -121,9 +141,10 @@ const ReportsPage = () => {
       barrio: selectedBarrio,
       comuna: selectedComuna,
       zona: selectedZona,
-      matrixData: matrixData
+      matrixData: matrixData,
+      serverFilteredRpc,
     });
-  }, [selectedCursoVida, selectedGrupoRiesgo, selectedBarrio, selectedComuna, selectedZona, matrixData]);
+  }, [selectedCursoVida, selectedGrupoRiesgo, selectedBarrio, selectedComuna, selectedZona, matrixData, serverFilteredRpc]);
 
   // Etiquetas legibles de los filtros para exportación
   const filterLabels = useMemo(() => {
@@ -297,7 +318,7 @@ const ReportsPage = () => {
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              Base de Datos Sincronizada • {matrixData?.realPatientsCount ?? 0} pacientes reales
+              Base de Datos Sincronizada • {(matrixData?.realPatientsCount ?? 0).toLocaleString('es-CO')} pacientes reales
             </span>
           </div>
         </div>

@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { telemonitoringService } from '@/services/telemonitoringService';
+import { staffService } from '@/services/staffService';
 import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from '@/services/rias3280Catalog';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import { roadmapService } from '@/services/roadmapService';
@@ -39,6 +40,7 @@ export default function Rias3280ManagementPage() {
   const [activeTab, setActiveTab] = useState('lista_mensual'); // 'lista_mensual' | 'disparo_individual' | 'logs'
   
   const [patients, setPatients] = useState([]);
+  const [realCohortTotal, setRealCohortTotal] = useState(0);
   const [selectedCourseFilter, setSelectedCourseFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProgram, setSelectedProgram] = useState(PROGRAMAS_Y_TAMIZAJES_3280[0]);
@@ -54,7 +56,32 @@ export default function Rias3280ManagementPage() {
 
   useEffect(() => {
     async function init() {
-      const list = await telemonitoringService.getPatients();
+      const statsPromise = staffService.getAssignmentStats(user?.hospitalId).catch(() => null);
+      let list = [];
+      if (doctorAccess.restricted) {
+        const docRes = await staffService.getAssignedPatientsPaginated({
+          doctorId: user?.doctor_id || user?.id,
+          cursos: doctorAccess.keys,
+          hospitalId: user?.hospitalId,
+          mode: 'scope',
+          page: 1,
+          pageSize: 100,
+        }).catch(() => ({ data: [], totalCount: 0 }));
+        list = docRes?.data || [];
+      } else {
+        list = await telemonitoringService.getPatients();
+      }
+      const statsRes = await statsPromise;
+      if (statsRes?.success) {
+        if (!doctorAccess.restricted) {
+          setRealCohortTotal(Number(statsRes.totalPatients || list.length));
+        } else {
+          const sum = doctorAccess.keys.reduce((acc, k) => acc + Number(statsRes.byCurso?.[k] || 0), 0);
+          setRealCohortTotal(sum);
+        }
+      } else {
+        setRealCohortTotal(list.length);
+      }
       setPatients(list);
       if (list.length > 0) {
         setSelectedPatient(list[0]);
@@ -62,7 +89,7 @@ export default function Rias3280ManagementPage() {
       loadLogs();
     }
     init();
-  }, []);
+  }, [user]);
 
   const loadLogs = async () => {
     setLoadingLogs(true);
@@ -288,7 +315,7 @@ export default function Rias3280ManagementPage() {
                 {visibleAllPrograms.length} Protocolos Clínicos Indexados
               </p>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
-                {visiblePatients.length} pacientes reales y variables dinámicas en vivo
+                {(realCohortTotal || visiblePatients.length).toLocaleString('es-CO')} pacientes reales y variables dinámicas en vivo
               </p>
               {doctorAccess.restricted && (
                 <p className="text-[10px] font-bold text-amber-800 dark:text-amber-300 mt-0.5">

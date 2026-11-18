@@ -56,15 +56,15 @@ export const billingService = {
     const safeMonth = Math.min(12, Math.max(1, parseInt(monthIndex) || 11));
     const mesObj = MESES_ANO.find(m => m.id === safeMonth) || MESES_ANO[10];
 
-    // Consultar pacientes reales de Supabase
-    let query = supabase.from('patients').select('*');
-    if (hospitalId) {
-      query = query.eq('hospital_id', hospitalId);
-    }
-    
-    const { data: dbPatients, error } = await query;
-    if (error) {
-      console.warn('Error cargando pacientes de Supabase para facturación:', error);
+    // Contar pacientes totales reales en Supabase sin truncar a 1,000
+    let dbPatientsTotalCount = 0;
+    try {
+      let countQuery = supabase.from('patients').select('patient_id', { count: 'exact', head: true });
+      if (hospitalId) countQuery = countQuery.eq('hospital_id', hospitalId);
+      const { count } = await countQuery;
+      dbPatientsTotalCount = Number(count || 0);
+    } catch {
+      dbPatientsTotalCount = 0;
     }
 
     // Consultar sesiones reales de Vapi / SIP 183 para descontar buzones cortados ($0 COP)
@@ -121,7 +121,42 @@ export const billingService = {
       // Fallback limpio si tabla OpenVox aún no existe
     }
 
-    const patientsRaw = (dbPatients && dbPatients.length > 0) ? dbPatients : [];
+    // Consultar únicamente pacientes que tuvieron eventos reales este mes o canales acumulados (> 0)
+    const activeIds = Array.from(new Set([
+      ...Array.from(sessionsByPatient.keys()),
+      ...Array.from(smsByPatient.keys()),
+    ])).filter(Boolean);
+
+    let patientsRaw = [];
+    try {
+      if (activeIds.length > 0) {
+        for (let i = 0; i < activeIds.length; i += 150) {
+          const chunk = activeIds.slice(i, i + 150);
+          let pQ = supabase.from('patients').select('*').in('patient_id', chunk);
+          if (hospitalId) pQ = pQ.eq('hospital_id', hospitalId);
+          const { data: pChunk } = await pQ;
+          if (Array.isArray(pChunk)) patientsRaw.push(...pChunk);
+        }
+      }
+      // También incluir pacientes con conteo_canales registrados directamente (> 0) mediante RPC indexada
+      const { data: chRows } = await supabase.rpc('get_billing_nonzero_canales_patients', {
+        p_hospital_id: hospitalId || null,
+        p_limit: 500,
+      });
+      if (Array.isArray(chRows)) {
+        const seen = new Set(patientsRaw.map((p) => String(p.patient_id || p.id)));
+        chRows.forEach((r) => {
+          const pid = String(r.patient_id || r.id);
+          if (!seen.has(pid)) {
+            seen.add(pid);
+            patientsRaw.push(r);
+          }
+        });
+      }
+    } catch {
+      patientsRaw = [];
+    }
+
     const patients = [];
     const logs = [];
 
@@ -197,31 +232,17 @@ export const billingService = {
           }
         });
       } else {
-        const callRoll = rng();
-        llamadaContestada = callRoll > 0.14;
-        if (llamadaContestada) {
-          segundosLlamada = Math.floor(65 + rng() * 95);
-          llamadasExitosas = 1;
-        } else {
-          // Del 14% sin respuesta: mitad interceptada en buzón antes del cobro carrier (SIP 183)
-          llamadaCortadaPorBuzon = callRoll <= 0.08;
-          cortePreCobroCarrier = llamadaCortadaPorBuzon;
-          capaDeteccionBuzon = llamadaCortadaPorBuzon ? 'pre_answer_sip_183' : 'ring_timeout_pre_answer';
-          if (llamadaCortadaPorBuzon) {
-            buzonesCortadosPaciente = 1;
-            cortesPreCobroPaciente = 1;
-          }
-        }
+        llamadasIntentos = Number(canalesRegistrados.call) || 0;
+        llamadaContestada = false;
       }
 
       const cobroLlamada = llamadaContestada ? (segundosLlamada * PRICING_CONSTANTS.PRICE_CALL_PER_SECOND) : 0;
 
       // 2. WHATSAPP
-      // 96% de entrega efectiva en terminal
-      const waIntentos = 1;
-      const waEntregado = rng() > 0.04;
-      const waExitosos = waEntregado ? 1 : 0;
-      const cobroWa = waEntregado ? PRICING_CONSTANTS.PRICE_WA_UTILITY : 0;
+      const waIntentos = Number(canalesRegistrados.whatsapp) || 0;
+      const waExitosos = waIntentos;
+      const waEntregado = waExitosos > 0;
+      const cobroWa = waExitosos * PRICING_CONSTANTS.PRICE_WA_UTILITY;
 
       // 3. SMS (Exclusivo vía OpenVox SIM Cards 1..32; intentos fallidos purgados = $0 COP)
       let smsIntentos = 0;
@@ -241,19 +262,17 @@ export const billingService = {
           }
         });
       } else {
-        smsIntentos = (canalesRegistrados.sms && canalesRegistrados.sms > 0) ? 1 : (rng() > 0.3 ? 1 : 0);
-        const smsEntregado = smsIntentos > 0 ? (rng() > 0.08) : false;
-        smsExitosos = smsEntregado ? 1 : 0;
+        smsIntentos = Number(canalesRegistrados.sms) || 0;
+        smsExitosos = smsIntentos;
       }
       const smsEntregado = smsExitosos > 0;
       const cobroSms = smsExitosos * PRICING_CONSTANTS.PRICE_SMS;
 
       // 4. E-MAIL
-      // 95% de entrega en bandeja (no rebotado)
-      const emailIntentos = (canalesRegistrados.email && canalesRegistrados.email > 0) ? 1 : (rng() > 0.4 ? 1 : 0);
-      const emailEntregado = emailIntentos > 0 ? (rng() > 0.05) : false;
-      const emailExitosos = emailEntregado ? 1 : 0;
-      const cobroEmail = emailEntregado ? PRICING_CONSTANTS.PRICE_EMAIL : 0;
+      const emailIntentos = Number(canalesRegistrados.email) || 0;
+      const emailExitosos = emailIntentos;
+      const emailEntregado = emailExitosos > 0;
+      const cobroEmail = emailExitosos * PRICING_CONSTANTS.PRICE_EMAIL;
 
       // TOTAL EXACTO FACTURADO AL HOSPITAL POR ESTE PACIENTE
       const cobroTotalPaciente = Math.round(cobroLlamada + cobroWa + cobroSms + cobroEmail);
@@ -426,6 +445,7 @@ export const billingService = {
       totales: {
         totalFacturado: granTotalFacturado,
         pacientesCount: patients.length,
+        pacientesBdCount: dbPatientsTotalCount,
         totalEnviosGlobales,
         totalEnviosExitosos,
         totalEnviosFallidos: totalEnviosGlobales - totalEnviosExitosos,

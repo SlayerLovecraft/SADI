@@ -95,7 +95,7 @@ export const getGeneralDoctorForPatient = (patient) => {
   if (!patient) return GENERAL_DOCTORS_EMAILS[0];
 
   const docId = String(patient.doctor_asignado_id || patient.doctor_id || '');
-  if (docId === 'd0100000-0000-0000-0000-000000000001') return 'alejandro.morales@sadi.med.co';
+  if (docId === 'd0100000-0000-0000-0000-000000000001' || docId === 'd39515b8-39cb-41e7-b1f8-ceb5fa778371') return 'alejandro.morales@sadi.med.co';
   if (docId === 'd0200000-0000-0000-0000-000000000002') return 'valentina.gomez@sadi.med.co';
   if (docId === 'd0300000-0000-0000-0000-000000000003') return 'daniel.vargas@sadi.med.co';
 
@@ -124,6 +124,7 @@ export const getAssignedDoctorEmailForPatient = (patient) => {
     const targetId = patient.doctor_asignado_id || patient.doctor_id;
     const idMap = {
       'd1111111-1111-1111-1111-111111111111': 'paola.gil@sadi.med.co',
+      'a9165a9c-ebb5-4419-8499-dfce0b5c9c0c': 'paola.gil@sadi.med.co',
       'd2222222-2222-2222-2222-222222222222': 'juan.bermudez@sadi.med.co',
       'd3333333-3333-3333-3333-333333333333': 'sandra.castano@sadi.med.co',
       'd4444444-4444-4444-4444-444444444444': 'fernando.rincon@sadi.med.co',
@@ -132,6 +133,7 @@ export const getAssignedDoctorEmailForPatient = (patient) => {
       'd7777777-7777-7777-7777-777777777777': 'natalia.ocampo@sadi.med.co',
       'd8888888-8888-8888-8888-888888888888': 'carlos.salazar@sadi.med.co',
       'd0100000-0000-0000-0000-000000000001': 'alejandro.morales@sadi.med.co',
+      'd39515b8-39cb-41e7-b1f8-ceb5fa778371': 'alejandro.morales@sadi.med.co',
       'd0200000-0000-0000-0000-000000000002': 'valentina.gomez@sadi.med.co',
       'd0300000-0000-0000-0000-000000000003': 'daniel.vargas@sadi.med.co'
     };

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
+import { staffService } from '@/services/staffService';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 import { 
   clinicalRecordsService, 
@@ -68,12 +69,20 @@ export default function DoctorClinicalRecordsPage() {
         };
         setSelectedDoctor(currentDoctor);
 
-        const patList = await telemonitoringService.getPatients();
-
-        // RESTRICCIÓN CLÍNICA ESTRICTA: Los doctores solo pueden ver y cargar historias de SUS pacientes asignados
-        const myPatients = user?.role === 'doctor'
-          ? patList.filter((p) => isPatientAssignedToDoctor(p, currentDoctor))
-          : patList;
+        let myPatients = [];
+        if (user?.role === 'doctor') {
+          const docRes = await staffService.getAssignedPatientsPaginated({
+            doctorId: currentDoctor.doctor_id || currentDoctor.id,
+            cursos: Array.isArray(currentDoctor.cursos_vida_asignados) ? currentDoctor.cursos_vida_asignados : [],
+            hospitalId: currentDoctor.hospital_id || user?.hospitalId || null,
+            mode: 'scope',
+            page: 1,
+            pageSize: 100,
+          });
+          myPatients = docRes?.data || [];
+        } else {
+          myPatients = await telemonitoringService.getPatients();
+        }
 
         setPatients(myPatients);
 
