@@ -109,46 +109,40 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
       {/* Matriz Multicanal Header: Cantidades por Cursos de Vida y Grupos de Riesgo */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
         {/* Cabecera de la Tabla y Toggles de Vista */}
-        <div className="p-4 bg-slate-900 dark:bg-slate-950 border-b border-slate-800 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="p-4 bg-white dark:bg-slate-950 border-b border-slate-200/90 dark:border-slate-800 text-slate-900 dark:text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-teal-500 text-slate-950">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-100 dark:bg-teal-500/20 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-500/40">
                 Matriz Consolidada
               </span>
-              <h3 className="text-sm font-black text-white">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white">
                 Reporte de Emisiones Multicanal SADI
               </h3>
             </div>
-            <p className="text-[11px] text-slate-300 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-300 mt-0.5">
               Desglose cruzado de los 4 canales de contacto por Cursos de Vida (A - J) y Grupos de Riesgo Priorizados.
             </p>
           </div>
 
-          <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700 shrink-0">
-            <button
-              onClick={() => setActiveTableTab('todos')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                activeTableTab === 'todos' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              Vista Panorámica
-            </button>
-            <button
-              onClick={() => setActiveTableTab('cursos')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                activeTableTab === 'cursos' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              Cursos de Vida (A - J)
-            </button>
-            <button
-              onClick={() => setActiveTableTab('riesgos')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                activeTableTab === 'riesgos' ? 'bg-teal-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              Grupos de Riesgo (1 - 7)
-            </button>
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+            {[
+              { id: 'todos', label: 'Vista Panorámica' },
+              { id: 'cursos', label: 'Cursos de Vida (A - J)' },
+              { id: 'riesgos', label: 'Grupos de Riesgo (1 - 7)' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTableTab(tab.id)}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                  activeTableTab === tab.id
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
 
