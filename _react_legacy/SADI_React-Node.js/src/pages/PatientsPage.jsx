@@ -492,13 +492,16 @@ const PatientsPage = () => {
       <Layout>
         <div className="flex items-center justify-center h-96">
           <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="text-gray-600">Cargando pacientes...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 dark:border-blue-400"></div>
+            <p className="text-gray-600 dark:text-slate-400">Cargando pacientes...</p>
           </div>
         </div>
       </Layout>
     );
   }
+
+  const modalInputClass =
+    'w-full mt-1 px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <Layout>
@@ -508,19 +511,19 @@ const PatientsPage = () => {
 
       <div className="space-y-6">
         {/* Cabecera Principal Homogénea SADI */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div>
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-md shadow-blue-500/20">
                 <Users className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                   Pacientes
                 </h1>
-                <p className="text-sm text-slate-500 mt-0.5">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                   Censo oficial y telemonitoreo clínico de pacientes registrados en el hospital •{' '}
-                  <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60">
                     {patients.length} pacientes vinculados
                   </span>
                 </p>
@@ -545,7 +548,7 @@ const PatientsPage = () => {
               <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Agregar Nuevo Paciente</DialogTitle>
-                  <p className="text-sm text-gray-500 mt-2">
+                  <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">
                     Se enviará un email de verificación al paciente
                   </p>
                 </DialogHeader>
@@ -558,7 +561,7 @@ const PatientsPage = () => {
                         type="text"
                         value={newPatient.nombre}
                         onChange={(e) => setNewPatient({ ...newPatient, nombre: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       />
                     </div>
@@ -569,7 +572,7 @@ const PatientsPage = () => {
                         type="text"
                         value={newPatient.apellido}
                         onChange={(e) => setNewPatient({ ...newPatient, apellido: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       />
                     </div>
@@ -582,10 +585,10 @@ const PatientsPage = () => {
                       type="text"
                       value={newPatient.cedula}
                       onChange={(e) => setNewPatient({ ...newPatient, cedula: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={modalInputClass}
                       required
                     />
-                    <p className="text-xs text-gray-500 mt-1">Esta será la contraseña temporal</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Esta será la contraseña temporal</p>
                   </div>
 
                   <div>
@@ -597,12 +600,12 @@ const PatientsPage = () => {
                         type="email"
                         value={newPatient.email}
                         onChange={(e) => setNewPatient({ ...newPatient, email: e.target.value })}
-                        className="w-full mt-1 pl-10 px-3 py-2 border border-gray-300 rounded-md"
+                        className={`${modalInputClass} pl-10`}
                         placeholder="paciente@email.com"
                         required
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">Se enviará verificación a este correo</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Se enviará verificación a este correo</p>
                   </div>
 
                   <div>
@@ -612,7 +615,7 @@ const PatientsPage = () => {
                       type="tel"
                       value={newPatient.telefono}
                       onChange={(e) => setNewPatient({ ...newPatient, telefono: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={modalInputClass}
                       required
                     />
                   </div>
@@ -625,7 +628,7 @@ const PatientsPage = () => {
                         type="date"
                         value={newPatient.fecha_nacimiento}
                         onChange={(e) => setNewPatient({ ...newPatient, fecha_nacimiento: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       />
                     </div>
@@ -635,7 +638,7 @@ const PatientsPage = () => {
                         id="genero"
                         value={newPatient.genero}
                         onChange={(e) => setNewPatient({ ...newPatient, genero: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       >
                         <option value="M">Masculino</option>
@@ -651,7 +654,7 @@ const PatientsPage = () => {
                       type="text"
                       value={newPatient.ciudad}
                       onChange={(e) => setNewPatient({ ...newPatient, ciudad: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={modalInputClass}
                     />
                   </div>
 
@@ -662,12 +665,12 @@ const PatientsPage = () => {
                       type="text"
                       value={newPatient.direccion}
                       onChange={(e) => setNewPatient({ ...newPatient, direccion: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={modalInputClass}
                     />
                   </div>
 
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-xs text-blue-800">
+                  <div className="bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800/60 rounded-lg p-3">
+                    <p className="text-xs text-blue-800 dark:text-blue-200">
                       ℹ️ <strong>Importante:</strong> Se enviará un correo de verificación al paciente. 
                       Debe confirmar su email antes de poder iniciar sesión.
                     </p>
@@ -701,7 +704,7 @@ const PatientsPage = () => {
                         type="text"
                         value={editPatient.nombre}
                         onChange={(e) => setEditPatient({ ...editPatient, nombre: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       />
                     </div>
@@ -712,7 +715,7 @@ const PatientsPage = () => {
                         type="tel"
                         value={editPatient.telefono}
                         onChange={(e) => setEditPatient({ ...editPatient, telefono: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       />
                     </div>
@@ -725,7 +728,7 @@ const PatientsPage = () => {
                       type="email"
                       value={editPatient.email}
                       onChange={(e) => setEditPatient({ ...editPatient, email: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={modalInputClass}
                       required
                     />
                   </div>
@@ -738,7 +741,7 @@ const PatientsPage = () => {
                         type="date"
                         value={editPatient.fechaNacimiento}
                         onChange={(e) => setEditPatient({ ...editPatient, fechaNacimiento: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       />
                     </div>
@@ -748,7 +751,7 @@ const PatientsPage = () => {
                         id="edit-sexo"
                         value={editPatient.sexo}
                         onChange={(e) => setEditPatient({ ...editPatient, sexo: e.target.value })}
-                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                        className={modalInputClass}
                         required
                       >
                         <option value="M">Masculino</option>
@@ -764,7 +767,7 @@ const PatientsPage = () => {
                       type="text"
                       value={editPatient.ciudad}
                       onChange={(e) => setEditPatient({ ...editPatient, ciudad: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={modalInputClass}
                     />
                   </div>
 
@@ -775,7 +778,7 @@ const PatientsPage = () => {
                       type="text"
                       value={editPatient.direccion}
                       onChange={(e) => setEditPatient({ ...editPatient, direccion: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={modalInputClass}
                     />
                   </div>
 
@@ -786,11 +789,11 @@ const PatientsPage = () => {
                       type="text"
                       value={editPatient.cc}
                       onChange={(e) => setEditPatient({ ...editPatient, cc: e.target.value })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                      className={`${modalInputClass} opacity-70`}
                       readOnly
                       disabled
                     />
-                    <p className="text-xs text-gray-500 mt-1">El documento no se puede editar</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">El documento no se puede editar</p>
                   </div>
 
                   <Button type="submit" className="w-full">
@@ -803,7 +806,7 @@ const PatientsPage = () => {
         </div>
 
         {/* Contenedor Principal de Pacientes y Telemetría */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 transition-colors">
           <div className="mb-6 space-y-4">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -812,7 +815,7 @@ const PatientsPage = () => {
                 placeholder="Buscar por nombre, teléfono, ciudad o CC..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 bg-slate-50/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               />
             </div>
 
@@ -823,18 +826,18 @@ const PatientsPage = () => {
                   type="checkbox"
                   checked={allFilteredSelected}
                   onChange={toggleSelectAllFiltered}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
-                <span className="text-sm font-medium text-slate-700">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                   Seleccionar todo (vista)
                 </span>
                 {selectedCount > 0 && (
-                  <span className="text-xs font-semibold bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md border border-blue-200">
+                  <span className="text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-md border border-blue-200 dark:border-blue-800/60">
                     Seleccionados: {selectedCount}
                   </span>
                 )}
                 {selectedCount > 0 && (
-                  <Button variant="ghost" size="sm" onClick={clearSelection} className="text-xs text-slate-500 hover:text-slate-800">
+                  <Button variant="ghost" size="sm" onClick={clearSelection} className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">
                     Limpiar
                   </Button>
                 )}
@@ -849,7 +852,7 @@ const PatientsPage = () => {
                     setShowBulkAssignDialog(true);
                   }}
                   disabled={selectedCount === 0 || bulkProcessing}
-                  className="text-xs border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
+                  className="text-xs bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 font-medium"
                 >
                   Asignar doctor
                 </Button>
@@ -922,7 +925,7 @@ const PatientsPage = () => {
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Asignar doctor</DialogTitle>
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">
               Se asignará el mismo doctor a {selectedCount} pacientes seleccionados.
             </p>
           </DialogHeader>
@@ -934,7 +937,7 @@ const PatientsPage = () => {
                 id="bulk-doctor"
                 value={bulkDoctorId}
                 onChange={(e) => setBulkDoctorId(e.target.value)}
-                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md"
+                className={modalInputClass}
                 disabled={loadingDoctors || bulkProcessing}
               >
                 <option value="">Selecciona un doctor</option>
@@ -959,6 +962,7 @@ const PatientsPage = () => {
               variant="outline"
               onClick={() => setShowBulkAssignDialog(false)}
               disabled={bulkProcessing}
+              className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 dark:text-slate-200"
             >
               Cancelar
             </Button>

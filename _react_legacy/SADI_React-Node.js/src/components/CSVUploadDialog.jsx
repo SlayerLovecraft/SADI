@@ -561,7 +561,7 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="flex items-center">
+        <Button variant="outline" className="flex items-center bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-100 hover:bg-gray-50 dark:hover:bg-slate-700">
           <Upload className="h-4 w-4 mr-2" /> Cargar CSV
         </Button>
       </DialogTrigger>
@@ -576,15 +576,15 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
         }}
       >
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="dark:text-white">{title}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Info */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-lg p-4">
             <div className="flex gap-2">
-              <AlertCircle className="h-5 w-5 text-blue-600" />
-              <div className="text-sm text-blue-900">
+              <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="text-sm text-blue-900 dark:text-blue-200">
                 <p className="font-semibold">Formato del CSV</p>
                 <p className="text-xs mt-1">
                   {isDoctors ? (
@@ -601,7 +601,7 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
                   )}
                 </p>
                 {hospitalId && (
-                  <p className="text-xs mt-2 text-green-700">
+                  <p className="text-xs mt-2 text-green-700 dark:text-emerald-400">
                     ✅ Los {entityLabelPlural} se asociarán automáticamente a tu hospital
                   </p>
                 )}
@@ -615,22 +615,22 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
             onDrop={onDrop}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
-            className="relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition"
+            className="relative border-2 border-dashed border-gray-300 dark:border-slate-700 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/60 transition"
           >
             <div className="flex items-center justify-center gap-3">
-              <div className="p-3 bg-white rounded-full shadow-sm">
-                <FileText className="h-6 w-6 text-gray-600" />
+              <div className="p-3 bg-white dark:bg-slate-800 rounded-full shadow-sm border border-transparent dark:border-slate-700">
+                <FileText className="h-6 w-6 text-gray-600 dark:text-slate-300" />
               </div>
               <div className="text-left">
-                <p className="font-semibold">Arrastra tu CSV aquí o haz clic en "Seleccionar archivo"</p>
-                <p className="text-xs text-gray-500">Acepta .csv — soporta comillas y comas internas.</p>
+                <p className="font-semibold text-gray-900 dark:text-slate-100">Arrastra tu CSV aquí o haz clic en "Seleccionar archivo"</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Acepta .csv — soporta comillas y comas internas.</p>
               </div>
             </div>
 
             <div className="mt-4 flex justify-center gap-3 items-center">
               <label
                 htmlFor="csv-file"
-                className="inline-flex items-center px-4 py-2 bg-white border rounded-md cursor-pointer text-sm hover:bg-gray-50"
+                className="inline-flex items-center px-4 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-100 rounded-md cursor-pointer text-sm hover:bg-gray-50 dark:hover:bg-slate-700"
               >
                 Seleccionar archivo
               </label>
@@ -643,7 +643,7 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
               />
 
               {file && (
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-slate-300">
                   {file.name} — {(file.size / 1024).toFixed(2)} KB
                 </div>
               )}
@@ -652,20 +652,20 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
 
           {/* Preview */}
           {preview && (
-            <div className="bg-white border rounded-lg p-4">
+            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg p-4">
               <div className="flex justify-between items-center mb-3">
                 <div>
-                  <p className="text-sm font-semibold">Vista previa (primeras 20 filas)</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Vista previa (primeras 20 filas)</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
                     Headers detectados: {preview.rawHeaders.join(', ')}
                   </p>
                 </div>
-                <div className="text-xs text-gray-500">Total: {preview.rowCount} filas</div>
+                <div className="text-xs text-gray-500 dark:text-slate-400">Total: {preview.rowCount} filas</div>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="min-w-full text-xs">
-                  <thead className="text-left text-gray-600">
+                <table className="min-w-full text-xs text-gray-800 dark:text-slate-200">
+                  <thead className="text-left text-gray-600 dark:text-slate-400">
                     <tr>
                       <th className="pr-4">#</th>
                       {preview.headers.slice(0, 8).map((h, i) => (
@@ -676,7 +676,7 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
                   </thead>
                   <tbody>
                     {preview.previewRows.map((r, i) => (
-                      <tr key={i} className="border-t">
+                      <tr key={i} className="border-t dark:border-slate-800">
                         <td className="pr-4">{i + 1}</td>
                         {preview.headers.slice(0, 8).map((h, j) => (
                           <td key={j} className="pr-4">{r[h]}</td>
@@ -693,13 +693,13 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
           {/* Progress */}
           {isProcessing && (
             <div className="space-y-2">
-              <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+              <div className="w-full bg-gray-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
                 <div
                   style={{ width: `${progress}%` }}
                   className="h-3 bg-green-500 transition-all duration-300"
                 />
               </div>
-              <p className="text-xs text-center text-gray-600">
+              <p className="text-xs text-center text-gray-600 dark:text-slate-300">
                 {progress < 30 ? 'Validando datos...' : 
                  progress < 90 ? `Creando ${entityLabelPlural}...` : 
                  'Finalizando...'}
@@ -710,37 +710,38 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
           {/* Results */}
           {uploadResults && (
             <div className="grid grid-cols-3 gap-4">
-              <div className="bg-gray-50 p-4 rounded text-center">
-                <p className="text-2xl font-bold">{uploadResults.total}</p>
-                <p className="text-sm text-gray-600">Procesados</p>
+              <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded text-center border border-transparent dark:border-slate-700">
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{uploadResults.total}</p>
+                <p className="text-sm text-gray-600 dark:text-slate-400">Procesados</p>
               </div>
-              <div className="bg-green-50 p-4 rounded text-center">
+              <div className="bg-green-50 dark:bg-emerald-950/40 p-4 rounded text-center border border-transparent dark:border-emerald-800/50">
                 <div className="flex items-center justify-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <p className="text-2xl font-bold text-green-900">{uploadResults.successful}</p>
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-emerald-400" />
+                  <p className="text-2xl font-bold text-green-900 dark:text-emerald-200">{uploadResults.successful}</p>
                 </div>
-                <p className="text-sm text-green-600">Exitosos</p>
+                <p className="text-sm text-green-600 dark:text-emerald-400">Exitosos</p>
               </div>
-              <div className="bg-red-50 p-4 rounded text-center">
+              <div className="bg-red-50 dark:bg-red-950/40 p-4 rounded text-center border border-transparent dark:border-red-800/50">
                 <div className="flex items-center justify-center gap-2">
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  <p className="text-2xl font-bold text-red-900">{uploadResults.failed}</p>
+                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                  <p className="text-2xl font-bold text-red-900 dark:text-red-200">{uploadResults.failed}</p>
                 </div>
-                <p className="text-sm text-red-600">Fallidos</p>
+                <p className="text-sm text-red-600 dark:text-red-400">Fallidos</p>
               </div>
             </div>
           )}
 
           {/* Errors */}
           {uploadResults?.errors && uploadResults.errors.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-h-56 overflow-y-auto">
+            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-lg p-4 max-h-56 overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
-                <p className="font-semibold text-red-900">Errores encontrados</p>
+                <p className="font-semibold text-red-900 dark:text-red-200">Errores encontrados</p>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => downloadErrorsCSV(uploadResults.errors)}
+                    className="bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
                   >
                     <Download className="h-3 w-3 mr-1" /> Descargar
                   </Button>
@@ -756,13 +757,13 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
               </div>
 
               {uploadResults.errors.slice(0, 50).map((e, idx) => (
-                <div key={idx} className="text-xs text-red-800 mb-1">
+                <div key={idx} className="text-xs text-red-800 dark:text-red-300 mb-1">
                   <strong>Fila {e.row}</strong> — {(isDoctors ? e.doctor?.nombre : e.patient?.nombre) || 'sin nombre'} ({(isDoctors ? e.doctor?.email : e.patient?.email) || 'sin email'}): {e.error}
                 </div>
               ))}
 
               {uploadResults.errors.length > 50 && (
-                <p className="text-xs text-red-600 italic mt-2">
+                <p className="text-xs text-red-600 dark:text-red-400 italic mt-2">
                   ... y {uploadResults.errors.length - 50} errores más
                 </p>
               )}
@@ -771,7 +772,7 @@ const CSVUploadDialog = ({ entity = 'patients', hospitalId, onUploadComplete }) 
 
           {/* Buttons */}
           <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={reset} disabled={isProcessing}>
+            <Button variant="outline" onClick={reset} disabled={isProcessing} className="bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200">
               Cancelar
             </Button>
             {!uploadResults ? (

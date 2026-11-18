@@ -234,15 +234,15 @@ const CampaignsPage = () => {
   const getStatusColor = (estado) => {
     switch (estado) {
       case 'Activa':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+        return 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/60';
       case 'Completada':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+        return 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60';
       case 'Programada':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
+        return 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60';
       case 'No Enviada':
-        return 'bg-red-100 text-red-800 border-red-200';
+        return 'bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800/60';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
+        return 'bg-gray-100 dark:bg-slate-800 text-gray-800 dark:text-slate-200 border-gray-200 dark:border-slate-700';
     }
   };
 
@@ -615,8 +615,8 @@ const CampaignsPage = () => {
       <Layout>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center space-y-3">
-            <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto" />
-            <p className="text-sm font-semibold text-gray-600">Cargando campañas y tandas del hospital...</p>
+            <Loader2 className="w-10 h-10 animate-spin text-blue-600 dark:text-blue-400 mx-auto" />
+            <p className="text-sm font-semibold text-gray-600 dark:text-slate-400">Cargando campañas y tandas del hospital...</p>
           </div>
         </div>
       </Layout>
@@ -669,19 +669,19 @@ const CampaignsPage = () => {
         {/* ========================================================================= */}
         {/* NAVEGACIÓN PRINCIPAL: 4 PASOS IDÉNTICOS AL CRONOGRAMA                     */}
         {/* ========================================================================= */}
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-slate-800 pb-3">
 
           {/* PASO 1: CAMPAÑAS Y ROADMAP ANUAL */}
           <button
             onClick={() => setActiveTab('campanas')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'campanas'
                 ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
               }`}
           >
             <Layers className="w-4 h-4" />
             Campañas Organizadas en 2 Paquetes
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'campanas' ? 'bg-blue-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'campanas' ? 'bg-blue-800 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300'}`}>
               {visibleCampaigns.length}
             </span>
           </button>
@@ -691,12 +691,12 @@ const CampaignsPage = () => {
             onClick={() => setActiveTab('tandas')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'tandas'
                 ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
               }`}
           >
             <Clock className="w-4 h-4" />
             Monitor de Tandas Diarias (30 min)
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'tandas' ? 'bg-blue-800 text-white' : 'bg-gray-100 text-gray-700'}`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'tandas' ? 'bg-blue-800 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300'}`}>
               24 tandas
             </span>
           </button>
@@ -706,13 +706,13 @@ const CampaignsPage = () => {
             onClick={() => setActiveTab('casos_humanos')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'casos_humanos'
                 ? 'bg-red-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
               }`}
           >
             <ShieldAlert className="w-4 h-4" />
             Casos Aislados No Contactados
             {casosHumanos > 0 && (
-              <span className="px-2 py-0.5 text-[10px] bg-red-100 text-red-700 rounded-full font-black">
+              <span className="px-2 py-0.5 text-[10px] bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-300 rounded-full font-black">
                 {casosHumanos}
               </span>
             )}
@@ -722,8 +722,8 @@ const CampaignsPage = () => {
           <button
             onClick={() => setActiveTab('config')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'config'
-                ? 'bg-gray-900 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                ? 'bg-gray-900 dark:bg-teal-600 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
               }`}
           >
             <Settings className="w-4 h-4" />
@@ -738,16 +738,16 @@ const CampaignsPage = () => {
           <div className="space-y-6">
 
             {/* BANNER INFORMATIVO: ORIGEN EN CRONOGRAMA & FUNCIÓN DE RELANZAR */}
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-900 dark:to-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-blue-100 text-blue-700 shrink-0 mt-0.5">
+                <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 shrink-0 mt-0.5">
                   <Info className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-xs text-blue-950 uppercase tracking-wider">
+                  <h4 className="font-bold text-xs text-blue-950 dark:text-blue-200 uppercase tracking-wider">
                     Estructura de Campañas y Relanzamiento SADI
                   </h4>
-                  <p className="text-xs text-blue-800 mt-0.5 max-w-3xl">
+                  <p className="text-xs text-blue-800 dark:text-slate-300 mt-0.5 max-w-3xl">
                     Las nuevas campañas se crean a partir de las celdas de los calendarios del <strong>Cronograma</strong> (Cursos de Vida y Grupos de Riesgo). En esta sección puedes supervisar los <strong>2 paquetes</strong> de campañas y <strong>Relanzarlas</strong> editando únicamente sus fechas, días, semanas, lugares y frecuencia de lanzamiento.
                   </p>
                 </div>
@@ -760,7 +760,7 @@ const CampaignsPage = () => {
                     // Navegar al Cronograma si existe en el router o invocar evento
                     window.location.hash = '#/cronograma';
                   }}
-                  className="bg-white hover:bg-blue-50 text-blue-700 border-blue-200 text-xs font-bold rounded-xl gap-1.5"
+                  className="bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-slate-700 text-xs font-bold rounded-xl gap-1.5"
                 >
                   <Calendar className="w-3.5 h-3.5" />
                   Ir al Cronograma
@@ -769,20 +769,20 @@ const CampaignsPage = () => {
             </div>
 
             {/* SELECTOR DE LOS 2 PAQUETES DE CAMPAÑAS */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm transition-colors">
               {/* Pestañas de Paquetes */}
-              <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl text-xs font-bold">
+              <div className="flex items-center gap-2 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => setCampaignPackageFilter('cursos_vida')}
                   className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${campaignPackageFilter === 'cursos_vida'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      : 'text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white'
                     }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
                   <span>📁 Paquete: Cursos de Vida</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${campaignPackageFilter === 'cursos_vida' ? 'bg-blue-800 text-white' : 'bg-gray-200 text-gray-700'
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${campaignPackageFilter === 'cursos_vida' ? 'bg-blue-800 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200'
                     }`}>
                     {countCursosVida}
                   </span>
@@ -793,12 +793,12 @@ const CampaignsPage = () => {
                   onClick={() => setCampaignPackageFilter('grupos_riesgo')}
                   className={`px-4 py-2 rounded-lg transition-all flex items-center gap-2 ${campaignPackageFilter === 'grupos_riesgo'
                       ? 'bg-purple-700 text-white shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      : 'text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white'
                     }`}
                 >
                   <HeartPulse className="w-3.5 h-3.5" />
                   <span>📁 Paquete: Grupos de Riesgo</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${campaignPackageFilter === 'grupos_riesgo' ? 'bg-purple-900 text-white' : 'bg-gray-200 text-gray-700'
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${campaignPackageFilter === 'grupos_riesgo' ? 'bg-purple-900 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200'
                     }`}>
                     {countGruposRiesgo}
                   </span>
@@ -808,8 +808,8 @@ const CampaignsPage = () => {
                   type="button"
                   onClick={() => setCampaignPackageFilter('todos')}
                   className={`px-3 py-2 rounded-lg transition-all ${campaignPackageFilter === 'todos'
-                      ? 'bg-gray-800 text-white shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? 'bg-gray-800 dark:bg-slate-600 text-white shadow-sm'
+                      : 'text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white'
                     }`}
                 >
                   Todas ({visibleCampaigns.length})
@@ -825,14 +825,14 @@ const CampaignsPage = () => {
                     placeholder="Buscar campaña o lugar..."
                     value={campaignSearchTerm}
                     onChange={(e) => setCampaignSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <select
                   value={campaignStatusFilter}
                   onChange={(e) => setCampaignStatusFilter(e.target.value)}
-                  className="text-xs p-1.5 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700"
+                  className="text-xs p-1.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl font-medium text-gray-700 dark:text-slate-200"
                 >
                   <option value="todos">Todos los Estados</option>
                   <option value="programada">Programadas</option>
@@ -844,12 +844,12 @@ const CampaignsPage = () => {
 
             {/* Grilla de Campañas Filtradas */}
             {filteredCampaigns.length === 0 ? (
-              <div className="bg-white rounded-3xl border border-gray-200 p-12 text-center shadow-sm">
-                <Send className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-gray-900 mb-1">
+              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 p-12 text-center shadow-sm">
+                <Send className="h-12 w-12 text-gray-300 dark:text-slate-600 mx-auto mb-3" />
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">
                   No hay campañas en este paquete
                 </h3>
-                <p className="text-xs text-gray-500 mb-4 max-w-md mx-auto">
+                <p className="text-xs text-gray-500 dark:text-slate-400 mb-4 max-w-md mx-auto">
                   Para crear nuevas campañas con segmentación clínica, accede al Cronograma y haz clic en la celda del mes deseado.
                 </p>
                 <Button
@@ -873,33 +873,33 @@ const CampaignsPage = () => {
                       initial={{ opacity: 0, y: 15 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow relative overflow-hidden flex flex-col justify-between"
+                      className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm p-6 hover:shadow-md transition-shadow relative overflow-hidden flex flex-col justify-between"
                     >
                       <div>
                         {/* Cabecera de la Tarjeta */}
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex items-center space-x-3">
                             <div className={`p-2.5 rounded-2xl border ${isGrupoRiesgo
-                                ? 'bg-purple-50 border-purple-100 text-purple-700'
-                                : 'bg-blue-50 border-blue-100 text-blue-700'
+                                ? 'bg-purple-50 dark:bg-purple-950/50 border-purple-100 dark:border-purple-800/60 text-purple-700 dark:text-purple-300'
+                                : 'bg-blue-50 dark:bg-blue-950/50 border-blue-100 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
                               }`}>
                               {isGrupoRiesgo ? (
-                                <HeartPulse className="h-5 w-5 text-purple-600" />
+                                <HeartPulse className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                               ) : (
-                                <Layers className="h-5 w-5 text-blue-600" />
+                                <Layers className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                               )}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.2 rounded text-[10px] font-bold uppercase tracking-wider ${isGrupoRiesgo
-                                    ? 'bg-purple-100 text-purple-800'
-                                    : 'bg-blue-100 text-blue-800'
+                                    ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300'
+                                    : 'bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300'
                                   }`}>
                                   {isGrupoRiesgo ? 'Paquete Grupos de Riesgo' : 'Paquete Cursos de Vida'}
                                 </span>
                               </div>
-                              <h3 className="font-bold text-sm text-gray-900 mt-0.5">{campaign.nombre}</h3>
-                              <p className="text-[11px] text-gray-400">
+                              <h3 className="font-bold text-sm text-gray-900 dark:text-white mt-0.5">{campaign.nombre}</h3>
+                              <p className="text-[11px] text-gray-400 dark:text-slate-500">
                                 Creada: {new Date(campaign.created_at || campaign.fecha_creacion || Date.now()).toLocaleDateString()}
                               </p>
                             </div>
@@ -912,15 +912,15 @@ const CampaignsPage = () => {
                         {/* Metadatos Clínicos y de Lanzamiento */}
                         <div className="space-y-2.5 text-xs">
                           {/* Fechas y Frecuencia */}
-                          <div className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded-xl border border-slate-100">
-                            <span className="text-gray-500 flex items-center gap-1.5">
-                              <CalendarRange className="w-3.5 h-3.5 text-blue-600" />
+                          <div className="flex items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/70 p-2 rounded-xl border border-slate-100 dark:border-slate-700/70">
+                            <span className="text-gray-500 dark:text-slate-400 flex items-center gap-1.5">
+                              <CalendarRange className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                               Frecuencia & Fechas:
                             </span>
-                            <span className="font-bold text-slate-800 text-right">
+                            <span className="font-bold text-slate-800 dark:text-slate-100 text-right">
                               {campaign.config_frecuencia?.summary || campaign.fecha_programada || 'Fechas múltiples'}
                               {Array.isArray(campaign.fechas_ejecucion) && campaign.fechas_ejecucion.length > 1 && (
-                                <span className="ml-1 text-[10px] text-blue-600 font-semibold">
+                                <span className="ml-1 text-[10px] text-blue-600 dark:text-blue-400 font-semibold">
                                   ({campaign.fechas_ejecucion.length} días)
                                 </span>
                               )}
@@ -929,19 +929,19 @@ const CampaignsPage = () => {
 
                           {/* Lugar / Sede */}
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-gray-500 flex items-center gap-1.5">
+                            <span className="text-gray-500 dark:text-slate-400 flex items-center gap-1.5">
                               <Building2 className="w-3.5 h-3.5 text-slate-400" />
                               Sede / Lugar:
                             </span>
-                            <span className="font-semibold text-slate-800">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
                               {campaign.lugar || 'Sede Principal - Manizales (Caldas)'}
                             </span>
                           </div>
 
                           {/* Segmento / Cruce */}
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-gray-500">Segmentación:</span>
-                            <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
+                            <span className="text-gray-500 dark:text-slate-400">Segmentación:</span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[11px]">
                               {Array.isArray(campaign.segmento_cursos) && campaign.segmento_cursos.length > 0 
                                 ? campaign.segmento_cursos.join(', ') 
                                 : (Array.isArray(campaign.segmento_riesgos) && campaign.segmento_riesgos.length > 0 
@@ -952,37 +952,37 @@ const CampaignsPage = () => {
 
                           {/* Política Reintentos */}
                           <div className="flex items-center justify-between text-xs">
-                            <span className="text-gray-500">Reintentos por tandas:</span>
-                            <span className="font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 text-[11px]">
+                            <span className="text-gray-500 dark:text-slate-400">Reintentos por tandas:</span>
+                            <span className="font-medium text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800/60 text-[11px]">
                               {campaign.reintentos ? `Hasta ${campaign.reintentos} reintentos` : 'Hasta que conteste'}
                             </span>
                           </div>
 
                           {/* Directriz IA si existe */}
                           {campaign.directriz_ia && (
-                            <div className="bg-blue-50/50 p-2.5 rounded-xl border border-blue-100 text-[11px] text-slate-700 italic line-clamp-2">
+                            <div className="bg-blue-50/50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/50 text-[11px] text-slate-700 dark:text-slate-300 italic line-clamp-2">
                               "{campaign.directriz_ia}"
                             </div>
                           )}
 
                           {/* Destinatarios y Aforo */}
-                          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
-                            <span className="text-gray-500">Aforo / Destinatarios:</span>
-                            <span className="font-bold text-gray-900">
+                          <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+                            <span className="text-gray-500 dark:text-slate-400">Aforo / Destinatarios:</span>
+                            <span className="font-bold text-gray-900 dark:text-white">
                               {campaign.pacientes_asignados || campaign.destinatarios || 56} pacientes
                             </span>
                           </div>
                         </div>
 
                         {/* Progreso */}
-                        <div className="mt-4 pt-3 border-t border-gray-100">
-                          <div className="flex justify-between text-[11px] text-gray-500 mb-1">
+                        <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-800">
+                          <div className="flex justify-between text-[11px] text-gray-500 dark:text-slate-400 mb-1">
                             <span>Progreso de Emisión en Tandas</span>
-                            <span className="font-bold text-gray-700">
+                            <span className="font-bold text-gray-700 dark:text-slate-200">
                               {effectiveEstado === 'Completada' ? '100%' : effectiveEstado === 'Activa' ? '45%' : '0%'}
                             </span>
                           </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2">
+                          <div className="w-full bg-gray-100 dark:bg-slate-800 rounded-full h-2">
                             <div
                               className={`h-2 rounded-full transition-all ${isGrupoRiesgo ? 'bg-purple-600' : 'bg-blue-600'}`}
                               style={{ width: effectiveEstado === 'Completada' ? '100%' : effectiveEstado === 'Activa' ? '45%' : '5%' }}
@@ -992,7 +992,7 @@ const CampaignsPage = () => {
                       </div>
 
                       {/* ACCIONES: RELANZAR CAMPAÑA DESTACADO */}
-                      <div className="mt-5 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                      <div className="mt-5 pt-3 border-t border-gray-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
                         {/* BOTÓN PRINCIPAL DE RELANZAR */}
                         <Button
                           type="button"
@@ -1011,7 +1011,7 @@ const CampaignsPage = () => {
                               size="sm"
                               variant="outline"
                               onClick={() => handleSendNow(campaign)}
-                              className="text-blue-600 hover:bg-blue-50 text-xs font-bold rounded-xl border-blue-200"
+                              className="bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 text-xs font-bold rounded-xl border-blue-200 dark:border-blue-800/60"
                               disabled={submitting}
                             >
                               <Send className="h-3.5 w-3.5 mr-1" />
@@ -1023,7 +1023,7 @@ const CampaignsPage = () => {
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="text-red-600 hover:bg-red-50 text-xs font-semibold rounded-xl"
+                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs font-semibold rounded-xl"
                             onClick={() => {
                               setSelectedCampaign(campaign);
                               setShowDeleteDialog(true);
@@ -1049,42 +1049,42 @@ const CampaignsPage = () => {
           <div className="space-y-6">
             {/* Tarjetas de Métricas de Tandas Diarias */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-                <span className="text-[11px] font-bold text-gray-500 uppercase block">Total en Cola</span>
-                <span className="text-2xl font-black text-gray-900 mt-1 block">{totalPacientes || 56}</span>
-                <span className="text-[10px] text-gray-400">Distribuidos en 24 tandas</span>
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
+                <span className="text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase block">Total en Cola</span>
+                <span className="text-2xl font-black text-gray-900 dark:text-white mt-1 block">{totalPacientes || 56}</span>
+                <span className="text-[10px] text-gray-400 dark:text-slate-500">Distribuidos en 24 tandas</span>
               </div>
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-                <span className="text-[11px] font-bold text-emerald-600 uppercase block">Confirmados (1)</span>
-                <span className="text-2xl font-black text-emerald-700 mt-1 block">{confirmados}</span>
-                <span className="text-[10px] text-emerald-600/80">Asistencia garantizada</span>
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
+                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase block">Confirmados (1)</span>
+                <span className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1 block">{confirmados}</span>
+                <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80">Asistencia garantizada</span>
               </div>
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-                <span className="text-[11px] font-bold text-blue-600 uppercase block">Reagendados (2)</span>
-                <span className="text-2xl font-black text-blue-700 mt-1 block">{reagendados}</span>
-                <span className="text-[10px] text-blue-600/80">Piden nueva fecha</span>
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
+                <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase block">Reagendados (2)</span>
+                <span className="text-2xl font-black text-blue-700 dark:text-blue-400 mt-1 block">{reagendados}</span>
+                <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80">Piden nueva fecha</span>
               </div>
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-                <span className="text-[11px] font-bold text-amber-600 uppercase block">En Reintento</span>
-                <span className="text-2xl font-black text-amber-700 mt-1 block">{enReintento}</span>
-                <span className="text-[10px] text-amber-600/80">Pasar a próx. intervalo</span>
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
+                <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase block">En Reintento</span>
+                <span className="text-2xl font-black text-amber-700 dark:text-amber-400 mt-1 block">{enReintento}</span>
+                <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80">Pasar a próx. intervalo</span>
               </div>
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-                <span className="text-[11px] font-bold text-red-600 uppercase block">Casos Aislados</span>
-                <span className="text-2xl font-black text-red-700 mt-1 block">{casosHumanos}</span>
-                <span className="text-[10px] text-red-600/80">Requieren llamada manual</span>
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
+                <span className="text-[11px] font-bold text-red-600 dark:text-red-400 uppercase block">Casos Aislados</span>
+                <span className="text-2xl font-black text-red-700 dark:text-red-400 mt-1 block">{casosHumanos}</span>
+                <span className="text-[10px] text-red-600/80 dark:text-red-400/80">Requieren llamada manual</span>
               </div>
             </div>
 
             {/* Selector Visual de las 24 Tandas de 30 min (08:30 AM a 08:00 PM) */}
-            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3">
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm space-y-3">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-blue-600" />
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Seleccionar Tanda Operativa (24 Intervalos de 30 min: 08:30 AM a 08:00 PM)
                   </h3>
-                  <p className="text-[11px] text-gray-500">
+                  <p className="text-[11px] text-gray-500 dark:text-slate-400">
                     Aforo del Gateway: 32 canales GSM simultáneos por intervalo.
                   </p>
                 </div>
@@ -1095,7 +1095,7 @@ const CampaignsPage = () => {
                     variant="outline"
                     onClick={() => handleSimulateBatch(selectedSlotId)}
                     disabled={isSimulating}
-                    className="text-xs font-bold rounded-xl gap-1.5"
+                    className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold rounded-xl gap-1.5"
                   >
                     {isSimulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                     Simular Ejecución Tanda
@@ -1114,11 +1114,11 @@ const CampaignsPage = () => {
                       onClick={() => setSelectedSlotId(slot.id)}
                       className={`p-2 rounded-xl border text-center transition-all ${isSel
                           ? 'bg-blue-600 text-white border-blue-700 shadow-sm ring-1 ring-blue-500'
-                          : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700'
+                          : 'bg-gray-50 dark:bg-slate-800/70 hover:bg-gray-100 dark:hover:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200'
                         }`}
                     >
                       <div className="text-[11px] font-bold">{slot.hora}</div>
-                      <div className={`text-[9px] mt-0.5 ${isSel ? 'text-blue-100' : 'text-gray-400'}`}>
+                      <div className={`text-[9px] mt-0.5 ${isSel ? 'text-blue-100' : 'text-gray-400 dark:text-slate-500'}`}>
                         {slotCount}/{MAX_PATIENTS_PER_BATCH}
                       </div>
                     </button>
@@ -1128,13 +1128,13 @@ const CampaignsPage = () => {
             </div>
 
             {/* Listado de Pacientes en la Tanda Seleccionada */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm text-gray-800">
+                  <h4 className="font-bold text-sm text-gray-800 dark:text-white">
                     Pacientes Asignados a la Tanda de las {selectedSlot.hora}
                   </h4>
-                  <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                  <span className="text-xs bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full font-bold">
                     {currentSlotPatients.length} pacientes
                   </span>
                 </div>
@@ -1145,12 +1145,12 @@ const CampaignsPage = () => {
                     placeholder="Buscar paciente en tanda..."
                     value={batchSearchTerm}
                     onChange={(e) => setBatchSearchTerm(e.target.value)}
-                    className="text-xs px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl"
+                    className="text-xs px-3 py-1.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl"
                   />
                   <select
                     value={batchFilterStatus}
                     onChange={(e) => setBatchFilterStatus(e.target.value)}
-                    className="text-xs p-1.5 bg-gray-50 border border-gray-200 rounded-xl font-medium"
+                    className="text-xs p-1.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-medium"
                   >
                     <option value="todos">Todos los Estados</option>
                     <option value="programada">Programada</option>
@@ -1162,21 +1162,21 @@ const CampaignsPage = () => {
               </div>
 
               {currentSlotPatients.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 text-xs">
+                <div className="p-8 text-center text-gray-500 dark:text-slate-400 text-xs">
                   No hay pacientes asignados en esta franja horaria.
                 </div>
               ) : (
-                <div className="divide-y divide-gray-100 max-h-[380px] overflow-y-auto">
+                <div className="divide-y divide-gray-100 dark:divide-slate-800 max-h-[380px] overflow-y-auto">
                   {currentSlotPatients.map(item => (
-                    <div key={item.id} className="p-3 hover:bg-gray-50 flex items-center justify-between text-xs">
+                    <div key={item.id} className="p-3 hover:bg-gray-50 dark:hover:bg-slate-800/50 flex items-center justify-between text-xs">
                       <div>
-                        <div className="font-bold text-gray-800">{item.nombre}</div>
-                        <div className="text-gray-500">Doc: {item.documento} • Tel: {item.telefono}</div>
+                        <div className="font-bold text-gray-800 dark:text-white">{item.nombre}</div>
+                        <div className="text-gray-500 dark:text-slate-400">Doc: {item.documento} • Tel: {item.telefono}</div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.estado === 'confirmada' ? 'bg-emerald-100 text-emerald-700' :
-                            item.estado === 'reagendada' ? 'bg-blue-100 text-blue-700' :
-                              item.estado === 'en_reintento' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.estado === 'confirmada' ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300' :
+                            item.estado === 'reagendada' ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300' :
+                              item.estado === 'en_reintento' ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300'
                           }`}>
                           {item.estado}
                         </span>
@@ -1186,7 +1186,7 @@ const CampaignsPage = () => {
                           variant="outline"
                           onClick={() => handleCallSinglePatient(item)}
                           disabled={callingId === item.id}
-                          className="text-xs font-bold rounded-xl gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
+                          className="bg-white dark:bg-slate-800 text-xs font-bold rounded-xl gap-1 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60 hover:bg-blue-50 dark:hover:bg-slate-700"
                         >
                           {callingId === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneCall className="w-3 h-3" />}
                           Llamar
@@ -1205,14 +1205,14 @@ const CampaignsPage = () => {
         {/* ========================================================================= */}
         {activeTab === 'casos_humanos' && (
           <div className="space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-xs text-red-900">
+            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-2xl p-4 text-xs text-red-900 dark:text-red-200">
               <strong className="block font-bold">Bandeja de Gestión Humana para Casos Aislados</strong>
               <span>
                 Pacientes que no respondieron tras los reintentos automáticos de la campaña o presentaron inconvenientes de línea. Requieren intervención telefónica personalizada del personal de enfermería.
               </span>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center text-xs text-gray-500">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-6 text-center text-xs text-gray-500 dark:text-slate-400">
               No hay casos aislados pendientes en este momento. La plataforma ha procesado con éxito las confirmaciones.
             </div>
           </div>
@@ -1222,53 +1222,53 @@ const CampaignsPage = () => {
         {/* PESTAÑA 4: PARÁMETROS DE AUTOMATIZACIÓN                                   */}
         {/* ========================================================================= */}
         {activeTab === 'config' && (
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
             <div>
-              <h3 className="text-base font-bold text-gray-900">Parámetros del Motor de Emisión</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">Parámetros del Motor de Emisión</h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
                 Configuración del hardware GSM, franjas horarias y políticas de reintento.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
-                <span className="font-bold text-blue-950 block mb-1">Franjas de Operación:</span>
-                <span className="text-blue-800 leading-relaxed block">
+              <div className="p-4 bg-blue-50/50 dark:bg-blue-950/35 rounded-2xl border border-blue-200 dark:border-blue-800/60">
+                <span className="font-bold text-blue-950 dark:text-blue-200 block mb-1">Franjas de Operación:</span>
+                <span className="text-blue-800 dark:text-blue-300 leading-relaxed block">
                   <strong>24 Tandas de 30 minutos</strong> (08:30 AM a 08:00 PM). Capacidad de hasta <strong>768 llamadas/día</strong> con el Gateway GSM de 32 canales.
                 </span>
               </div>
 
-              <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200">
+              <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/35 rounded-2xl border border-emerald-200 dark:border-emerald-800/60">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-emerald-950">Política de Reintentos:</span>
+                  <span className="font-bold text-emerald-950 dark:text-emerald-200">Política de Reintentos:</span>
                   <button
                     type="button"
                     onClick={handleToggleRetryUntilAnswered}
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${config.retryUntilAnswered ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${config.retryUntilAnswered ? 'bg-emerald-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200'
                       }`}
                   >
                     {config.retryUntilAnswered ? 'ACTIVO' : 'LIMITADO'}
                   </button>
                 </div>
-                <span className="text-emerald-800 leading-relaxed block">
+                <span className="text-emerald-800 dark:text-emerald-300 leading-relaxed block">
                   {config.retryUntilAnswered
                     ? 'Reintentar hasta que conteste: El motor reasigna las llamadas no contestadas a la siguiente tanda disponible durante el día.'
                     : 'Reintentos fijados a un límite manual de llamadas por paciente.'}
                 </span>
               </div>
 
-              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200">
-                <span className="font-bold text-indigo-950 block mb-1">Gateway GSM 32 Canales:</span>
-                <span className="text-indigo-800 leading-relaxed block">
+              <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/35 rounded-2xl border border-indigo-200 dark:border-indigo-800/60">
+                <span className="font-bold text-indigo-950 dark:text-indigo-200 block mb-1">Gateway GSM 32 Canales:</span>
+                <span className="text-indigo-800 dark:text-indigo-300 leading-relaxed block">
                   OpenVox GSM conectado vía Asterisk PJSIP/ARI + Vapi. Detección Pre-Answer (<code>SIP 183</code>) y corte silencioso antes del cobro carrier.
                 </span>
               </div>
             </div>
 
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="p-4 bg-gray-50 dark:bg-slate-800/70 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
               <div>
-                <span className="font-bold text-gray-900 block">Modo de Operación del Motor:</span>
-                <span className="text-gray-500">
+                <span className="font-bold text-gray-900 dark:text-white block">Modo de Operación del Motor:</span>
+                <span className="text-gray-500 dark:text-slate-400">
                   {config.isLiveEnabled ? 'Las campañas programadas se emiten automáticamente al Gateway GSM.' : 'Modo Standby Seguro activo para validación clínica previa.'}
                 </span>
               </div>
@@ -1305,21 +1305,21 @@ const CampaignsPage = () => {
 
               <div className="p-6 space-y-6">
                 {/* Información Fija de la Campaña Original */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs space-y-2">
-                  <div className="flex justify-between border-b border-slate-200 pb-1.5">
-                    <span className="text-slate-500">Segmentación Original:</span>
-                    <strong className="text-slate-800">
+                <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-xs space-y-2">
+                  <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1.5">
+                    <span className="text-slate-500 dark:text-slate-400">Segmentación Original:</span>
+                    <strong className="text-slate-800 dark:text-slate-100">
                       {selectedCampaign?.segmento_cursos?.join(', ') || selectedCampaign?.segmento_riesgos?.join(', ') || selectedCampaign?.origen_nombre || 'General'}
                     </strong>
                   </div>
-                  <div className="flex justify-between border-b border-slate-200 pb-1.5">
-                    <span className="text-slate-500">Canales Autorizados:</span>
-                    <strong className="text-slate-800">
+                  <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1.5">
+                    <span className="text-slate-500 dark:text-slate-400">Canales Autorizados:</span>
+                    <strong className="text-slate-800 dark:text-slate-100">
                       {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 22), WhatsApp'}
                     </strong>
                   </div>
                   {selectedCampaign?.directriz_ia && (
-                    <div className="text-[11px] text-slate-600 italic pt-1">
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300 italic pt-1">
                       "{selectedCampaign?.directriz_ia}"
                     </div>
                   )}
@@ -1327,7 +1327,7 @@ const CampaignsPage = () => {
 
                 {/* 1. SELECCIÓN DE FRECUENCIA & CALENDARIO (Diario, Semanal, Mensual) */}
                 <div className="space-y-3">
-                  <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
                     1. Nuevo Calendario & Frecuencia de Lanzamiento
                   </Label>
                   <CampaignSchedulingCalendar
@@ -1338,7 +1338,7 @@ const CampaignsPage = () => {
 
                 {/* 2. LUGAR / SEDE DE ATENCIÓN */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
                     2. Sede o Lugar de Atención Asignado
                   </Label>
                   <div className="flex items-center gap-2">
@@ -1346,7 +1346,7 @@ const CampaignsPage = () => {
                     <select
                       value={relaunchLugar}
                       onChange={(e) => setRelaunchLugar(e.target.value)}
-                      className="w-full text-xs p-2.5 border border-slate-300 rounded-xl bg-white font-medium"
+                      className="w-full text-xs p-2.5 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                     >
                       <option value="Sede Principal - Manizales (Caldas)">Sede Principal - Manizales (Caldas)</option>
                       <option value="Sede Ambulatoria - Chinchiná">Sede Ambulatoria - Chinchiná</option>
@@ -1359,12 +1359,12 @@ const CampaignsPage = () => {
                 {/* 3. HORARIOS DE TANDA (08:30 AM a 08:00 PM) */}
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       3. Horarios Permitidos (08:00 AM a 06:00 PM)
                     </Label>
-                    <span className="text-xs text-slate-500">{relaunchFranjas.length} franjas</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{relaunchFranjas.length} franjas</span>
                   </div>
-                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-32 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-32 overflow-y-auto p-1 bg-slate-50 dark:bg-slate-800/70 rounded-xl border border-slate-200 dark:border-slate-700">
                     {FRANJAS_HORARIAS_10H.map(franja => {
                       const isSel = relaunchFranjas.includes(franja);
                       return (
@@ -1378,7 +1378,7 @@ const CampaignsPage = () => {
                           }}
                           className={`py-1 px-1.5 rounded-lg text-xs font-medium transition-all ${isSel
                               ? 'bg-emerald-600 text-white shadow-sm'
-                              : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                             }`}
                         >
                           {franja}
@@ -1389,11 +1389,11 @@ const CampaignsPage = () => {
                 </div>
 
                 {/* 4. REINTENTAR HASTA QUE CONTESTE */}
-                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/35 border border-amber-200 dark:border-amber-800/60 rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <RotateCcw className="w-4 h-4 text-amber-600" />
-                      <span className="font-bold text-xs text-amber-900">
+                      <RotateCcw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                      <span className="font-bold text-xs text-amber-900 dark:text-amber-200">
                         Reintentar automáticamente hasta que conteste
                       </span>
                     </div>
@@ -1405,12 +1405,12 @@ const CampaignsPage = () => {
                     />
                   </div>
                   {relaunchRetryUntilAnswer && (
-                    <div className="flex items-center gap-3 text-xs text-amber-800 pt-1.5 border-t border-amber-200">
+                    <div className="flex items-center gap-3 text-xs text-amber-800 dark:text-amber-300 pt-1.5 border-t border-amber-200 dark:border-amber-800/60">
                       <span>Máximo de reintentos por paciente:</span>
                       <select
                         value={relaunchMaxRetries}
                         onChange={(e) => setRelaunchMaxRetries(Number(e.target.value))}
-                        className="bg-white border border-amber-300 rounded px-2 py-0.5 font-bold text-slate-800"
+                        className="bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded px-2 py-0.5 font-bold text-slate-800 dark:text-slate-100"
                       >
                         <option value={1}>1 reintento</option>
                         <option value={2}>2 reintentos</option>
@@ -1426,7 +1426,7 @@ const CampaignsPage = () => {
                 <Button
                   variant="outline"
                   onClick={() => setShowRelaunchDialog(false)}
-                  className="text-xs rounded-xl"
+                  className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs rounded-xl"
                 >
                   Cancelar
                 </Button>

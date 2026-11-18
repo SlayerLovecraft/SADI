@@ -330,11 +330,11 @@ export default function CampaignSchedulingCalendar({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-5 shadow-sm">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-5 shadow-sm transition-colors">
       
       {/* 1. SELECTOR DE FRECUENCIA (DIARIO, SEMANAL, MENSUAL) */}
       <div>
-        <label className="text-xs font-black text-slate-800 uppercase tracking-wider block mb-2">
+        <label className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider block mb-2">
           Paso 0: Modalidad de Frecuencia del Lanzamiento
         </label>
         <div className="grid grid-cols-3 gap-2">
@@ -358,41 +358,41 @@ export default function CampaignSchedulingCalendar({
               }}
               className={`p-3 rounded-xl border text-left transition-all ${
                 frecuencia === opt.id
-                  ? 'border-blue-600 bg-blue-50/70 text-blue-950 font-bold ring-2 ring-blue-500/20 shadow-xs'
-                  : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 text-slate-700'
+                  ? 'border-blue-600 dark:border-blue-500 bg-blue-50/70 dark:bg-blue-950/60 text-blue-950 dark:text-blue-100 font-bold ring-2 ring-blue-500/20 shadow-xs'
+                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-slate-50/50 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300'
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-sm font-black">{opt.label}</span>
-                {frecuencia === opt.id && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                {frecuencia === opt.id && <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
               </div>
-              <span className="text-[10px] text-slate-500 block mt-0.5">{opt.sub}</span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">{opt.sub}</span>
             </button>
           ))}
         </div>
       </div>
 
       {/* 2. CONTROLES ESPECÍFICOS SEGÚN LA FRECUENCIA */}
-      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+      <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
         {frecuencia === 'diaria' && (
           <div>
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-800">
+              <span className="font-bold text-slate-800 dark:text-slate-100">
                 Selección de Rango Diario (Lunes a Sábado - Sin Domingos):
               </span>
-              <span className="text-[11px] text-blue-700 font-semibold">
+              <span className="text-[11px] text-blue-700 dark:text-blue-400 font-semibold">
                 Haz clic en el día de inicio y luego en el día final
               </span>
             </div>
             <div className="flex items-center gap-3 mt-2 text-xs">
-              <div className="bg-white px-3 py-1.5 rounded-lg border border-slate-200">
-                <span className="text-[10px] text-slate-400 block font-semibold">Desde:</span>
-                <span className="font-bold text-slate-800">{dailyStartDate || 'Pendiente selección'}</span>
+              <div className="bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-semibold">Desde:</span>
+                <span className="font-bold text-slate-800 dark:text-slate-100">{dailyStartDate || 'Pendiente selección'}</span>
               </div>
               <span className="text-slate-400">➔</span>
-              <div className="bg-white px-3 py-1.5 rounded-lg border border-slate-200">
-                <span className="text-[10px] text-slate-400 block font-semibold">Hasta:</span>
-                <span className="font-bold text-slate-800">{dailyEndDate || dailyStartDate || 'Mismo día'}</span>
+              <div className="bg-white dark:bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-semibold">Hasta:</span>
+                <span className="font-bold text-slate-800 dark:text-slate-100">{dailyEndDate || dailyStartDate || 'Mismo día'}</span>
               </div>
             </div>
           </div>
@@ -402,13 +402,13 @@ export default function CampaignSchedulingCalendar({
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-bold text-slate-800 block mb-1">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">
                   1. ¿Cuántas semanas?
                 </label>
                 <select
                   value={semanasCount}
                   onChange={(e) => setSemanasCount(Number(e.target.value))}
-                  className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-lg bg-white"
+                  className="w-full text-xs font-semibold p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 >
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
                     <option key={n} value={n}>{n} {n === 1 ? 'semana' : 'semanas consecutivas'}</option>
@@ -417,7 +417,7 @@ export default function CampaignSchedulingCalendar({
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-800 block mb-1">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">
                   2. ¿Qué día de la semana? (Excluye Domingos)
                 </label>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
@@ -432,7 +432,7 @@ export default function CampaignSchedulingCalendar({
                       className={`py-1.5 text-xs font-bold rounded-lg transition-colors ${
                         selectedDayOfWeek === d.id
                           ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`}
                     >
                       {d.abrev}
@@ -442,7 +442,7 @@ export default function CampaignSchedulingCalendar({
               </div>
             </div>
 
-            <p className="text-[11px] text-blue-800 bg-blue-100/60 p-2.5 rounded-lg">
+            <p className="text-[11px] text-blue-800 dark:text-blue-200 bg-blue-100/60 dark:bg-blue-950/50 p-2.5 rounded-lg">
               ℹ️ <strong>Instrucción:</strong> En el calendario a continuación, haz clic en el primer <strong>{DIAS_SEMANA_NOMBRES.find(d => d.id === selectedDayOfWeek)?.nombre}</strong> disponible a partir del cual arrancará la campaña.
             </p>
           </div>
@@ -452,13 +452,13 @@ export default function CampaignSchedulingCalendar({
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="w-full sm:w-1/2">
-                <label className="text-xs font-bold text-slate-800 block mb-1">
+                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block mb-1">
                   1. ¿Cuántos meses? (Máximo 12 meses):
                 </label>
                 <select
                   value={mesesCount}
                   onChange={(e) => setMesesCount(Number(e.target.value))}
-                  className="w-full text-xs font-semibold p-2 border border-slate-300 rounded-lg bg-white"
+                  className="w-full text-xs font-semibold p-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                 >
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
                     <option key={n} value={n}>{n} {n === 1 ? 'mes' : 'meses consecutivos'}</option>
@@ -467,14 +467,14 @@ export default function CampaignSchedulingCalendar({
               </div>
 
               {monthlyDay && (
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs">
-                  <span className="text-[10px] text-slate-400 block font-semibold">Día del mes fijado:</span>
-                  <span className="font-black text-blue-900 text-sm">Día {monthlyDay} de cada mes</span>
+                <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-semibold">Día del mes fijado:</span>
+                  <span className="font-black text-blue-900 dark:text-blue-300 text-sm">Día {monthlyDay} de cada mes</span>
                 </div>
               )}
             </div>
 
-            <p className="text-[11px] text-emerald-800 bg-emerald-100/60 p-2.5 rounded-lg">
+            <p className="text-[11px] text-emerald-800 dark:text-emerald-200 bg-emerald-100/60 dark:bg-emerald-950/50 p-2.5 rounded-lg">
               ℹ️ <strong>Instrucción:</strong> Selecciona en el calendario de este mes el día (del 1 al 31) en que se lanzará la campaña cada mes (se omiten domingos y días pasados).
             </p>
           </div>
@@ -482,12 +482,12 @@ export default function CampaignSchedulingCalendar({
       </div>
 
       {/* 3. CALENDARIO VISUAL INTERACTIVO CON REGLAS ESTRICTAS */}
-      <div className="border border-slate-200 rounded-2xl p-4 bg-white shadow-xs">
+      <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-white dark:bg-slate-900 shadow-xs">
         {/* CABECERA DE NAVEGACIÓN DEL MES */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <CalendarIcon className="w-5 h-5 text-blue-600" />
-            <span className="text-sm font-black text-slate-900">
+            <CalendarIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <span className="text-sm font-black text-slate-900 dark:text-white">
               {MESES_NOMBRES[viewMonth]} {viewYear}
             </span>
           </div>
@@ -499,7 +499,7 @@ export default function CampaignSchedulingCalendar({
               size="sm"
               onClick={handlePrevMonth}
               disabled={isAtCurrentOrPastMonth}
-              className={`h-8 w-8 p-0 rounded-lg ${isAtCurrentOrPastMonth ? 'opacity-30 cursor-not-allowed' : ''}`}
+              className={`h-8 w-8 p-0 rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 dark:text-slate-200 ${isAtCurrentOrPastMonth ? 'opacity-30 cursor-not-allowed' : ''}`}
               title={isAtCurrentOrPastMonth ? "No se pueden seleccionar meses anteriores al actual" : "Mes anterior"}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -509,7 +509,7 @@ export default function CampaignSchedulingCalendar({
               variant="outline"
               size="sm"
               onClick={handleNextMonth}
-              className="h-8 w-8 p-0 rounded-lg"
+              className="h-8 w-8 p-0 rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 dark:text-slate-200"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -517,7 +517,7 @@ export default function CampaignSchedulingCalendar({
         </div>
 
         {/* CABECERAS DE DÍAS (LUN A DOM) */}
-        <div className="grid grid-cols-7 gap-1 text-center mb-1 text-[11px] font-black uppercase text-slate-400">
+        <div className="grid grid-cols-7 gap-1 text-center mb-1 text-[11px] font-black uppercase text-slate-400 dark:text-slate-500">
           <span>Lun</span>
           <span>Mar</span>
           <span>Mié</span>
@@ -555,14 +555,14 @@ export default function CampaignSchedulingCalendar({
                   isSelected
                     ? 'bg-blue-600 text-white shadow-md font-black ring-2 ring-blue-400/50'
                     : isDisabled
-                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed border border-transparent'
-                    : 'bg-white hover:bg-blue-50 text-slate-800 border border-slate-200'
+                    ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-300 dark:text-slate-600 cursor-not-allowed border border-transparent'
+                    : 'bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
                 }`}
               >
                 <span>{dayItem.dayNum}</span>
 
                 {isSundayDay && (
-                  <span className="text-[8px] font-semibold text-red-300 leading-none">Dom</span>
+                  <span className="text-[8px] font-semibold text-red-300 dark:text-red-400/70 leading-none">Dom</span>
                 )}
 
                 {isSelected && (
@@ -575,21 +575,21 @@ export default function CampaignSchedulingCalendar({
       </div>
 
       {/* 4. RESUMEN DE PROYECCIÓN Y FECHAS CALCULADAS */}
-      <div className="p-3.5 bg-blue-50/60 rounded-xl border border-blue-200 flex items-start gap-3 text-xs">
-        <Sparkles className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+      <div className="p-3.5 bg-blue-50/60 dark:bg-blue-950/35 rounded-xl border border-blue-200 dark:border-blue-800/60 flex items-start gap-3 text-xs">
+        <Sparkles className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
         <div>
-          <span className="font-bold text-blue-950 block">Resumen de Programación:</span>
-          <p className="text-blue-900 mt-0.5 leading-relaxed">{resumenTexto}</p>
+          <span className="font-bold text-blue-950 dark:text-blue-200 block">Resumen de Programación:</span>
+          <p className="text-blue-900 dark:text-slate-300 mt-0.5 leading-relaxed">{resumenTexto}</p>
           
           {scheduledDates.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {scheduledDates.slice(0, 10).map((dStr, i) => (
-                <span key={dStr} className="bg-white text-blue-800 font-mono font-bold px-2 py-0.5 rounded border border-blue-200 text-[10px]">
+                <span key={dStr} className="bg-white dark:bg-slate-900 text-blue-800 dark:text-blue-300 font-mono font-bold px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60 text-[10px]">
                   #{i + 1}: {dStr}
                 </span>
               ))}
               {scheduledDates.length > 10 && (
-                <span className="text-[10px] text-blue-600 font-bold self-center">
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold self-center">
                   +{scheduledDates.length - 10} fechas más...
                 </span>
               )}

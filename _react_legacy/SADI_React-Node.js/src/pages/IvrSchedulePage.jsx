@@ -494,13 +494,13 @@ export default function IvrSchedulePage() {
         {/* ========================================================================= */}
         {/* NAVEGACIÓN PRINCIPAL: ROADMAP VS TANDAS DIARIAS VS CASOS AISLADOS */}
         {/* ========================================================================= */}
-        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-slate-800 pb-3">
           <button
             onClick={() => setActiveTab('roadmap')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'roadmap'
                 ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-700'
             }`}
           >
             <Layers className="w-4 h-4" />
@@ -512,7 +512,7 @@ export default function IvrSchedulePage() {
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'tandas'
                 ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-700'
             }`}
           >
             <Clock className="w-4 h-4" />
@@ -524,13 +524,13 @@ export default function IvrSchedulePage() {
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'casos_humanos'
                 ? 'bg-red-600 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-700'
             }`}
           >
             <ShieldAlert className="w-4 h-4" />
             Casos Aislados No Contactados
             {casosHumanos > 0 && (
-              <span className="px-2 py-0.5 text-[10px] bg-red-100 text-red-700 rounded-full font-black">
+              <span className="px-2 py-0.5 text-[10px] bg-red-100 dark:bg-red-950/70 text-red-700 dark:text-red-300 rounded-full font-black">
                 {casosHumanos}
               </span>
             )}
@@ -540,8 +540,8 @@ export default function IvrSchedulePage() {
             onClick={() => setActiveTab('config')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'config'
-                ? 'bg-gray-900 text-white shadow-md'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                ? 'bg-gray-900 dark:bg-blue-600 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-700'
             }`}
           >
             <Settings className="w-4 h-4" />
@@ -572,65 +572,65 @@ export default function IvrSchedulePage() {
           <div className="space-y-6">
             {/* CARDS DE MÉTRICAS */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
-                <div className="flex items-center justify-between text-gray-500 text-xs font-medium">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center justify-between text-gray-500 dark:text-slate-400 text-xs font-medium">
                   <span>Programados Hoy</span>
-                  <Calendar className="w-4 h-4 text-blue-600" />
+                  <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <p className="text-2xl font-black text-gray-900 mt-2">{totalPacientes}</p>
-                <span className="text-[11px] text-gray-500">{programados} en cola inicial</span>
+                <p className="text-2xl font-black text-gray-900 dark:text-white mt-2">{totalPacientes}</p>
+                <span className="text-[11px] text-gray-500 dark:text-slate-400">{programados} en cola inicial</span>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm bg-emerald-50/20">
-                <div className="flex items-center justify-between text-emerald-700 text-xs font-medium">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 shadow-sm bg-emerald-50/20 dark:bg-emerald-950/20">
+                <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-400 text-xs font-medium">
                   <span>Confirmados (Tecla 1)</span>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <p className="text-2xl font-black text-emerald-700 mt-2">{confirmados}</p>
-                <span className="text-[11px] text-emerald-600">Asistencia garantizada</span>
+                <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-2">{confirmados}</p>
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-300">Asistencia garantizada</span>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm bg-blue-50/20">
-                <div className="flex items-center justify-between text-blue-700 text-xs font-medium">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/50 shadow-sm bg-blue-50/20 dark:bg-blue-950/20">
+                <div className="flex items-center justify-between text-blue-700 dark:text-blue-400 text-xs font-medium">
                   <span>Reagendados (Tecla 2)</span>
-                  <PhoneCall className="w-4 h-4 text-blue-600" />
+                  <PhoneCall className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <p className="text-2xl font-black text-blue-700 mt-2">{reagendados}</p>
-                <span className="text-[11px] text-blue-600">Piden nueva fecha</span>
+                <p className="text-2xl font-black text-blue-700 dark:text-blue-400 mt-2">{reagendados}</p>
+                <span className="text-[11px] text-blue-600 dark:text-blue-300">Piden nueva fecha</span>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-amber-100 shadow-sm bg-amber-50/20">
-                <div className="flex items-center justify-between text-amber-700 text-xs font-medium">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-amber-100 dark:border-amber-800/50 shadow-sm bg-amber-50/20 dark:bg-amber-950/20">
+                <div className="flex items-center justify-between text-amber-700 dark:text-amber-400 text-xs font-medium">
                   <span>En Reintento (Tanda Sig.)</span>
-                  <RotateCw className="w-4 h-4 text-amber-600" />
+                  <RotateCw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                 </div>
-                <p className="text-2xl font-black text-amber-700 mt-2">{enReintento}</p>
-                <span className="text-[11px] text-amber-600">Pasan a próx. intervalo</span>
+                <p className="text-2xl font-black text-amber-700 dark:text-amber-400 mt-2">{enReintento}</p>
+                <span className="text-[11px] text-amber-600 dark:text-amber-300">Pasan a próx. intervalo</span>
               </div>
 
-              <div 
+              <div
                 onClick={() => setActiveTab('casos_humanos')}
-                className="bg-white p-4 rounded-2xl border border-red-200 shadow-sm bg-red-50/30 cursor-pointer hover:border-red-300 transition-colors"
+                className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-red-200 dark:border-red-800/60 shadow-sm bg-red-50/30 dark:bg-red-950/20 cursor-pointer hover:border-red-300 dark:hover:border-red-700 transition-colors"
               >
-                <div className="flex items-center justify-between text-red-700 text-xs font-medium">
+                <div className="flex items-center justify-between text-red-700 dark:text-red-400 text-xs font-medium">
                   <span>Casos Aislados (Humano)</span>
-                  <UserX className="w-4 h-4 text-red-600" />
+                  <UserX className="w-4 h-4 text-red-600 dark:text-red-400" />
                 </div>
-                <p className="text-2xl font-black text-red-700 mt-2">{casosHumanos}</p>
-                <span className="text-[11px] text-red-600 font-bold flex items-center gap-1">
+                <p className="text-2xl font-black text-red-700 dark:text-red-400 mt-2">{casosHumanos}</p>
+                <span className="text-[11px] text-red-600 dark:text-red-300 font-bold flex items-center gap-1">
                   Requieren llamada manual <ChevronRight className="w-3 h-3" />
                 </span>
               </div>
             </div>
 
             {/* CARRUSEL DE HORARIOS DE TANDAS (24 INTERVALOS DE 30 MIN) */}
-            <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm">
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-gray-800">
+                  <span className="text-xs font-bold text-gray-800 dark:text-slate-100">
                     Seleccionar Tanda Operativa (24 Intervalos de 30 min • 08:30 AM a 08:00 PM):
                   </span>
-                  <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                  <span className="text-[11px] text-blue-600 dark:text-blue-300 font-semibold bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800/60">
                     Tanda seleccionada: {selectedSlot.hora}
                   </span>
                 </div>
@@ -642,7 +642,7 @@ export default function IvrSchedulePage() {
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
                     config.retryUntilAnswered
                       ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300'
+                      : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 border border-gray-300 dark:border-slate-700'
                   }`}
                   title="Si está activo, las llamadas no contestadas o con buzón se reasignan a la tanda siguiente hasta que el paciente conteste."
                 >
@@ -662,25 +662,25 @@ export default function IvrSchedulePage() {
                       onClick={() => setSelectedSlotId(slot.id)}
                       className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl text-left border transition-all ${
                         isSelected
-                          ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-500/20'
-                          : 'bg-gray-50 border-gray-200 hover:bg-gray-100 text-gray-700'
+                          ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-600 ring-2 ring-blue-500/20'
+                          : 'bg-gray-50 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <span className={`text-xs font-bold ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
+                        <span className={`text-xs font-bold ${isSelected ? 'text-blue-900 dark:text-blue-200' : 'text-gray-900 dark:text-white'}`}>
                           {slot.hora}
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
-                          slotItems.length >= MAX_PATIENTS_PER_BATCH 
-                            ? 'bg-purple-100 text-purple-700' 
-                            : slotItems.length > 0 
-                            ? 'bg-blue-100 text-blue-700' 
-                            : 'bg-gray-200 text-gray-600'
+                          slotItems.length >= MAX_PATIENTS_PER_BATCH
+                            ? 'bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300'
+                            : slotItems.length > 0
+                            ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300'
+                            : 'bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
                         }`}>
                           {slotItems.length}/{MAX_PATIENTS_PER_BATCH}
                         </span>
                       </div>
-                      <span className="text-[10px] text-gray-500 block mt-1">
+                      <span className="text-[10px] text-gray-500 dark:text-slate-400 block mt-1">
                         {slot.label.split(' ')[0]} {slot.label.split(' ')[1]}
                       </span>
                     </button>
@@ -690,13 +690,13 @@ export default function IvrSchedulePage() {
             </div>
 
             {/* TABLA DE PACIENTES DE LA TANDA */}
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50 dark:bg-slate-900">
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">
                     Pacientes Asignados a la Tanda de las {selectedSlot.hora}
                   </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
                     {currentSlotPatients.length} paciente(s) en esta franja
                   </p>
                 </div>
@@ -716,7 +716,7 @@ export default function IvrSchedulePage() {
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-100">
+                  <thead className="bg-gray-50 dark:bg-slate-800/80 text-gray-600 dark:text-slate-300 font-semibold border-b border-gray-100 dark:border-slate-800">
                     <tr>
                       <th className="p-3">Paciente / Cédula</th>
                       <th className="p-3">Teléfono</th>
@@ -726,27 +726,27 @@ export default function IvrSchedulePage() {
                       <th className="p-3 text-right">Acción</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                     {currentSlotPatients.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center p-8 text-gray-400">
+                        <td colSpan={6} className="text-center p-8 text-gray-400 dark:text-slate-500">
                           No hay pacientes programados en la tanda de las {selectedSlot.hora}.
                         </td>
                       </tr>
                     ) : (
                       currentSlotPatients.map((patient) => (
-                        <tr key={patient.id} className="hover:bg-gray-50/60">
+                        <tr key={patient.id} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/50 transition-colors">
                           <td className="p-3">
-                            <div className="font-bold text-gray-900">{patient.nombre}</div>
-                            <div className="text-[11px] text-gray-500">{patient.documento}</div>
+                            <div className="font-bold text-gray-900 dark:text-white">{patient.nombre}</div>
+                            <div className="text-[11px] text-gray-500 dark:text-slate-400">{patient.documento}</div>
                           </td>
-                          <td className="p-3 font-mono text-gray-700">{patient.telefono}</td>
+                          <td className="p-3 font-mono text-gray-700 dark:text-slate-300">{patient.telefono}</td>
                           <td className="p-3">
-                            <div className="font-semibold text-gray-900">{patient.programa3280 || patient.programa}</div>
-                            <div className="text-[10px] text-blue-700 font-bold mt-0.5">{patient.accion3280 || patient.cursoVida}</div>
+                            <div className="font-semibold text-gray-900 dark:text-slate-100">{patient.programa3280 || patient.programa}</div>
+                            <div className="text-[10px] text-blue-700 dark:text-blue-400 font-bold mt-0.5">{patient.accion3280 || patient.cursoVida}</div>
                             {patient.script && (
-                              <div className="text-[10px] text-gray-600 mt-1 italic bg-blue-50/70 p-1.5 rounded-lg border border-blue-100 max-w-md">
-                                <span className="font-bold text-blue-900 block not-italic">Motivo: {patient.script.motivo}</span>
+                              <div className="text-[10px] text-gray-600 dark:text-slate-300 mt-1 italic bg-blue-50/70 dark:bg-blue-950/40 p-1.5 rounded-lg border border-blue-100 dark:border-blue-800/50 max-w-md">
+                                <span className="font-bold text-blue-900 dark:text-blue-200 block not-italic">Motivo: {patient.script.motivo}</span>
                                 "{patient.script.mensaje}"
                               </div>
                             )}
@@ -754,17 +754,17 @@ export default function IvrSchedulePage() {
                           <td className="p-3">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                               patient.resultadoDTMF === 'buzon'
-                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
                                 : patient.estado === 'confirmada'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-blue-100 text-blue-800'
+                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                                : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300'
                             }`}>
                               {patient.resultadoDTMF === 'buzon'
                                 ? `${patient.estado} · Buzón $0 COP`
                                 : patient.estado}
                             </span>
                             {patient.capaDeteccion && patient.resultadoDTMF === 'buzon' && (
-                              <span className="block text-[9px] text-amber-700 font-semibold mt-0.5">
+                              <span className="block text-[9px] text-amber-700 dark:text-amber-400 font-semibold mt-0.5">
                                 {patient.capaDeteccion === 'pre_answer_sip_183'
                                   ? 'SIP 183 Pre-200 OK'
                                   : patient.capaDeteccion === 'ring_timeout_pre_answer'
@@ -773,14 +773,14 @@ export default function IvrSchedulePage() {
                               </span>
                             )}
                           </td>
-                          <td className="p-3 text-gray-700 font-semibold">{patient.intentos || 0}</td>
+                          <td className="p-3 text-gray-700 dark:text-slate-300 font-semibold">{patient.intentos || 0}</td>
                           <td className="p-3 text-right">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleMakeLiveCall(patient)}
                               disabled={callingId === patient.id}
-                              className="text-xs font-bold rounded-xl text-blue-700 hover:bg-blue-50"
+                              className="text-xs font-bold rounded-xl bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700"
                             >
                               <Phone className="w-3.5 h-3.5" />
                               Llamar
@@ -800,13 +800,13 @@ export default function IvrSchedulePage() {
         {/* PESTAÑA 3: BANDEJA CASOS AISLADOS (GESTIÓN HUMANA) */}
         {/* ========================================================================= */}
         {activeTab === 'casos_humanos' && (
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-slate-800 pb-4">
               <div>
-                <h3 className="text-lg font-black text-gray-900">
+                <h3 className="text-lg font-black text-gray-900 dark:text-white">
                   Bandeja de Casos Aislados para Gestión Humana
                 </h3>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-slate-400">
                   Pacientes que no contestaron en ninguna de las tandas del día. Requieren contacto telefónico o domiciliario directo por el personal de enfermería.
                 </p>
               </div>
@@ -814,7 +814,7 @@ export default function IvrSchedulePage() {
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-100">
+                <thead className="bg-gray-50 dark:bg-slate-800/80 text-gray-600 dark:text-slate-300 font-semibold border-b border-gray-100 dark:border-slate-800">
                   <tr>
                     <th className="p-3">Paciente</th>
                     <th className="p-3">Documento</th>
@@ -824,21 +824,21 @@ export default function IvrSchedulePage() {
                     <th className="p-3 text-right">Gestión</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                   {items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center p-8 text-gray-400">
+                      <td colSpan={6} className="text-center p-8 text-gray-400 dark:text-slate-500">
                         No hay casos aislados pendientes. Todos los pacientes del día fueron contactados o están en reintento programado.
                       </td>
                     </tr>
                   ) : (
                     items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').map((c) => (
-                      <tr key={c.id} className="hover:bg-red-50/20">
-                        <td className="p-3 font-bold text-gray-900">{c.nombre}</td>
-                        <td className="p-3 text-gray-600">{c.documento}</td>
-                        <td className="p-3 font-mono text-gray-700">{c.telefono}</td>
-                        <td className="p-3 text-gray-700">{c.programa}</td>
-                        <td className="p-3 text-red-600 font-bold">{c.intentos} intentos fallidos</td>
+                      <tr key={c.id} className="hover:bg-red-50/20 dark:hover:bg-red-950/20">
+                        <td className="p-3 font-bold text-gray-900 dark:text-white">{c.nombre}</td>
+                        <td className="p-3 text-gray-600 dark:text-slate-400">{c.documento}</td>
+                        <td className="p-3 font-mono text-gray-700 dark:text-slate-300">{c.telefono}</td>
+                        <td className="p-3 text-gray-700 dark:text-slate-300">{c.programa}</td>
+                        <td className="p-3 text-red-600 dark:text-red-400 font-bold">{c.intentos} intentos fallidos</td>
                         <td className="p-3 text-right">
                           <Button
                             size="sm"
@@ -861,67 +861,67 @@ export default function IvrSchedulePage() {
         {/* PESTAÑA 4: CONFIGURACIÓN & PARÁMETROS */}
         {/* ========================================================================= */}
         {activeTab === 'config' && (
-          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
             <div>
-              <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-blue-600" />
+              <h3 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2">
+                <Settings className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 Configuración del Motor de Automatización IVR & Campañas
               </h3>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
                 Ajustes de intervalos de tandas (08:30 AM a 08:00 PM), política de reintentos por tandas sucesivas y control de aforo hospitalario.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-200">
-                <span className="font-bold text-blue-950 block mb-1">Capacidad Instalada Hospitalaria:</span>
-                <span className="text-blue-800 leading-relaxed block">
+              <div className="p-4 bg-blue-50/50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-800/50">
+                <span className="font-bold text-blue-950 dark:text-blue-200 block mb-1">Capacidad Instalada Hospitalaria:</span>
+                <span className="text-blue-800 dark:text-blue-300 leading-relaxed block">
                   <strong>24 Tandas de 30 minutos</strong> (08:30 AM a 08:00 PM). Capacidad de hasta <strong>768 llamadas/día</strong> en el Gateway GSM de 32 canales.
                 </span>
               </div>
 
-              <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200">
+              <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800/50">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-emerald-950">Política de Reintentos:</span>
+                  <span className="font-bold text-emerald-950 dark:text-emerald-200">Política de Reintentos:</span>
                   <button
                     type="button"
                     onClick={handleToggleRetryUntilAnswered}
                     className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${
-                      config.retryUntilAnswered ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
+                      config.retryUntilAnswered ? 'bg-emerald-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200'
                     }`}
                   >
                     {config.retryUntilAnswered ? 'ACTIVO' : 'LIMITADO'}
                   </button>
                 </div>
-                <span className="text-emerald-800 leading-relaxed block">
-                  {config.retryUntilAnswered 
+                <span className="text-emerald-800 dark:text-emerald-300 leading-relaxed block">
+                  {config.retryUntilAnswered
                     ? 'Reintentar hasta que conteste: El motor reasigna las llamadas no contestadas a la siguiente tanda disponible durante el día.'
                     : 'Reintentos fijados a un límite manual de llamadas por paciente.'}
                 </span>
               </div>
 
-              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-200">
+              <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-200 dark:border-indigo-800/50">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-indigo-950">Gateway GSM 32 Canales:</span>
+                  <span className="font-bold text-indigo-950 dark:text-indigo-200">Gateway GSM 32 Canales:</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-600 text-white">
                     {config.earlyMediaPreAnswer ? 'SIP 183 ACTIVO' : 'SOLO VAPI'}
                   </span>
                 </div>
-                <span className="text-indigo-800 leading-relaxed block">
+                <span className="text-indigo-800 dark:text-indigo-300 leading-relaxed block">
                   OpenVox GSM conectado vía Asterisk PJSIP/ARI + Vapi. Cancela Early Media (<code>SIP 183</code>) antes del <code>200 OK</code> con $0 COP de cobro carrier.
                 </span>
               </div>
             </div>
 
             {/* BLOQUE DUAL ANTI-BUZÓN Y PRE-COBRO CARRIER */}
-            <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4 text-xs">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+            <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 pb-3">
                 <div>
-                  <h4 className="font-black text-slate-900 text-sm flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                  <h4 className="font-black text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                     Sistema Dual Anti-Buzón &amp; Cero Cobro Carrier (Pre-Answer SIP 183 + Vapi AMD)
                   </h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                     Corta locuciones tempranas de Claro/Movistar/Tigo antes del SIP 200 OK y activa respaldo acústico silencioso en Vapi.
                   </p>
                 </div>
@@ -932,7 +932,7 @@ export default function IvrSchedulePage() {
                     !config.antiVoicemail ? '🛡️ Anti-Buzón Dual Activado' : '⚠️ Anti-Buzón Desactivado'
                   )}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                    config.antiVoicemail ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-200 text-gray-700'
+                    config.antiVoicemail ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200'
                   }`}
                 >
                   {config.antiVoicemail ? '✓ Protección Dual ACTIVA' : 'Protección Inactiva'}
@@ -940,9 +940,9 @@ export default function IvrSchedulePage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">Capa 1 · SIP 183 Pre-200 OK</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100">Capa 1 · SIP 183 Pre-200 OK</span>
                     <button
                       type="button"
                       onClick={() => handleUpdateAntiVoicemail(
@@ -950,19 +950,19 @@ export default function IvrSchedulePage() {
                         !config.earlyMediaPreAnswer ? 'SIP 183 Early Media Activado' : 'SIP 183 Early Media Desactivado'
                       )}
                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                        config.earlyMediaPreAnswer ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                        config.earlyMediaPreAnswer ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200'
                       }`}
                     >
                       {config.earlyMediaPreAnswer ? 'ACTIVO' : 'OFF'}
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Analiza RTP en fase 183 vía Asterisk ARI/OpenVox y envía <code>SIP CANCEL</code> antes de iniciar cobro carrier.
                   </p>
                 </div>
 
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <label className="font-bold text-slate-800 block">
+                <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                  <label className="font-bold text-slate-800 dark:text-slate-100 block">
                     Timeout Pre-Buzón ({config.preAnswerRingTimeoutSec || 19}s)
                   </label>
                   <select
@@ -971,20 +971,20 @@ export default function IvrSchedulePage() {
                       { preAnswerRingTimeoutSec: Number(e.target.value) },
                       `Timeout pre-buzón fijado en ${e.target.value}s`
                     )}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-100"
                   >
                     <option value={15}>15 seg (Agresivo anti-desvío)</option>
                     <option value={17}>17 seg (Conservador alto)</option>
                     <option value={19}>19 seg (Óptimo Claro/Movistar/Tigo)</option>
                     <option value={21}>21 seg (Extendido)</option>
                   </select>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Corta el repique antes de que la operadora transfiera al correo de voz (~22–25s).
                   </p>
                 </div>
 
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <label className="font-bold text-slate-800 block">
+                <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                  <label className="font-bold text-slate-800 dark:text-slate-100 block">
                     Capa 2 · Proveedor AMD Vapi
                   </label>
                   <select
@@ -993,20 +993,20 @@ export default function IvrSchedulePage() {
                       { voicemailProvider: e.target.value },
                       `Motor Vapi AMD cambiado a ${e.target.value.toUpperCase()}`
                     )}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-800"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-100"
                   >
                     <option value="vapi">Vapi Nativo (Recomendado · Baja latencia)</option>
                     <option value="google">Google Audio Classifier</option>
                     <option value="openai">OpenAI Audio Classifier</option>
                   </select>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Corte silencioso (<code>beepMaxAwait: 0s</code>) si el carrier abre <code>200 OK</code> directo.
                   </p>
                 </div>
 
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-2">
+                <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">Respaldo SMS OpenVox</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100">Respaldo SMS OpenVox</span>
                     <button
                       type="button"
                       onClick={() => handleUpdateAntiVoicemail(
@@ -1014,23 +1014,23 @@ export default function IvrSchedulePage() {
                         !config.autoSmsFallbackOnExhausted ? 'Respaldo SMS OpenVox ACTIVADO' : 'Respaldo SMS OpenVox desactivado'
                       )}
                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                        config.autoSmsFallbackOnExhausted ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-700'
+                        config.autoSmsFallbackOnExhausted ? 'bg-emerald-600 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-200'
                       }`}
                     >
                       {config.autoSmsFallbackOnExhausted ? 'ACTIVO' : 'OFF'}
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Reasigna a la siguiente tanda a $0 COP; al agotar jornada dispara SMS directo por SIM Cards OpenVox (failover puerto X→Y→Z con purga automática de cola).
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="p-4 bg-gray-50 dark:bg-slate-800/60 rounded-2xl border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
               <div>
-                <span className="font-bold text-gray-900 block">Modo de Operación del Motor:</span>
-                <span className="text-gray-500">
+                <span className="font-bold text-gray-900 dark:text-white block">Modo de Operación del Motor:</span>
+                <span className="text-gray-500 dark:text-slate-400">
                   {config.isLiveEnabled ? 'Las tandas programadas se emiten automáticamente al Gateway GSM.' : 'Modo Standby Seguro activo para validación clínica previa.'}
                 </span>
               </div>
@@ -1051,8 +1051,8 @@ export default function IvrSchedulePage() {
       <Dialog open={showTranscriptModal} onOpenChange={setShowTranscriptModal}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-base font-black text-gray-900 flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+            <DialogTitle className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               Transcripción y Registro de Llamada Particular
             </DialogTitle>
             <DialogDescription>
@@ -1062,27 +1062,27 @@ export default function IvrSchedulePage() {
 
           {selectedTranscriptItem && (
             <div className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-200 text-xs">
+              <div className="grid grid-cols-2 gap-3 bg-gray-50 dark:bg-slate-800/70 p-3 rounded-2xl border border-gray-200 dark:border-slate-700 text-xs">
                 <div>
-                  <span className="text-gray-500 block">Motivo / Protocolo:</span>
-                  <span className="font-bold text-gray-900">{selectedTranscriptItem.motivoContacto}</span>
+                  <span className="text-gray-500 dark:text-slate-400 block">Motivo / Protocolo:</span>
+                  <span className="font-bold text-gray-900 dark:text-white">{selectedTranscriptItem.motivoContacto}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500 block">Resultado:</span>
-                  <span className="font-bold text-emerald-700">{selectedTranscriptItem.resultado} ({selectedTranscriptItem.duracionSegundos} seg)</span>
+                  <span className="text-gray-500 dark:text-slate-400 block">Resultado:</span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400">{selectedTranscriptItem.resultado} ({selectedTranscriptItem.duracionSegundos} seg)</span>
                 </div>
               </div>
 
               <div>
-                <span className="text-xs font-bold text-gray-700 block mb-1">Resumen Clínico IA:</span>
-                <p className="text-xs text-gray-700 bg-blue-50/70 p-3 rounded-xl border border-blue-100">
+                <span className="text-xs font-bold text-gray-700 dark:text-slate-300 block mb-1">Resumen Clínico IA:</span>
+                <p className="text-xs text-gray-700 dark:text-slate-200 bg-blue-50/70 dark:bg-blue-950/40 p-3 rounded-xl border border-blue-100 dark:border-blue-800/60">
                   {selectedTranscriptItem.resumenClinico}
                 </p>
               </div>
 
               <div>
-                <span className="text-xs font-bold text-gray-700 block mb-2">Diálogo Completo:</span>
-                <div className="bg-slate-900 text-slate-100 p-4 rounded-2xl text-xs font-sans whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto border border-slate-800">
+                <span className="text-xs font-bold text-gray-700 dark:text-slate-300 block mb-2">Diálogo Completo:</span>
+                <div className="bg-slate-900 dark:bg-slate-950 text-slate-100 p-4 rounded-2xl text-xs font-sans whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto border border-slate-800">
                   {selectedTranscriptItem.transcripcion}
                 </div>
               </div>
@@ -1096,7 +1096,7 @@ export default function IvrSchedulePage() {
         <Dialog open={!!selectedHumanCase} onOpenChange={() => setSelectedHumanCase(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="text-base font-bold text-gray-900">
+              <DialogTitle className="text-base font-bold text-gray-900 dark:text-white">
                 Registrar Gestión Humana para {selectedHumanCase.nombre}
               </DialogTitle>
               <DialogDescription>
@@ -1105,11 +1105,11 @@ export default function IvrSchedulePage() {
             </DialogHeader>
             <form onSubmit={handleSaveHumanIntervention} className="space-y-4 pt-2">
               <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Resultado de la Intervención:</label>
+                <label className="text-xs font-bold text-gray-700 dark:text-slate-300 block mb-1">Resultado de la Intervención:</label>
                 <select
                   value={humanOutcome}
                   onChange={(e) => setHumanOutcome(e.target.value)}
-                  className="w-full text-xs p-2.5 border border-gray-300 rounded-xl bg-white"
+                  className="w-full text-xs p-2.5 border border-gray-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
                 >
                   <option value="contactado_exitoso">Contactado y Cita Confirmada</option>
                   <option value="reagendado_manual">Reagendado Manualmente para otra fecha</option>
@@ -1119,13 +1119,13 @@ export default function IvrSchedulePage() {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-gray-700 block mb-1">Notas de la Auxiliar de Enfermería:</label>
+                <label className="text-xs font-bold text-gray-700 dark:text-slate-300 block mb-1">Notas de la Auxiliar de Enfermería:</label>
                 <textarea
                   rows={3}
                   value={humanNotes}
                   onChange={(e) => setHumanNotes(e.target.value)}
                   placeholder="Detalles del contacto humano con el paciente o familiar..."
-                  className="w-full text-xs p-2.5 border border-gray-300 rounded-xl"
+                  className="w-full text-xs p-2.5 border border-gray-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500"
                   required
                 />
               </div>

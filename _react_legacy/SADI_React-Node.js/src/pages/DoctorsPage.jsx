@@ -516,19 +516,19 @@ export default function DoctorsPage() {
       <div className="space-y-6">
 
         {/* Cabecera Principal Homogénea SADI */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div>
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-md shadow-blue-500/20">
                 <UserCheck className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                   Gestión de Personal y Enfermeras
                 </h1>
-                <p className="text-sm text-slate-500 mt-0.5">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                   Recurso humano clínico y demanda inducida •{' '}
-                  <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60">
                     {staffList.length} profesionales vinculados (1 Enfermera Jefe)
                   </span>
                 </p>
@@ -546,7 +546,7 @@ export default function DoctorsPage() {
         </div>
 
         {/* Barra de Filtros y Búsqueda */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-200">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 transition-colors">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-gray-400" />
             <input
@@ -554,16 +554,16 @@ export default function DoctorsPage() {
               placeholder="Buscar por nombre, correo, especialidad o rol..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
             />
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-xs font-bold text-gray-500 whitespace-nowrap">Filtrar por Rol:</span>
+            <span className="text-xs font-bold text-gray-500 dark:text-slate-400 whitespace-nowrap">Filtrar por Rol:</span>
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-3 py-1.5 text-xs font-bold rounded-xl border border-gray-200 bg-gray-50 focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1.5 text-xs font-bold rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500"
             >
               <option value="todos">Todos los Roles ({staffList.length})</option>
               <option value="Enfermera">Enfermeras Asistenciales</option>
@@ -575,10 +575,10 @@ export default function DoctorsPage() {
         </div>
 
         {/* Tabla de Personal en Lista: Nombre, Cursos de Vida Asignados y Alcance Clínico */}
-        <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 overflow-hidden shadow-sm transition-colors">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-900 text-white font-bold text-[11px] tracking-wider uppercase">
+              <thead className="bg-slate-900 dark:bg-slate-950 text-white font-bold text-[11px] tracking-wider uppercase border-b border-slate-800">
                 <tr>
                   <th className="p-4 whitespace-nowrap">Nombre / Profesional</th>
                   <th className="p-4 whitespace-nowrap">Cursos de Vida Asignados (Res. 3280)</th>
@@ -586,19 +586,19 @@ export default function DoctorsPage() {
                   <th className="p-4 text-right whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="text-center py-12 text-gray-400">
+                    <td colSpan={4} className="text-center py-12 text-gray-400 dark:text-slate-500">
                       <div className="flex flex-col items-center gap-2">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
                         <span className="text-xs font-semibold">Cargando personal institucional...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filteredStaff.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="text-center py-10 text-gray-400">
+                    <td colSpan={4} className="text-center py-10 text-gray-400 dark:text-slate-500">
                       No se encontró personal con los filtros indicados.
                     </td>
                   </tr>
@@ -610,7 +610,7 @@ export default function DoctorsPage() {
                     const staffPatients = getStaffAssignedPatients(staff, allPatients);
 
                     return (
-                      <tr key={staff.id} className="hover:bg-blue-50/40 transition-colors">
+                      <tr key={staff.id} className="hover:bg-blue-50/40 dark:hover:bg-slate-800/50 transition-colors">
                         
                         {/* 1. Nombre (Clickeable -> Despliega lista de llamadas y transcripciones de sus pacientes) */}
                         <td className="p-4 whitespace-nowrap">
@@ -622,27 +622,27 @@ export default function DoctorsPage() {
                             className="text-left group flex items-start gap-2.5 transition-transform active:scale-98"
                             title="Haz clic para ver los pacientes y llamadas de este profesional"
                           >
-                            <div className="w-9 h-9 rounded-2xl bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center font-black text-sm shrink-0 transition-colors shadow-xs">
+                            <div className="w-9 h-9 rounded-2xl bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center font-black text-sm shrink-0 transition-colors shadow-xs">
                               {staff.nombre ? staff.nombre.charAt(0).toUpperCase() : 'P'}
                             </div>
                             <div>
-                              <div className="font-black text-gray-900 group-hover:text-blue-600 transition-colors flex items-center gap-1.5 underline decoration-blue-200 group-hover:decoration-blue-500 text-xs">
+                              <div className="font-black text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center gap-1.5 underline decoration-blue-200 dark:decoration-blue-800 group-hover:decoration-blue-500 text-xs">
                                 <span>{staff.nombre}</span>
-                                <Eye className="w-3.5 h-3.5 text-blue-500 opacity-60 group-hover:opacity-100" />
+                                <Eye className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 opacity-60 group-hover:opacity-100" />
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black inline-flex items-center gap-1 ${
                                   staff.rol === 'Enfermera Jefe'
-                                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                    ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800/60'
                                     : staff.rol === 'Enfermera'
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60'
                                     : staff.rol === 'Médico General'
-                                    ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                    : 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60'
+                                    : 'bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60'
                                 }`}>
                                   {staff.rol || 'Enfermera'}
                                 </span>
-                                <span className="text-[10px] text-gray-400 font-mono">
+                                <span className="text-[10px] text-gray-400 dark:text-slate-500 font-mono">
                                   {staff.email}
                                 </span>
                               </div>
@@ -652,17 +652,17 @@ export default function DoctorsPage() {
 
                         {/* 2. Cursos de Vida Asignados (Clickeable -> Abre modal de Permisos) */}
                         <td 
-                          className="p-4 max-w-sm cursor-pointer hover:bg-blue-50/70 transition-colors group"
+                          className="p-4 max-w-sm cursor-pointer hover:bg-blue-50/70 dark:hover:bg-slate-800/70 transition-colors group"
                           onClick={() => openPermissionsModal(staff)}
                           title="Haz clic aquí para editar los Cursos de Vida y Permisos de este profesional"
                         >
                           {isSinAsignacion ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-300 group-hover:border-blue-400 group-hover:text-blue-700 transition-colors">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 group-hover:border-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors">
                               <span className="w-2 h-2 rounded-full bg-slate-400 group-hover:bg-blue-500"></span>
                               <span>Sin Asignación (Clic para asignar)</span>
                             </span>
                           ) : isAllCursos ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black bg-blue-50 text-blue-900 border border-blue-300 group-hover:border-blue-500 transition-colors">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-800/60 group-hover:border-blue-500 transition-colors">
                               <span>★</span>
                               <span>Todos los Cursos de Vida (A - J)</span>
                             </span>
@@ -674,7 +674,7 @@ export default function DoctorsPage() {
                                   <span
                                     key={cId}
                                     className={`px-2 py-0.5 rounded-lg text-[10px] font-black border shadow-xs inline-flex items-center gap-1.5 transition-transform group-hover:scale-102 ${
-                                      cfg ? cfg.badge : 'bg-gray-100 text-gray-800 border-gray-200'
+                                      cfg ? cfg.badge : 'bg-gray-100 dark:bg-slate-800 text-gray-800 dark:text-slate-200 border-gray-200 dark:border-slate-700'
                                     }`}
                                   >
                                     <span
@@ -692,17 +692,17 @@ export default function DoctorsPage() {
                         {/* 3. Alcance Clínico */}
                         <td className="p-4 whitespace-nowrap">
                           {isSinAsignacion ? (
-                            <div className="flex items-center gap-2 text-slate-400">
-                              <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-                              <span className="font-semibold text-xs text-slate-500">0 pacientes (Sin Asignación)</span>
+                            <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500">
+                              <span className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+                              <span className="font-semibold text-xs text-slate-500 dark:text-slate-400">0 pacientes (Sin Asignación)</span>
                             </div>
                           ) : (
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                <span className="font-black text-slate-900 text-xs">{staffPatients.length} pacientes</span>
+                                <span className="font-black text-slate-900 dark:text-white text-xs">{staffPatients.length} pacientes</span>
                               </div>
-                              <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 inline-block mt-0.5">
+                              <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-800/60 inline-block mt-0.5">
                                 Universal a Grupos de Riesgo
                               </span>
                             </div>
@@ -717,7 +717,7 @@ export default function DoctorsPage() {
                             <Button
                               size="sm"
                               onClick={() => openPermissionsModal(staff)}
-                              className="h-8 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-[11px] gap-1 shadow-xs"
+                              className="h-8 px-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 border border-transparent dark:border-slate-700 text-white font-bold text-[11px] gap-1 shadow-xs"
                               title="Configurar Cursos de Vida y Permisos"
                             >
                               <Shield className="w-3.5 h-3.5 text-amber-400" />
@@ -729,10 +729,10 @@ export default function DoctorsPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => openEditModal(staff)}
-                              className="h-8 px-2 text-gray-600 hover:text-gray-900 rounded-xl"
+                              className="h-8 px-2 text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white dark:hover:bg-slate-800 rounded-xl"
                               title="Editar datos básicos"
                             >
-                              <Edit3 className="w-3.5 h-3.5 text-blue-600" />
+                              <Edit3 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                             </Button>
 
                             {/* Botón Eliminar */}
@@ -740,7 +740,7 @@ export default function DoctorsPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => setPersonToDelete(staff)}
-                              className="h-8 px-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl"
+                              className="h-8 px-2 text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl"
                               title="Eliminar personal"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -763,27 +763,27 @@ export default function DoctorsPage() {
       {/* MODAL PRINCIPAL: PACIENTES, LLAMADAS, AUDIOS Y TRANSCRIPCIONES */}
       {/* ========================================================================= */}
       <Dialog open={!!viewingPatientsStaff} onOpenChange={() => setViewingPatientsStaff(null)}>
-        <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto bg-slate-50 p-6 rounded-3xl">
-          <DialogHeader className="border-b border-gray-200 pb-4">
+        <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] overflow-y-auto bg-slate-50 dark:bg-slate-900 p-6 rounded-3xl">
+          <DialogHeader className="border-b border-gray-200 dark:border-slate-800 pb-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-xl shadow-md">
                   {viewingPatientsStaff?.nombre?.charAt(0) || 'P'}
                 </div>
                 <div>
-                  <DialogTitle className="text-lg font-black text-gray-900 flex items-center gap-2">
+                  <DialogTitle className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2">
                     Llamadas e Interacciones de {viewingPatientsStaff?.nombre}
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${
                       assignedPatients.length === 0
-                        ? 'bg-slate-100 text-slate-700 border-slate-300'
-                        : 'bg-blue-100 text-blue-800 border-blue-200'
+                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                        : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/60'
                     }`}>
                       {assignedPatients.length === 0
                         ? '0 pacientes asignados (Sin Asignación)'
                         : `${assignedPatients.length} pacientes asignados`}
                     </span>
                   </DialogTitle>
-                  <DialogDescription className="text-xs text-gray-600 mt-0.5">
+                  <DialogDescription className="text-xs text-gray-600 dark:text-slate-400 mt-0.5">
                     {viewingPatientsStaff?.rol} · {viewingPatientsStaff?.especialidad} · {viewingPatientsStaff?.email}
                   </DialogDescription>
                 </div>
@@ -800,8 +800,8 @@ export default function DoctorsPage() {
             />
           </div>
 
-          <div className="flex justify-end pt-3 border-t border-gray-200 mt-4">
-            <Button variant="outline" onClick={() => setViewingPatientsStaff(null)} className="text-xs font-bold">
+          <div className="flex justify-end pt-3 border-t border-gray-200 dark:border-slate-800 mt-4">
+            <Button variant="outline" onClick={() => setViewingPatientsStaff(null)} className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold">
               Cerrar Vista
             </Button>
           </div>
@@ -814,8 +814,8 @@ export default function DoctorsPage() {
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-base font-black text-gray-900 flex items-center gap-2">
-              <Plus className="w-5 h-5 text-blue-600" />
+            <DialogTitle className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
+              <Plus className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               Agregar Personal Asistencial o Enfermera
             </DialogTitle>
             <DialogDescription>
@@ -826,37 +826,37 @@ export default function DoctorsPage() {
           <form onSubmit={handleCreateStaff} className="space-y-4 pt-2 text-xs">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="font-bold text-gray-700">Nombre Completo:</Label>
+                <Label className="font-bold text-gray-700 dark:text-slate-300">Nombre Completo:</Label>
                 <input
                   type="text"
                   required
                   placeholder="Ej. Enf. Luciana Ospina Castro"
                   value={newStaff.nombre}
                   onChange={(e) => setNewStaff({ ...newStaff, nombre: e.target.value })}
-                  className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1 font-semibold focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1 font-semibold focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <Label className="font-bold text-gray-700">Correo Institucional:</Label>
+                <Label className="font-bold text-gray-700 dark:text-slate-300">Correo Institucional:</Label>
                 <input
                   type="email"
                   required
                   placeholder="luciana.ospina@sadi.med.co"
                   value={newStaff.email}
                   onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value })}
-                  className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1 font-semibold focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1 font-semibold focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="font-bold text-gray-700">Rol Institucional:</Label>
+                <Label className="font-bold text-gray-700 dark:text-slate-300">Rol Institucional:</Label>
                 <select
                   value={newStaff.rol}
                   onChange={(e) => setNewStaff({ ...newStaff, rol: e.target.value })}
-                  className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1 font-bold focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1 font-bold focus:ring-2 focus:ring-blue-500"
                 >
                   {ROLES_PERSONAL.map(r => (
                     <option key={r.value} value={r.value}>{r.label}</option>
@@ -865,28 +865,28 @@ export default function DoctorsPage() {
               </div>
 
               <div>
-                <Label className="font-bold text-gray-700">Especialidad / Área Asignada:</Label>
+                <Label className="font-bold text-gray-700 dark:text-slate-300">Especialidad / Área Asignada:</Label>
                 <input
                   type="text"
                   placeholder="Ej. Demanda Inducida y Telemetría Primera Infancia"
                   value={newStaff.especialidad}
                   onChange={(e) => setNewStaff({ ...newStaff, especialidad: e.target.value })}
-                  className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1 font-medium focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1 font-medium focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
 
             {/* Asignación de Cursos de Vida */}
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+            <div className="bg-slate-50 dark:bg-slate-800/70 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="font-black text-slate-800 flex items-center gap-1.5 text-xs">
-                  <Baby className="w-4 h-4 text-blue-600" />
+                <Label className="font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5 text-xs">
+                  <Baby className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   Asignar Cursos de Vida (Res. 3280):
                 </Label>
                 <button
                   type="button"
                   onClick={clearNewStaffCursosVida}
-                  className="text-[10px] text-slate-500 hover:text-slate-800 font-bold underline"
+                  className="text-[10px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white font-bold underline"
                 >
                   Limpiar / Sin Asignación
                 </button>
@@ -901,8 +901,8 @@ export default function DoctorsPage() {
                       onClick={() => toggleNewStaffCursoVida(c.id)}
                       className={`p-2 rounded-xl border flex items-center gap-2 cursor-pointer transition-all select-none ${
                         isChecked 
-                          ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                          ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-200 font-bold' 
+                          : 'bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800'
                       }`}
                     >
                       <span
@@ -913,7 +913,7 @@ export default function DoctorsPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <span className="font-bold block text-[11px] truncate">{c.nombre}</span>
-                        <span className="text-[10px] text-gray-400 block truncate">{c.rango}</span>
+                        <span className="text-[10px] text-gray-400 dark:text-slate-500 block truncate">{c.rango}</span>
                       </div>
                       <input
                         type="checkbox"
@@ -928,7 +928,7 @@ export default function DoctorsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
+              <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)} className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 dark:text-slate-200">
                 Cancelar
               </Button>
               <Button type="submit" disabled={savingAction} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
@@ -945,35 +945,35 @@ export default function DoctorsPage() {
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-black text-gray-900">Editar Datos de Personal</DialogTitle>
+            <DialogTitle className="text-base font-black text-gray-900 dark:text-white">Editar Datos de Personal</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleUpdateStaffInfo} className="space-y-3 pt-2 text-xs">
             <div>
-              <Label className="font-bold text-gray-700">Nombre:</Label>
+              <Label className="font-bold text-gray-700 dark:text-slate-300">Nombre:</Label>
               <input
                 type="text"
                 required
                 value={editStaff.nombre}
                 onChange={(e) => setEditStaff({ ...editStaff, nombre: e.target.value })}
-                className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1 font-semibold"
+                className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1 font-semibold"
               />
             </div>
             <div>
-              <Label className="font-bold text-gray-700">Correo:</Label>
+              <Label className="font-bold text-gray-700 dark:text-slate-300">Correo:</Label>
               <input
                 type="email"
                 required
                 value={editStaff.email}
                 onChange={(e) => setEditStaff({ ...editStaff, email: e.target.value })}
-                className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1 font-semibold"
+                className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1 font-semibold"
               />
             </div>
             <div>
-              <Label className="font-bold text-gray-700">Rol:</Label>
+              <Label className="font-bold text-gray-700 dark:text-slate-300">Rol:</Label>
               <select
                 value={editStaff.rol}
                 onChange={(e) => setEditStaff({ ...editStaff, rol: e.target.value })}
-                className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1 font-bold"
+                className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1 font-bold"
               >
                 {ROLES_PERSONAL.map(r => (
                   <option key={r.value} value={r.value}>{r.label}</option>
@@ -981,17 +981,17 @@ export default function DoctorsPage() {
               </select>
             </div>
             <div>
-              <Label className="font-bold text-gray-700">Especialidad:</Label>
+              <Label className="font-bold text-gray-700 dark:text-slate-300">Especialidad:</Label>
               <input
                 type="text"
                 value={editStaff.especialidad}
                 onChange={(e) => setEditStaff({ ...editStaff, especialidad: e.target.value })}
-                className="w-full p-2 text-xs rounded-xl border border-gray-200 mt-1"
+                className="w-full p-2 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 mt-1"
               />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)}>
+              <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)} className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 dark:text-slate-200">
                 Cancelar
               </Button>
               <Button type="submit" disabled={savingAction} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
@@ -1008,7 +1008,7 @@ export default function DoctorsPage() {
       <Dialog open={showPermissionsDialog} onOpenChange={setShowPermissionsDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-base font-black text-gray-900 flex items-center gap-2">
+            <DialogTitle className="text-base font-black text-gray-900 dark:text-white flex items-center gap-2">
               <Shield className="w-5 h-5 text-amber-500" />
               Mejorar Permisos & Asignaciones: {selectedStaff?.nombre}
             </DialogTitle>
@@ -1020,14 +1020,14 @@ export default function DoctorsPage() {
           <div className="space-y-4 pt-2 text-xs">
             
             {/* Cursos de Vida Asignados */}
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-200/80">
+            <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-200/80 dark:border-slate-700">
                 <div>
-                  <Label className="font-black text-slate-900 flex items-center gap-2 text-xs">
-                    <Baby className="w-4 h-4 text-blue-600" />
+                  <Label className="font-black text-slate-900 dark:text-white flex items-center gap-2 text-xs">
+                    <Baby className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                     Cursos de Vida Permitidos (Restricción de Pacientes):
                   </Label>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                     Si no tiene cursos asignados, el profesional no tendrá pacientes bajo su cargo (0 pacientes).
                   </p>
                 </div>
@@ -1039,7 +1039,7 @@ export default function DoctorsPage() {
                     size="sm"
                     variant="outline"
                     onClick={setAllCursosVida}
-                    className="h-7 text-[10px] font-bold px-2.5 border-blue-300 text-blue-700 hover:bg-blue-50"
+                    className="h-7 text-[10px] font-bold px-2.5 bg-white dark:bg-slate-900 border-blue-300 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/60"
                   >
                     ★ Acceso Total (A - J)
                   </Button>
@@ -1048,7 +1048,7 @@ export default function DoctorsPage() {
                     size="sm"
                     variant="outline"
                     onClick={clearCursosVida}
-                    className="h-7 text-[10px] font-bold px-2.5 border-slate-300 text-slate-600 hover:bg-slate-100"
+                    className="h-7 text-[10px] font-bold px-2.5 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
                     ⚪ Dejar Sin Asignación (0 pac.)
                   </Button>
@@ -1056,14 +1056,14 @@ export default function DoctorsPage() {
               </div>
 
               {/* Estado actual de asignación */}
-              <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-600">Estado de Asignación:</span>
+              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-600 dark:text-slate-300">Estado de Asignación:</span>
                 <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] ${
                   permissionsForm.cursos_vida_asignados.length === 0
-                    ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
                     : (permissionsForm.cursos_vida_asignados.includes('todos') || permissionsForm.cursos_vida_asignados.length >= 10)
-                    ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                    : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                    ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-900 dark:text-blue-300 border border-blue-300 dark:border-blue-800/60'
+                    : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60'
                 }`}>
                   {formatCursosVidaLabel(permissionsForm.cursos_vida_asignados)}
                 </span>
@@ -1081,8 +1081,8 @@ export default function DoctorsPage() {
                       onClick={() => toggleCursoVida('todos')}
                       className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none sm:col-span-2 ${
                         isAllChecked 
-                          ? 'bg-blue-50/90 shadow-xs ring-2 ring-blue-600 border-transparent font-bold' 
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                          ? 'bg-blue-50/90 dark:bg-blue-950/60 shadow-xs ring-2 ring-blue-600 border-transparent font-bold' 
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -1090,13 +1090,13 @@ export default function DoctorsPage() {
                           ★
                         </span>
                         <div className="min-w-0">
-                          <span className="font-bold block text-xs text-slate-900 truncate">★. Todos los Cursos de Vida</span>
-                          <span className="text-[10px] text-slate-500 font-medium block truncate">Acceso Total a las 10 Rutas Integrales de Atención (A - J)</span>
+                          <span className="font-bold block text-xs text-slate-900 dark:text-white truncate">★. Todos los Cursos de Vida</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block truncate">Acceso Total a las 10 Rutas Integrales de Atención (A - J)</span>
                         </div>
                       </div>
 
                       <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-2 ${
-                        isAllChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'
+                        isAllChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                       }`}>
                         {isAllChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                       </div>
@@ -1113,8 +1113,8 @@ export default function DoctorsPage() {
                       onClick={() => toggleCursoVida(c.id)}
                       className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
                         isChecked 
-                          ? 'bg-blue-50/70 shadow-xs ring-2 ring-blue-500 border-transparent font-bold' 
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                          ? 'bg-blue-50/70 dark:bg-blue-950/60 shadow-xs ring-2 ring-blue-500 border-transparent font-bold' 
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
@@ -1125,13 +1125,13 @@ export default function DoctorsPage() {
                           {c.letra}
                         </span>
                         <div className="min-w-0">
-                          <span className="font-bold block text-xs text-slate-900 truncate">{c.nombre}</span>
-                          <span className="text-[10px] text-slate-500 font-medium block truncate">{c.rango}</span>
+                          <span className="font-bold block text-xs text-slate-900 dark:text-white truncate">{c.nombre}</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block truncate">{c.rango}</span>
                         </div>
                       </div>
 
                       <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-2 ${
-                        isChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'
+                        isChecked ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                       }`}>
                         {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                       </div>
@@ -1142,14 +1142,14 @@ export default function DoctorsPage() {
             </div>
 
             {/* Permisos de Interacción y Acciones Asistenciales */}
-            <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-amber-200/70">
+            <div className="bg-amber-50/70 dark:bg-amber-950/25 p-4 rounded-2xl border border-amber-200/80 dark:border-amber-800/50 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-amber-200/70 dark:border-amber-800/50">
                 <div>
-                  <Label className="font-black text-amber-900 flex items-center gap-1.5 text-xs">
-                    <Key className="w-4 h-4 text-amber-600" />
+                  <Label className="font-black text-amber-900 dark:text-amber-200 flex items-center gap-1.5 text-xs">
+                    <Key className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                     Privilegios de Operación Asistencial:
                   </Label>
-                  <p className="text-[11px] text-amber-800/80 mt-0.5">
+                  <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
                     Configura libremente las acciones que el profesional puede ejecutar sobre sus pacientes.
                   </p>
                 </div>
@@ -1161,7 +1161,7 @@ export default function DoctorsPage() {
                     size="sm"
                     variant="outline"
                     onClick={setAllPrivileges}
-                    className="h-7 text-[10px] font-bold px-2.5 border-emerald-300 text-emerald-800 hover:bg-emerald-50 bg-white"
+                    className="h-7 text-[10px] font-bold px-2.5 border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 bg-white dark:bg-slate-900"
                   >
                     ★ Activar Todos
                   </Button>
@@ -1170,7 +1170,7 @@ export default function DoctorsPage() {
                     size="sm"
                     variant="outline"
                     onClick={setReadOnlyOnly}
-                    className="h-7 text-[10px] font-bold px-2.5 border-amber-300 text-amber-800 hover:bg-amber-100 bg-white"
+                    className="h-7 text-[10px] font-bold px-2.5 border-amber-300 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-950/60 bg-white dark:bg-slate-900"
                   >
                     🔒 Solo Lectura
                   </Button>
@@ -1186,23 +1186,23 @@ export default function DoctorsPage() {
                   onClick={() => togglePrivilege('solo_lectura')}
                   className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
                     permissionsForm.solo_lectura
-                      ? 'bg-amber-100/80 border-amber-300 ring-2 ring-amber-500 shadow-xs'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-amber-100/80 dark:bg-amber-950/60 border-amber-300 dark:border-amber-600 ring-2 ring-amber-500 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.solo_lectura ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.solo_lectura ? 'bg-amber-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
                       <Eye className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-bold text-xs text-slate-900 block">Modo Solo Lectura (Consulta)</span>
-                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">Modo Solo Lectura (Consulta)</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal block leading-tight mt-0.5">
                         Solo puede consultar citas, expedientes y alertas clínicas sin realizar llamadas ni envíos.
                       </span>
                     </div>
                   </div>
                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
-                    permissionsForm.solo_lectura ? 'bg-amber-600 border-amber-600 text-white' : 'border-slate-300 bg-white'
+                    permissionsForm.solo_lectura ? 'bg-amber-600 border-amber-600 text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                   }`}>
                     {permissionsForm.solo_lectura && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
@@ -1214,23 +1214,23 @@ export default function DoctorsPage() {
                   onClick={() => togglePrivilege('puede_lanzar_llamadas')}
                   className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
                     permissionsForm.puede_lanzar_llamadas
-                      ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-500 shadow-xs'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-600 ring-2 ring-blue-500 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_lanzar_llamadas ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_lanzar_llamadas ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
                       <PhoneCall className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-bold text-xs text-slate-900 block">Permitir Llamadas en Vivo (GSM Puerto 22)</span>
-                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">Permitir Llamadas en Vivo (GSM Puerto 22)</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal block leading-tight mt-0.5">
                         Habilita el botón de llamada individual y enlace con el Agente IA para sus pacientes.
                       </span>
                     </div>
                   </div>
                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
-                    permissionsForm.puede_lanzar_llamadas ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'
+                    permissionsForm.puede_lanzar_llamadas ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                   }`}>
                     {permissionsForm.puede_lanzar_llamadas && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
@@ -1242,23 +1242,23 @@ export default function DoctorsPage() {
                   onClick={() => togglePrivilege('puede_enviar_mensajes')}
                   className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
                     permissionsForm.puede_enviar_mensajes
-                      ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-500 shadow-xs'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-600 ring-2 ring-emerald-500 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_enviar_mensajes ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_enviar_mensajes ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
                       <MessageSquare className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-bold text-xs text-slate-900 block">Permitir Envío de Mensajes (SMS, WhatsApp, Email)</span>
-                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">Permitir Envío de Mensajes (SMS, WhatsApp, Email)</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal block leading-tight mt-0.5">
                         Autoriza el despacho de notificaciones y recordatorios preventivos a los pacientes.
                       </span>
                     </div>
                   </div>
                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
-                    permissionsForm.puede_enviar_mensajes ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white'
+                    permissionsForm.puede_enviar_mensajes ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                   }`}>
                     {permissionsForm.puede_enviar_mensajes && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
@@ -1270,23 +1270,23 @@ export default function DoctorsPage() {
                   onClick={() => togglePrivilege('puede_crear_campanas')}
                   className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
                     permissionsForm.puede_crear_campanas
-                      ? 'bg-purple-50 border-purple-300 ring-2 ring-purple-500 shadow-xs'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-300 dark:border-purple-600 ring-2 ring-purple-500 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_crear_campanas ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_crear_campanas ? 'bg-purple-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
                       <Send className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-bold text-xs text-slate-900 block">Permitir Crear y Gestionar Campañas</span>
-                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">Permitir Crear y Gestionar Campañas</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal block leading-tight mt-0.5">
                         Habilita la creación y programación de campañas masivas para sus Cursos de Vida.
                       </span>
                     </div>
                   </div>
                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
-                    permissionsForm.puede_crear_campanas ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
+                    permissionsForm.puede_crear_campanas ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                   }`}>
                     {permissionsForm.puede_crear_campanas && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
@@ -1298,23 +1298,23 @@ export default function DoctorsPage() {
                   onClick={() => togglePrivilege('puede_editar_pacientes')}
                   className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all text-left select-none ${
                     permissionsForm.puede_editar_pacientes
-                      ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-500 shadow-xs'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
+                      ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-600 ring-2 ring-rose-500 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_editar_pacientes ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <div className={`p-2 rounded-lg shrink-0 ${permissionsForm.puede_editar_pacientes ? 'bg-rose-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
                       <UserCheck className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-bold text-xs text-slate-900 block">Permitir Editar y Gestionar Pacientes</span>
-                      <span className="text-[11px] text-slate-500 font-normal block leading-tight mt-0.5">
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">Permitir Editar y Gestionar Pacientes</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal block leading-tight mt-0.5">
                         Autoriza la actualización de historias clínicas, datos demográficos y antecedentes.
                       </span>
                     </div>
                   </div>
                   <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors shrink-0 ml-3 ${
-                    permissionsForm.puede_editar_pacientes ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-300 bg-white'
+                    permissionsForm.puede_editar_pacientes ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800'
                   }`}>
                     {permissionsForm.puede_editar_pacientes && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </div>
@@ -1324,10 +1324,10 @@ export default function DoctorsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowPermissionsDialog(false)}>
+              <Button type="button" variant="outline" onClick={() => setShowPermissionsDialog(false)} className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 dark:text-slate-200">
                 Cancelar
               </Button>
-              <Button onClick={handleSavePermissions} disabled={savingAction} className="bg-slate-900 hover:bg-slate-800 text-white font-bold gap-2">
+              <Button onClick={handleSavePermissions} disabled={savingAction} className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white font-bold gap-2">
                 <Shield className="w-4 h-4 text-amber-400" />
                 {savingAction ? 'Actualizando...' : 'Guardar y Aplicar Permisos'}
               </Button>

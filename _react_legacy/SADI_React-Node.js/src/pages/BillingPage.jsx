@@ -158,8 +158,8 @@ const BillingPage = () => {
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
-          <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
-          <p className="text-sm font-semibold text-slate-600">
+          <Loader2 className="h-10 w-10 text-blue-600 dark:text-blue-400 animate-spin" />
+          <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
             Conectando a Supabase y calculando entregabilidad de facturación...
           </p>
         </div>
@@ -176,19 +176,19 @@ const BillingPage = () => {
 
       <div className="space-y-6">
         {/* Cabecera Principal */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div>
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-blue-600 rounded-xl text-white shadow-md shadow-blue-500/20">
                 <Receipt className="h-6 w-6" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                   Facturación, Entregabilidad y RIPS JSON
                 </h1>
-                <p className="text-sm text-slate-500 mt-0.5">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                   Liquidación oficial al Hospital por envíos exitosos • Resolución 2275 de 2023 • Código CUPS:{' '}
-                  <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                  <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60">
                     {PRICING_CONSTANTS.CODIGO_CUPS} (Medicina General / Teleorientación)
                   </span>
                 </p>
@@ -208,24 +208,24 @@ const BillingPage = () => {
             <Button
               onClick={handleExportExcel}
               variant="outline"
-              className="border-slate-300 hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-2"
+              className="bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 font-medium flex items-center gap-2"
             >
-              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               <span>Exportar Excel (.xlsx)</span>
             </Button>
           </div>
         </div>
 
         {/* Selector de Meses y Año */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-slate-500" />
-              <span className="text-sm font-semibold text-slate-700">Seleccionar Periodo de Facturación:</span>
+              <Calendar className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Seleccionar Periodo de Facturación:</span>
             </div>
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
               <span>Año Contable:</span>
-              <span className="bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md font-bold">{selectedYear}</span>
+              <span className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-transparent dark:border-slate-700 px-2.5 py-1 rounded-md font-bold">{selectedYear}</span>
             </div>
           </div>
 
@@ -240,11 +240,11 @@ const BillingPage = () => {
                   className={`py-2 px-1 text-center rounded-xl text-xs font-semibold transition-all duration-200 ${
                     isSelected
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 scale-[1.02]'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200/70'
+                      : 'bg-slate-50 dark:bg-slate-800/70 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700/80'
                   }`}
                 >
                   <div>{m.abrev}</div>
-                  <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
+                  <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>
                     Mes {m.id}
                   </div>
                 </button>
@@ -272,90 +272,90 @@ const BillingPage = () => {
           </div>
 
           {/* INTERVENCIONES ENTREGADAS CON ÉXITO */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Intervenciones Exitosas</span>
-              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Intervenciones Exitosas</span>
+              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-lg">
                 <CheckCircle className="h-5 w-5" />
               </div>
             </div>
-            <div className="text-2xl font-black text-slate-900 mt-2">
+            <div className="text-2xl font-black text-slate-900 dark:text-white mt-2">
               {monthData.totales.totalEnviosExitosos.toLocaleString('es-CO')} Atenciones
             </div>
-            <p className="text-xs text-emerald-600 font-semibold mt-1">
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold mt-1">
               Solo se cobra lo recibido por el paciente
             </p>
           </div>
 
           {/* TASA DE EFECTIVIDAD GLOBAL */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tasa de Efectividad Global</span>
-              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tasa de Efectividad Global</span>
+              <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg">
                 <Activity className="h-5 w-5" />
               </div>
             </div>
-            <div className="text-2xl font-black text-indigo-600 mt-2">
+            <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400 mt-2">
               {monthData.totales.tasaExitoGlobalPct}%
             </div>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               {monthData.totales.totalEnviosFallidos} envíos fallidos exentos ($0 COP)
             </p>
           </div>
 
           {/* PACIENTES ATENDIDOS E INDUCIDOS */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pacientes de la BD</span>
-              <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Pacientes de la BD</span>
+              <div className="p-2 bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 rounded-lg">
                 <Users className="h-5 w-5" />
               </div>
             </div>
-            <div className="text-2xl font-black text-slate-900 mt-2">
+            <div className="text-2xl font-black text-slate-900 dark:text-white mt-2">
               {monthData.totales.pacientesCount} Pacientes
             </div>
-            <p className="text-xs text-purple-600 font-medium mt-1">
+            <p className="text-xs text-purple-600 dark:text-purple-400 font-medium mt-1">
               Registros verificados en Supabase
             </p>
           </div>
         </div>
 
         {/* Desglose Operativo y Tarifario por Canal (Basado en el Excel del Usuario) */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center gap-2">
               <span>Desglose Operativo y Tarifario por Canal ({monthData.mesNombre})</span>
             </h2>
-            <span className="text-xs text-slate-500 font-medium">
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
               * Facturación calculada exclusivamente sobre eventos efectivos
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Llamadas IA */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <PhoneCall className="h-4 w-4 text-blue-600" />
-                  <span className="text-xs font-bold text-slate-800">Llamadas IA (Vapi + GSM)</span>
+                  <PhoneCall className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">Llamadas IA (Vapi + GSM)</span>
                 </div>
-                <span className="text-[11px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                <span className="text-[11px] font-bold bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 px-2 py-0.5 rounded">
                   {monthData.desgloseCanales.llamadas.tarifa}
                 </span>
               </div>
-              <div className="text-xl font-black text-slate-900">
+              <div className="text-xl font-black text-slate-900 dark:text-white">
                 {monthData.desgloseCanales.llamadas.segundos.toLocaleString('es-CO')} seg contestados
               </div>
-              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200">
-                <span className="text-slate-500">
+              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-slate-500 dark:text-slate-400">
                   {monthData.desgloseCanales.llamadas.exitosas} de {monthData.desgloseCanales.llamadas.intentos} ({monthData.desgloseCanales.llamadas.tasaExito}%)
                 </span>
-                <span className="font-bold text-blue-700">
+                <span className="font-bold text-blue-700 dark:text-blue-400">
                   ${monthData.desgloseCanales.llamadas.facturado.toLocaleString('es-CO')} COP
                 </span>
               </div>
               {monthData.desgloseCanales.llamadas.buzonesCortados > 0 && (
-                <div className="mt-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 flex items-center justify-between">
+                <div className="mt-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 rounded-lg px-2 py-1 flex items-center justify-between">
                   <span>Buzones cortados: {monthData.desgloseCanales.llamadas.buzonesCortados}</span>
                   <span>$0 COP (Ahorro carrier)</span>
                 </div>
@@ -363,72 +363,72 @@ const BillingPage = () => {
             </div>
 
             {/* WhatsApp */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-emerald-600" />
-                  <span className="text-xs font-bold text-slate-800">WhatsApp Verificado</span>
+                  <MessageSquare className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">WhatsApp Verificado</span>
                 </div>
-                <span className="text-[11px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                <span className="text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded">
                   {monthData.desgloseCanales.whatsapp.tarifa}
                 </span>
               </div>
-              <div className="text-xl font-black text-slate-900">
+              <div className="text-xl font-black text-slate-900 dark:text-white">
                 {monthData.desgloseCanales.whatsapp.exitosos.toLocaleString('es-CO')} mensajes entregados
               </div>
-              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200">
-                <span className="text-slate-500">
+              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-slate-500 dark:text-slate-400">
                   Efectividad: {monthData.desgloseCanales.whatsapp.tasaExito}%
                 </span>
-                <span className="font-bold text-emerald-700">
+                <span className="font-bold text-emerald-700 dark:text-emerald-400">
                   ${monthData.desgloseCanales.whatsapp.facturado.toLocaleString('es-CO')} COP
                 </span>
               </div>
             </div>
 
             {/* SMS */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Send className="h-4 w-4 text-purple-600" />
-                  <span className="text-xs font-bold text-slate-800">Mensajes SMS</span>
+                  <Send className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">Mensajes SMS</span>
                 </div>
-                <span className="text-[11px] font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded">
+                <span className="text-[11px] font-bold bg-purple-100 dark:bg-purple-950/70 text-purple-800 dark:text-purple-300 px-2 py-0.5 rounded">
                   {monthData.desgloseCanales.sms.tarifa}
                 </span>
               </div>
-              <div className="text-xl font-black text-slate-900">
+              <div className="text-xl font-black text-slate-900 dark:text-white">
                 {monthData.desgloseCanales.sms.exitosos.toLocaleString('es-CO')} SMS recibidos
               </div>
-              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200">
-                <span className="text-slate-500">
+              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-slate-500 dark:text-slate-400">
                   Efectividad: {monthData.desgloseCanales.sms.tasaExito}%
                 </span>
-                <span className="font-bold text-purple-700">
+                <span className="font-bold text-purple-700 dark:text-purple-400">
                   ${monthData.desgloseCanales.sms.facturado.toLocaleString('es-CO')} COP
                 </span>
               </div>
             </div>
 
             {/* E-mails */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-cyan-600" />
-                  <span className="text-xs font-bold text-slate-800">E-mails Remitidos</span>
+                  <Mail className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">E-mails Remitidos</span>
                 </div>
-                <span className="text-[11px] font-bold bg-cyan-100 text-cyan-800 px-2 py-0.5 rounded">
+                <span className="text-[11px] font-bold bg-cyan-100 dark:bg-cyan-950/70 text-cyan-800 dark:text-cyan-300 px-2 py-0.5 rounded">
                   {monthData.desgloseCanales.email.tarifa}
                 </span>
               </div>
-              <div className="text-xl font-black text-slate-900">
+              <div className="text-xl font-black text-slate-900 dark:text-white">
                 {monthData.desgloseCanales.email.exitosos.toLocaleString('es-CO')} correos en bandeja
               </div>
-              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200">
-                <span className="text-slate-500">
+              <div className="mt-2 text-xs flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span className="text-slate-500 dark:text-slate-400">
                   Efectividad: {monthData.desgloseCanales.email.tasaExito}%
                 </span>
-                <span className="font-bold text-cyan-700">
+                <span className="font-bold text-cyan-700 dark:text-cyan-400">
                   ${monthData.desgloseCanales.email.facturado.toLocaleString('es-CO')} COP
                 </span>
               </div>
@@ -437,13 +437,13 @@ const BillingPage = () => {
         </div>
 
         {/* Pestañas de Vista: Detalle de Pacientes vs LOGs de Entregabilidad */}
-        <div className="flex items-center gap-2 border-b border-slate-200">
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800">
           <button
             onClick={() => setActiveTab('pacientes')}
             className={`pb-3 px-4 text-sm font-bold transition-all relative flex items-center gap-2 ${
               activeTab === 'pacientes'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             <Users className="h-4 w-4" />
@@ -454,13 +454,13 @@ const BillingPage = () => {
             onClick={() => setActiveTab('logs')}
             className={`pb-3 px-4 text-sm font-bold transition-all relative flex items-center gap-2 ${
               activeTab === 'logs'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-slate-500 hover:text-slate-800'
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             }`}
           >
             <Activity className="h-4 w-4" />
             <span>Panel de LOGs de Entregabilidad ({filteredLogs.length})</span>
-            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">
+            <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-transparent dark:border-slate-700 px-1.5 py-0.5 rounded-full font-bold">
               Auditoría
             </span>
           </button>
@@ -468,14 +468,14 @@ const BillingPage = () => {
 
         {/* VISTA 1: TABLA DE PACIENTES */}
         {activeTab === 'pacientes' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
                     Pacientes Atendidos en {monthData.mesNombre} ({filteredPatients.length})
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     Valor exacto facturado al Hospital por cada paciente contactado de forma exitosa.
                   </p>
                 </div>
@@ -489,14 +489,14 @@ const BillingPage = () => {
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       placeholder="Buscar paciente, documento..."
-                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
 
                   <select
                     value={selectedCursoVida}
                     onChange={(e) => setSelectedCursoVida(e.target.value)}
-                    className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 font-medium"
+                    className="px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 dark:text-slate-200 font-medium"
                   >
                     <option value="todos">Todos los Cursos de Vida (A - J)</option>
                     <option value="A">A. Primera Infancia</option>
@@ -516,8 +516,8 @@ const BillingPage = () => {
 
             {/* Tabla Responsive */}
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-600">
-                <thead className="bg-slate-50/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 text-[11px]">
+              <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
+                <thead className="bg-slate-50/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-300 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800 text-[11px]">
                   <tr>
                     <th className="py-3 px-4">Paciente</th>
                     <th className="py-3 px-3">Curso de Vida & Hito</th>
@@ -527,14 +527,14 @@ const BillingPage = () => {
                     <th className="py-3 px-4 text-center">Acciones y RIPS</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filteredPatients.length > 0 ? (
                     filteredPatients.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
                         {/* Paciente */}
                         <td className="py-3 px-4">
-                          <div className="font-semibold text-slate-900">{p.nombre}</div>
-                          <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                          <div className="font-semibold text-slate-900 dark:text-white">{p.nombre}</div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
                             <span>{p.tipoDocumento}: {p.documento}</span>
                             <span>•</span>
                             <span>{p.edad} años ({p.generoTexto})</span>
@@ -544,11 +544,11 @@ const BillingPage = () => {
                         {/* Curso de Vida & Hito */}
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-1.5">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${p.cursoVida?.badgeColor || 'bg-slate-100'}`}>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${p.cursoVida?.badgeColor || 'bg-slate-100 dark:bg-slate-800'}`}>
                               {p.cursoVida?.id}. {p.cursoVida?.nombre}
                             </span>
                           </div>
-                          <div className="text-[11px] text-slate-500 mt-1 truncate max-w-[220px]" title={p.hito3280}>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[220px]" title={p.hito3280}>
                             {p.hito3280}
                           </div>
                         </td>
@@ -556,18 +556,18 @@ const BillingPage = () => {
                         {/* Envíos Efectivos */}
                         <td className="py-3 px-3">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-100" title="WhatsApp Entregado">
+                            <span className="inline-flex items-center gap-1 text-[11px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-800/60" title="WhatsApp Entregado">
                               <MessageSquare className="h-3 w-3" />
                               {p.waExitosos} WA
                             </span>
                             {p.smsExitosos > 0 && (
-                              <span className="inline-flex items-center gap-1 text-[11px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-100" title="SMS Recibido">
+                              <span className="inline-flex items-center gap-1 text-[11px] bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded border border-purple-100 dark:border-purple-800/60" title="SMS Recibido">
                                 <Send className="h-3 w-3" />
                                 {p.smsExitosos} SMS
                               </span>
                             )}
                             {p.emailExitosos > 0 && (
-                              <span className="inline-flex items-center gap-1 text-[11px] bg-cyan-50 text-cyan-700 px-1.5 py-0.5 rounded border border-cyan-100" title="E-mail en Bandeja">
+                              <span className="inline-flex items-center gap-1 text-[11px] bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-100 dark:border-cyan-800/60" title="E-mail en Bandeja">
                                 <Mail className="h-3 w-3" />
                                 {p.emailExitosos} Mail
                               </span>
@@ -578,12 +578,12 @@ const BillingPage = () => {
                         {/* Llamada */}
                         <td className="py-3 px-3">
                           {p.contactadoExitoso ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold border border-blue-200">
-                              <PhoneCall className="h-3 w-3 text-blue-600" />
+                            <span className="inline-flex items-center gap-1 text-[11px] bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-bold border border-blue-200 dark:border-blue-800/60">
+                              <PhoneCall className="h-3 w-3 text-blue-600 dark:text-blue-400" />
                               {p.segundosLlamada}s (${p.cobroDesglose.llamadas.toLocaleString('es-CO')})
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-medium border border-slate-200">
+                            <span className="inline-flex items-center gap-1 text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded font-medium border border-slate-200 dark:border-slate-700">
                               <XCircle className="h-3 w-3 text-slate-400" />
                               No contestó ($0 COP)
                             </span>
@@ -592,10 +592,10 @@ const BillingPage = () => {
 
                         {/* Total Facturado */}
                         <td className="py-3 px-3 text-right">
-                          <div className="font-black text-blue-700 text-sm">
+                          <div className="font-black text-blue-700 dark:text-blue-400 text-sm">
                             ${p.cobroDesglose.total.toLocaleString('es-CO')} COP
                           </div>
-                          <div className="text-[10px] text-slate-500 font-medium">
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                             CUPS {PRICING_CONSTANTS.CODIGO_CUPS}
                           </div>
                         </td>
@@ -608,7 +608,7 @@ const BillingPage = () => {
                               variant="outline"
                               onClick={() => handleDownloadIndividualRips(p)}
                               title="Descargar RIPS JSON individual de este paciente"
-                              className="h-8 px-2.5 text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 flex items-center gap-1 font-medium"
+                              className="h-8 px-2.5 text-xs bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 hover:text-emerald-800 flex items-center gap-1 font-medium"
                             >
                               <FileCode className="h-3.5 w-3.5" />
                               <span>RIPS JSON</span>
@@ -619,7 +619,7 @@ const BillingPage = () => {
                               variant="outline"
                               onClick={() => setSelectedPatientModal(p)}
                               title="Ver detalle del cobro y comprobante"
-                              className="h-8 px-2 text-xs text-slate-700 border-slate-200 hover:bg-slate-100"
+                              className="h-8 px-2 text-xs bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                             >
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
@@ -629,7 +629,7 @@ const BillingPage = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400">
+                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500">
                         No se encontraron pacientes para los filtros seleccionados.
                       </td>
                     </tr>
@@ -642,15 +642,15 @@ const BillingPage = () => {
 
         {/* VISTA 2: PANEL DE LOGS DE ENTREGABILIDAD */}
         {activeTab === 'logs' && (
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     <span>Registro Oficial de Envíos y Entregabilidad ({filteredLogs.length} eventos)</span>
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                     Auditoría de contactabilidad en tiempo real. Solo los eventos confirmados como exitosos generan cobro al Hospital.
                   </p>
                 </div>
@@ -660,7 +660,7 @@ const BillingPage = () => {
                   <select
                     value={logChannelFilter}
                     onChange={(e) => setLogChannelFilter(e.target.value)}
-                    className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 font-medium"
+                    className="px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 dark:text-slate-200 font-medium"
                   >
                     <option value="todos">Todos los Canales</option>
                     <option value="llamada">Llamadas IA</option>
@@ -672,7 +672,7 @@ const BillingPage = () => {
                   <select
                     value={logStatusFilter}
                     onChange={(e) => setLogStatusFilter(e.target.value)}
-                    className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 font-medium"
+                    className="px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 dark:text-slate-200 font-medium"
                   >
                     <option value="todos">Todos los Estados</option>
                     <option value="exitoso">Solo Exitosos (Facturables)</option>
@@ -684,8 +684,8 @@ const BillingPage = () => {
 
             {/* Tabla de LOGs */}
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-600">
-                <thead className="bg-slate-50/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200 text-[11px]">
+              <table className="w-full text-left text-xs text-slate-600 dark:text-slate-300">
+                <thead className="bg-slate-50/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-300 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800 text-[11px]">
                   <tr>
                     <th className="py-3 px-4">Fecha / Hora</th>
                     <th className="py-3 px-3">Paciente</th>
@@ -695,14 +695,14 @@ const BillingPage = () => {
                     <th className="py-3 px-4 text-right">Cobro Hospital</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
                   {filteredLogs.length > 0 ? (
                     filteredLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">
+                      <tr key={log.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="py-2.5 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
                           {log.timestamp}
                         </td>
-                        <td className="py-2.5 px-3 font-sans font-semibold text-slate-900">
+                        <td className="py-2.5 px-3 font-sans font-semibold text-slate-900 dark:text-white">
                           {log.paciente} ({log.documento})
                         </td>
                         <td className="py-2.5 px-3 font-sans font-medium">
@@ -710,32 +710,32 @@ const BillingPage = () => {
                         </td>
                         <td className="py-2.5 px-3">
                           {log.exito ? (
-                            <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
                               <CheckCircle className="h-3 w-3" />
                               {log.estado}
                             </span>
                           ) : log.esBuzonCortado ? (
-                            <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-amber-100 text-amber-800 border border-amber-200">
+                            <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
                               <XCircle className="h-3 w-3" />
                               {log.estado}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-rose-100 text-rose-800 border border-rose-200">
+                            <span className="inline-flex items-center gap-1 font-sans font-bold px-2 py-0.5 rounded text-[11px] bg-rose-100 dark:bg-rose-950/70 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
                               <XCircle className="h-3 w-3" />
                               {log.estado}
                             </span>
                           )}
                         </td>
-                        <td className="py-2.5 px-3 font-sans text-slate-600">
+                        <td className="py-2.5 px-3 font-sans text-slate-600 dark:text-slate-300">
                           {log.detalle}
                         </td>
                         <td className="py-2.5 px-4 text-right font-sans">
                           {log.facturable ? (
-                            <span className="font-bold text-blue-700">
+                            <span className="font-bold text-blue-700 dark:text-blue-400">
                               +${log.valorCobrado.toLocaleString('es-CO')} COP
                             </span>
                           ) : (
-                            <span className="text-slate-400 font-medium">
+                            <span className="text-slate-400 dark:text-slate-500 font-medium">
                               $0 COP (Exento)
                             </span>
                           )}
@@ -744,7 +744,7 @@ const BillingPage = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 font-sans">
+                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500 font-sans">
                         No hay registros que coincidan con los filtros seleccionados.
                       </td>
                     </tr>
@@ -759,55 +759,55 @@ const BillingPage = () => {
       {/* MODAL DETALLE DE FACTURACIÓN INDIVIDUAL Y COMPROBANTE */}
       <AnimatePresence>
         {selectedPatientModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+              className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
             >
               {/* Header Modal */}
-              <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+              <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/60">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-blue-600 text-white rounded-xl">
                     <Receipt className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-slate-900">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
                       Liquidación Individual de Cobro al Hospital
                     </h3>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
                       {selectedPatientModal.nombre} • {selectedPatientModal.tipoDocumento}: {selectedPatientModal.documento}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedPatientModal(null)}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 transition-colors"
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Contenido Modal */}
-              <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-700">
+              <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-700 dark:text-slate-300">
                 {/* Resumen Total Facturado */}
-                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 flex items-center justify-between">
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 rounded-xl border border-blue-200 dark:border-blue-800/60 flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-blue-700">Total Facturado por este Paciente</span>
-                    <p className="text-2xl font-black text-blue-900 mt-0.5">
+                    <span className="text-[10px] uppercase font-bold text-blue-700 dark:text-blue-300">Total Facturado por este Paciente</span>
+                    <p className="text-2xl font-black text-blue-900 dark:text-white mt-0.5">
                       ${selectedPatientModal.cobroDesglose.total.toLocaleString('es-CO')} COP
                     </p>
-                    <span className="text-[11px] text-blue-600 font-medium">
+                    <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
                       Atención asistencial • Código CUPS: {PRICING_CONSTANTS.CODIGO_CUPS}
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Fecha y Hora Atención</span>
-                    <span className="font-bold text-slate-800 text-xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block">Fecha y Hora Atención</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100 text-xs">
                       {selectedPatientModal.fechaHoraAtencion}
                     </span>
-                    <span className="text-[11px] text-emerald-600 block font-semibold mt-0.5">
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 block font-semibold mt-0.5">
                       ✓ Soporte para RIPS JSON
                     </span>
                   </div>
@@ -815,12 +815,12 @@ const BillingPage = () => {
 
                 {/* Desglose por concepto */}
                 <div>
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
+                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-2">
                     Desglose de Servicios Entregados con Éxito
                   </h4>
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                      <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
                         <tr>
                           <th className="py-2.5 px-3">Servicio / Canal</th>
                           <th className="py-2.5 px-3">Resultado de Entrega</th>
@@ -828,22 +828,22 @@ const BillingPage = () => {
                           <th className="py-2.5 px-3 text-right">Total Facturado</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         <tr>
                           <td className="py-2.5 px-3 font-medium">Llamada IA Vapi + OpenVox GSM</td>
                           <td className="py-2.5 px-3">
                             {selectedPatientModal.contactadoExitoso ? (
-                              <span className="text-emerald-700 font-bold">
+                              <span className="text-emerald-700 dark:text-emerald-400 font-bold">
                                 ✓ Contestada ({selectedPatientModal.segundosLlamada} seg)
                               </span>
                             ) : (
-                              <span className="text-rose-600 font-medium">
+                              <span className="text-rose-600 dark:text-rose-400 font-medium">
                                 ✗ No contestó (0 seg)
                               </span>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right">${PRICING_CONSTANTS.PRICE_CALL_PER_SECOND.toFixed(2)}/s</td>
-                          <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">
                             ${selectedPatientModal.cobroDesglose.llamadas.toLocaleString('es-CO')}
                           </td>
                         </tr>
@@ -851,13 +851,13 @@ const BillingPage = () => {
                           <td className="py-2.5 px-3 font-medium">WhatsApp Recordatorio (Utility)</td>
                           <td className="py-2.5 px-3">
                             {selectedPatientModal.waExitosos > 0 ? (
-                              <span className="text-emerald-700 font-bold">✓ Entregado al dispositivo</span>
+                              <span className="text-emerald-700 dark:text-emerald-400 font-bold">✓ Entregado al dispositivo</span>
                             ) : (
-                              <span className="text-rose-600 font-medium">✗ No entregado</span>
+                              <span className="text-rose-600 dark:text-rose-400 font-medium">✗ No entregado</span>
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-right">${PRICING_CONSTANTS.PRICE_WA_UTILITY.toFixed(2)}</td>
-                          <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">
                             ${selectedPatientModal.cobroDesglose.whatsapp.toLocaleString('es-CO')}
                           </td>
                         </tr>
@@ -866,13 +866,13 @@ const BillingPage = () => {
                             <td className="py-2.5 px-3 font-medium">Mensaje de Texto SMS</td>
                             <td className="py-2.5 px-3">
                               {selectedPatientModal.smsExitosos > 0 ? (
-                                <span className="text-emerald-700 font-bold">✓ Recibido (DELIVRD)</span>
+                                <span className="text-emerald-700 dark:text-emerald-400 font-bold">✓ Recibido (DELIVRD)</span>
                               ) : (
-                                <span className="text-rose-600 font-medium">✗ Fallo de entrega</span>
+                                <span className="text-rose-600 dark:text-rose-400 font-medium">✗ Fallo de entrega</span>
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-right">${PRICING_CONSTANTS.PRICE_SMS.toFixed(2)}</td>
-                            <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                            <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">
                               ${selectedPatientModal.cobroDesglose.sms.toLocaleString('es-CO')}
                             </td>
                           </tr>
@@ -882,13 +882,13 @@ const BillingPage = () => {
                             <td className="py-2.5 px-3 font-medium">Correo Electrónico Informativo</td>
                             <td className="py-2.5 px-3">
                               {selectedPatientModal.emailExitosos > 0 ? (
-                                <span className="text-emerald-700 font-bold">✓ Entregado en bandeja</span>
+                                <span className="text-emerald-700 dark:text-emerald-400 font-bold">✓ Entregado en bandeja</span>
                               ) : (
-                                <span className="text-rose-600 font-medium">✗ Rebotado (Bounce)</span>
+                                <span className="text-rose-600 dark:text-rose-400 font-medium">✗ Rebotado (Bounce)</span>
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-right">${PRICING_CONSTANTS.PRICE_EMAIL.toFixed(2)}</td>
-                            <td className="py-2.5 px-3 text-right font-bold text-slate-900">
+                            <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">
                               ${selectedPatientModal.cobroDesglose.email.toLocaleString('es-CO')}
                             </td>
                           </tr>
@@ -901,8 +901,8 @@ const BillingPage = () => {
                 {/* Visor RIPS JSON Oficial */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <FileCode className="h-4 w-4 text-emerald-600" />
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileCode className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       <span>Estructura Oficial RIPS JSON (Resolución 2275 de 2023)</span>
                     </h4>
                     <button
@@ -919,14 +919,14 @@ const BillingPage = () => {
                           )
                         )
                       }
-                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-semibold"
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 flex items-center gap-1 font-semibold"
                     >
                       <Copy className="h-3.5 w-3.5" />
                       <span>{copiedJson ? '¡Copiado!' : 'Copiar JSON'}</span>
                     </button>
                   </div>
 
-                  <pre className="p-4 bg-slate-900 text-slate-200 rounded-xl text-[11px] overflow-x-auto font-mono max-h-56 leading-relaxed border border-slate-800">
+                  <pre className="p-4 bg-slate-900 dark:bg-slate-950 text-slate-200 rounded-xl text-[11px] overflow-x-auto font-mono max-h-56 leading-relaxed border border-slate-800">
                     {JSON.stringify(
                       billingService.generateIndividualPatientRipsJSON(
                         selectedPatientModal,
@@ -941,15 +941,16 @@ const BillingPage = () => {
               </div>
 
               {/* Footer Modal */}
-              <div className="p-4 border-t border-slate-200 flex items-center justify-between bg-slate-50">
-                <span className="text-xs text-slate-500">
-                  Código CUPS: <strong>{PRICING_CONSTANTS.CODIGO_CUPS}</strong> • Finalidad: <strong>01 Detección temprana</strong>
+              <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/60">
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  Código CUPS: <strong className="text-slate-900 dark:text-white">{PRICING_CONSTANTS.CODIGO_CUPS}</strong> • Finalidad: <strong className="text-slate-900 dark:text-white">01 Detección temprana</strong>
                 </span>
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setSelectedPatientModal(null)}
+                    className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
                   >
                     Cerrar
                   </Button>

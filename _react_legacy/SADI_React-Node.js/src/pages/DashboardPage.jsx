@@ -310,8 +310,8 @@ const DashboardPage = () => {
         </Helmet>
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
-            <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
-            <p className="text-gray-600">Cargando estadísticas desde Supabase...</p>
+            <Loader2 className="h-12 w-12 animate-spin text-blue-600 dark:text-blue-400 mx-auto mb-4" />
+            <p className="text-gray-600 dark:text-slate-400">Cargando estadísticas desde Supabase...</p>
           </div>
         </div>
       </Layout>
@@ -326,11 +326,11 @@ const DashboardPage = () => {
           <meta name="description" content="Panel de control y estadísticas del sistema" />
         </Helmet>
         <div className="flex items-center justify-center h-96">
-          <div className="bg-white rounded-xl shadow-md p-8 max-w-md">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-md p-8 max-w-md">
             <div className="text-center">
               <Activity className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Error al cargar datos</h3>
-              <p className="text-gray-600 mb-4">{error}</p>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Error al cargar datos</h3>
+              <p className="text-gray-600 dark:text-slate-400 mb-4">{error}</p>
               <button
                 onClick={() => loadDashboardData(hospitalId)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -354,8 +354,8 @@ const DashboardPage = () => {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Vista general del sistema - Datos en tiempo real desde Supabase</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+          <p className="text-gray-500 dark:text-slate-400 mt-1">Vista general del sistema - Datos en tiempo real desde Supabase</p>
         </div>
 
         {/* KPI Cards */}
@@ -365,13 +365,13 @@ const DashboardPage = () => {
             return (
               <div
                 key={index}
-                className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow"
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 hover:shadow-lg transition-all"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500 mb-1">{kpi.title}</p>
-                    <p className="text-3xl font-bold text-gray-900">{kpi.value}</p>
-                    <p className="text-xs text-gray-500 mt-2">{kpi.subtitle}</p>
+                    <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">{kpi.title}</p>
+                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{kpi.value}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">{kpi.subtitle}</p>
                   </div>
                   <div className={`${kpi.color} p-4 rounded-lg`}>
                     <Icon className="h-8 w-8 text-white" />
@@ -385,21 +385,21 @@ const DashboardPage = () => {
         {/* Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Actividad Reciente */}
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Actividad Reciente</h2>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 transition-colors">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Actividad Reciente</h2>
             <div className="space-y-4">
               {recentActivity.length > 0 ? (
                 recentActivity.map((item, index) => (
-                  <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
+                  <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 dark:bg-slate-800/70 border border-transparent dark:border-slate-700/60 rounded-lg">
                     <div className={`w-2 h-2 ${item.color} rounded-full`}></div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">{item.message}</p>
-                      <p className="text-xs text-gray-500">{item.time}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{item.message}</p>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">{item.time}</p>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="text-center py-8 text-gray-400">
+                <div className="text-center py-8 text-gray-400 dark:text-slate-500">
                   <Activity className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No hay actividad reciente</p>
                 </div>
@@ -408,64 +408,41 @@ const DashboardPage = () => {
           </div>
 
           {/* Estadísticas de Campañas */}
-          <div className="bg-white rounded-xl shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Estadísticas de Campañas</h2>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 transition-colors">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Estadísticas de Campañas</h2>
             
             <div className="space-y-4">
               {/* Estado de Campañas */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Estado de Campañas</h3>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">Estado de Campañas</h3>
                 <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-600">En Progreso</span>
-                      <span className="text-sm font-bold text-blue-600">{campaignStats.enProgreso}</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-blue-500 h-3 rounded-full transition-all duration-500"
-                        style={{ 
-                          width: `${(campaignStats.enProgreso / Math.max(campaignStats.enProgreso + campaignStats.completadas + campaignStats.programadas, 1)) * 100}%` 
-                        }}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-600">Completadas</span>
-                      <span className="text-sm font-bold text-green-600">{campaignStats.completadas}</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-green-500 h-3 rounded-full transition-all duration-500"
-                        style={{ 
-                          width: `${(campaignStats.completadas / Math.max(campaignStats.enProgreso + campaignStats.completadas + campaignStats.programadas, 1)) * 100}%` 
-                        }}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-600">Programadas</span>
-                      <span className="text-sm font-bold text-yellow-600">{campaignStats.programadas}</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div 
-                        className="bg-yellow-500 h-3 rounded-full transition-all duration-500"
-                        style={{ 
-                          width: `${(campaignStats.programadas / Math.max(campaignStats.enProgreso + campaignStats.completadas + campaignStats.programadas, 1)) * 100}%` 
-                        }}
-                      />
-                    </div>
-                  </div>
+                  {[
+                    { label: 'En Progreso', value: campaignStats.enProgreso, textClass: 'text-blue-600 dark:text-blue-400', barClass: 'bg-blue-500' },
+                    { label: 'Completadas', value: campaignStats.completadas, textClass: 'text-green-600 dark:text-green-400', barClass: 'bg-green-500' },
+                    { label: 'Programadas', value: campaignStats.programadas, textClass: 'text-yellow-600 dark:text-yellow-400', barClass: 'bg-yellow-500' },
+                  ].map((st) => {
+                    const total = Math.max(campaignStats.enProgreso + campaignStats.completadas + campaignStats.programadas, 1);
+                    return (
+                      <div key={st.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-gray-600 dark:text-slate-300">{st.label}</span>
+                          <span className={`text-sm font-bold ${st.textClass}`}>{st.value}</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-slate-800 rounded-full h-3">
+                          <div
+                            className={`${st.barClass} h-3 rounded-full transition-all duration-500`}
+                            style={{ width: `${(st.value / total) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Demographics */}
-              <div className="pt-4 border-t">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Participantes por Demografía</h3>
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">Participantes por Demografía</h3>
                 <div className="space-y-3">
                   {[
                     { label: '👨 Hombres', value: campaignStats.hombres, color: 'bg-indigo-500' },
@@ -475,10 +452,10 @@ const DashboardPage = () => {
                   ].map((demo, idx) => (
                     <div key={idx}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-gray-600">{demo.label}</span>
-                        <span className="text-sm font-bold text-gray-900">{demo.value}</span>
+                        <span className="text-sm text-gray-600 dark:text-slate-300">{demo.label}</span>
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">{demo.value}</span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div className="w-full bg-gray-200 dark:bg-slate-800 rounded-full h-3">
                         <div 
                           className={`${demo.color} h-3 rounded-full transition-all duration-500`}
                           style={{ 
@@ -495,7 +472,7 @@ const DashboardPage = () => {
         </div>
 
         {/* Footer info */}
-        <div className="text-center text-sm text-gray-500">
+        <div className="text-center text-sm text-gray-500 dark:text-slate-400">
           <p>Última actualización: {new Date().toLocaleTimeString('es-CO')}</p>
           <p className="mt-1">Hospital ID: {hospitalId || 'No identificado'} | Conectado a Supabase</p>
         </div>

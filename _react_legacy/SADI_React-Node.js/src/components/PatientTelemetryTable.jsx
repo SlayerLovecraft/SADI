@@ -48,7 +48,7 @@ export default function PatientTelemetryTable({
 
   return (
     <div className="w-full">
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <table className="w-full text-left text-xs border-collapse">
           <thead className="bg-slate-900 text-white font-bold text-[11px] tracking-wider uppercase">
             <tr>
@@ -69,12 +69,12 @@ export default function PatientTelemetryTable({
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
             {patients.length === 0 ? (
               <tr>
-                <td colSpan={selectable ? 9 : 8} className="text-center py-12 text-gray-400">
+                <td colSpan={selectable ? 9 : 8} className="text-center py-12 text-gray-400 dark:text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-2">
-                    <User className="w-8 h-8 text-gray-300" />
+                    <User className="w-8 h-8 text-gray-300 dark:text-slate-600" />
                     <p className="text-xs font-semibold">{emptyMessage}</p>
                   </div>
                 </td>
@@ -102,7 +102,7 @@ export default function PatientTelemetryTable({
                 const hasMeasures = historial.length > 0;
 
                 return (
-                  <tr key={patient.id} className="hover:bg-blue-50/40 transition-colors">
+                  <tr key={patient.id} className="hover:bg-blue-50/40 dark:hover:bg-slate-800/50 transition-colors">
                     {/* Selección */}
                     {selectable && (
                       <td className="p-3.5 text-center">
@@ -110,7 +110,7 @@ export default function PatientTelemetryTable({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => onToggleSelect && onToggleSelect(patient.id)}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className="h-4 w-4 rounded border-gray-300 dark:border-slate-600 dark:bg-slate-800 text-blue-600 focus:ring-blue-500"
                         />
                       </td>
                     )}
@@ -118,14 +118,14 @@ export default function PatientTelemetryTable({
                     {/* 1. Nombre del Paciente */}
                     <td className="p-3.5 whitespace-nowrap">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
                           {patient.nombre ? patient.nombre.charAt(0).toUpperCase() : 'P'}
                         </div>
                         <div>
-                          <div className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
+                          <div className="font-bold text-gray-900 dark:text-white text-xs flex items-center gap-1.5">
                             {patient.nombre}
                           </div>
-                          <div className="text-[10px] text-gray-500 font-mono">
+                          <div className="text-[10px] text-gray-500 dark:text-slate-400 font-mono">
                             CC: {patient.cc || patient.cedula || 'N/A'} {patient.edad ? `· ${patient.edad} años` : ''} {patient.sexo ? `(${patient.sexo})` : ''}
                           </div>
                         </div>
@@ -139,16 +139,16 @@ export default function PatientTelemetryTable({
                           {dispositivos.map((d, dIdx) => (
                             <span 
                               key={dIdx} 
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 truncate"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 truncate"
                               title={d}
                             >
-                              <Smartphone className="w-3 h-3 text-blue-600 shrink-0" />
+                              <Smartphone className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
                               <span className="truncate">{d}</span>
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 italic">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-400 dark:text-slate-500 italic">
                           Sin dispositivo asignado
                         </span>
                       )}
@@ -156,7 +156,7 @@ export default function PatientTelemetryTable({
 
                     {/* 3. Grupos de Vida */}
                     <td className="p-3.5 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 text-cyan-800 border border-cyan-200">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60">
                         {patient.grupo_vida || patient.curso_vida || 'Primera Infancia'}
                       </span>
                     </td>
@@ -164,7 +164,7 @@ export default function PatientTelemetryTable({
                     {/* 4. Grupos de Riesgo */}
                     <td className="p-3.5 max-w-[210px]">
                       <span 
-                        className="inline-block px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 truncate max-w-full"
+                        className="inline-block px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 truncate max-w-full"
                         title={patient.grupo_riesgo || 'Población Materno-Perinatal'}
                       >
                         {patient.grupo_riesgo || 'Población Materno-Perinatal'}
@@ -177,8 +177,8 @@ export default function PatientTelemetryTable({
                         onClick={() => setCurvePatient(patient)}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm ${
                           hasMeasures
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100 hover:shadow-md'
-                            : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-300'
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100 dark:shadow-none hover:shadow-md'
+                            : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 border border-gray-300 dark:border-slate-700'
                         }`}
                         title="Ver trayectoria temporal de telemetría"
                       >
@@ -193,19 +193,19 @@ export default function PatientTelemetryTable({
                         onClick={() => setCriticalPatient(patient)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-transform active:scale-95 ${
                           hasCritical
-                            ? 'bg-red-50 text-red-700 border border-red-300 hover:bg-red-100 animate-pulse'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                            ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-800/70 hover:bg-red-100 dark:hover:bg-red-950 animate-pulse'
+                            : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-950/80'
                         }`}
                         title="Ver última toma y fecha/hora"
                       >
                         {hasCritical ? (
                           <>
-                            <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />
+                            <AlertTriangle className="w-3 h-3 text-red-600 dark:text-red-400 shrink-0" />
                             <span>{critico.valor || 'Alerta Crítica'}</span>
                           </>
                         ) : (
                           <>
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
                             <span>Estable / Normal</span>
                           </>
                         )}
@@ -214,11 +214,11 @@ export default function PatientTelemetryTable({
 
                     {/* 7. Canales de Atención (Selector interactivo + Conteo) */}
                     <td className="p-3.5 text-center whitespace-nowrap">
-                      <div className="inline-flex flex-col items-center gap-1 bg-slate-50 border border-slate-200 p-1.5 rounded-xl">
+                      <div className="inline-flex flex-col items-center gap-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-1.5 rounded-xl">
                         <select
                           value={activeChannelId}
                           onChange={(e) => handleChannelChange(patient.id, e.target.value)}
-                          className="text-[10px] font-bold bg-white border border-gray-200 rounded-lg px-2 py-0.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                          className="text-[10px] font-bold bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-2 py-0.5 text-gray-700 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                         >
                           {CHANNELS.map(ch => (
                             <option key={ch.id} value={ch.id}>
@@ -227,8 +227,8 @@ export default function PatientTelemetryTable({
                           ))}
                         </select>
                         
-                        <div className="flex items-center gap-1 text-[10px] font-black text-slate-700">
-                          <activeChannelObj.icon className="w-3 h-3 text-blue-600" />
+                        <div className="flex items-center gap-1 text-[10px] font-black text-slate-700 dark:text-slate-300">
+                          <activeChannelObj.icon className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                           <span>{interaccionesCount} {interaccionesCount === 1 ? 'contacto' : 'contactos'}</span>
                         </div>
                       </div>
@@ -243,7 +243,7 @@ export default function PatientTelemetryTable({
                               variant="ghost"
                               size="sm"
                               onClick={() => onEditPatient(patient)}
-                              className="h-7 w-7 p-0 text-blue-600 hover:bg-blue-50"
+                              className="h-7 w-7 p-0 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/60"
                               title="Editar paciente"
                             >
                               <Edit className="h-3.5 w-3.5" />
@@ -254,7 +254,7 @@ export default function PatientTelemetryTable({
                               variant="ghost"
                               size="sm"
                               onClick={() => onDeletePatient(patient)}
-                              className="h-7 w-7 p-0 text-red-600 hover:bg-red-50"
+                              className="h-7 w-7 p-0 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/60"
                               title="Eliminar paciente"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -273,13 +273,13 @@ export default function PatientTelemetryTable({
 
       {/* MODAL 1: HISTORIAL DE MEDIDA - GRÁFICA DE CURVA */}
       <Dialog open={!!curvePatient} onOpenChange={() => setCurvePatient(null)}>
-        <DialogContent className="max-w-2xl bg-white rounded-3xl p-6">
+        <DialogContent className="max-w-2xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-3xl p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-black text-gray-900">
-              <TrendingUp className="w-5 h-5 text-blue-600" />
+            <DialogTitle className="flex items-center gap-2 text-base font-black text-gray-900 dark:text-white">
+              <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               Historial de Medidas & Trayectoria de Telemetría
             </DialogTitle>
-            <DialogDescription className="text-xs text-gray-500">
+            <DialogDescription className="text-xs text-gray-500 dark:text-slate-400">
               Curva evolutiva domiciliaria para <strong>{curvePatient?.nombre}</strong> · CC: {curvePatient?.cc || 'N/A'}
             </DialogDescription>
           </DialogHeader>
@@ -287,24 +287,24 @@ export default function PatientTelemetryTable({
           {curvePatient && (
             <div className="mt-4 space-y-4">
               {/* Badges de Información Rápida */}
-              <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
+              <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/70 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs">
                 <div>
-                  <span className="text-[10px] text-gray-400 font-bold block">DISPOSITIVO ASOCIADO</span>
-                  <span className="font-bold text-gray-800 text-xs">
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">DISPOSITIVO ASOCIADO</span>
+                  <span className="font-bold text-gray-800 dark:text-slate-100 text-xs">
                     {(curvePatient.dispositivos && curvePatient.dispositivos[0]) || 
                      (curvePatient.dispositivos_caseros && curvePatient.dispositivos_caseros[0]) || 
                      'Sin dispositivo (Medición estándar)'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-400 font-bold block">CURSO DE VIDA</span>
-                  <span className="font-bold text-cyan-800 text-xs">
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">CURSO DE VIDA</span>
+                  <span className="font-bold text-cyan-800 dark:text-cyan-300 text-xs">
                     {curvePatient.grupo_vida || curvePatient.curso_vida || 'Primera Infancia'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-400 font-bold block">GRUPO DE RIESGO</span>
-                  <span className="font-bold text-amber-800 text-xs truncate block" title={curvePatient.grupo_riesgo}>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">GRUPO DE RIESGO</span>
+                  <span className="font-bold text-amber-800 dark:text-amber-300 text-xs truncate block" title={curvePatient.grupo_riesgo}>
                     {curvePatient.grupo_riesgo || 'Población General'}
                   </span>
                 </div>
@@ -429,7 +429,7 @@ export default function PatientTelemetryTable({
 
               {/* Botón de cierre */}
               <div className="flex justify-end pt-2">
-                <Button variant="outline" onClick={() => setCurvePatient(null)} className="text-xs">
+                <Button variant="outline" onClick={() => setCurvePatient(null)} className="text-xs bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700">
                   Cerrar Gráfica
                 </Button>
               </div>
@@ -440,13 +440,13 @@ export default function PatientTelemetryTable({
 
       {/* MODAL 2: VALORES CRÍTICOS - FECHA Y HORA DE ÚLTIMA TOMA */}
       <Dialog open={!!criticalPatient} onOpenChange={() => setCriticalPatient(null)}>
-        <DialogContent className="max-w-md bg-white rounded-3xl p-6">
+        <DialogContent className="max-w-md bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-3xl p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-black text-gray-900">
-              <ShieldAlert className="w-5 h-5 text-red-600" />
+            <DialogTitle className="flex items-center gap-2 text-base font-black text-gray-900 dark:text-white">
+              <ShieldAlert className="w-5 h-5 text-red-600 dark:text-red-400" />
               Detalle de Valores Críticos & Última Medición
             </DialogTitle>
-            <DialogDescription className="text-xs text-gray-500">
+            <DialogDescription className="text-xs text-gray-500 dark:text-slate-400">
               Monitoreo clínico para <strong>{criticalPatient?.nombre}</strong>
             </DialogDescription>
           </DialogHeader>
@@ -454,32 +454,32 @@ export default function PatientTelemetryTable({
           {criticalPatient && (
             <div className="mt-4 space-y-4">
               {criticalPatient.valores_criticos?.tiene_critico ? (
-                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+                <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-2xl p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase text-red-800 bg-red-100 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-black uppercase text-red-800 dark:text-red-300 bg-red-100 dark:bg-red-900/60 px-2 py-0.5 rounded-full">
                       {criticalPatient.valores_criticos.tipo || 'Valor Fuera de Rango'}
                     </span>
-                    <span className="text-xs font-mono font-bold text-red-900">
+                    <span className="text-xs font-mono font-bold text-red-900 dark:text-red-200">
                       {criticalPatient.valores_criticos.valor}
                     </span>
                   </div>
 
-                  <div className="space-y-1.5 pt-2 border-t border-red-200/60 text-xs">
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <Clock className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <div className="space-y-1.5 pt-2 border-t border-red-200/60 dark:border-red-800/50 text-xs">
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-slate-200">
+                      <Clock className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
                       <span><strong>Fecha y Hora de la Toma:</strong> {criticalPatient.valores_criticos.fecha_hora || '2026-11-09 06:45 AM'}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-gray-700">
-                      <HeartPulse className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                    <div className="flex items-center gap-2 text-gray-700 dark:text-slate-200">
+                      <HeartPulse className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
                       <span><strong>Estado Clínico:</strong> {criticalPatient.valores_criticos.estado || 'Alerta Roja - Pendiente Triage'}</span>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center space-y-2">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
-                  <p className="font-bold text-xs text-emerald-900">Parámetros Clínicos Estables</p>
-                  <p className="text-[11px] text-emerald-700">
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl p-4 text-center space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto" />
+                  <p className="font-bold text-xs text-emerald-900 dark:text-emerald-200">Parámetros Clínicos Estables</p>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
                     Última verificación: {criticalPatient.valores_criticos?.fecha_hora || '2026-11-08 09:00 AM'}.
                     No se han registrado picos críticos de presión arterial, glucemia o temperatura.
                   </p>
@@ -487,7 +487,7 @@ export default function PatientTelemetryTable({
               )}
 
               <div className="flex justify-end pt-2">
-                <Button variant="outline" onClick={() => setCriticalPatient(null)} className="text-xs">
+                <Button variant="outline" onClick={() => setCriticalPatient(null)} className="text-xs bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700">
                   Aceptar
                 </Button>
               </div>

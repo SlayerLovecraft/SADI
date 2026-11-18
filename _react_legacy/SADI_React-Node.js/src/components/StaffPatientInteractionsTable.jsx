@@ -170,26 +170,26 @@ export default function StaffPatientInteractionsTable({
   return (
     <div className="w-full space-y-3">
       {/* Barra de Filtro Rápido */}
-      <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-2xs">
+      <div className="flex items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-2xs">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400 dark:text-slate-500" />
           <input
             type="text"
             placeholder="Buscar paciente por nombre o documento..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
           />
         </div>
-        <div className="text-xs font-bold text-gray-500">
-          Total: <span className="text-blue-600 font-black">{filteredPatients.length}</span> pacientes
+        <div className="text-xs font-bold text-gray-500 dark:text-slate-400">
+          Total: <span className="text-blue-600 dark:text-blue-400 font-black">{filteredPatients.length}</span> pacientes
         </div>
       </div>
 
       {/* TABLA PRINCIPAL DE LLAMADAS Y MENSAJES */}
-      <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <table className="w-full text-left text-xs border-collapse">
-          <thead className="bg-slate-900 text-white font-bold text-[11px] tracking-wider uppercase">
+          <thead className="bg-slate-900 dark:bg-slate-950 text-white font-bold text-[11px] tracking-wider uppercase border-b dark:border-slate-800">
             <tr>
               <th className="p-3.5 whitespace-nowrap">Nombre del Paciente</th>
               <th className="p-3.5 whitespace-nowrap">Ciclos de Vida</th>
@@ -199,12 +199,12 @@ export default function StaffPatientInteractionsTable({
               <th className="p-3.5 text-center whitespace-nowrap">Transcripciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
             {filteredPatients.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-gray-400">
+                <td colSpan={6} className="text-center py-12 text-gray-400 dark:text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-2">
-                    <User className="w-8 h-8 text-gray-300" />
+                    <User className="w-8 h-8 text-gray-300 dark:text-slate-600" />
                     <p className="text-xs font-semibold">{emptyMessage}</p>
                   </div>
                 </td>
@@ -218,19 +218,19 @@ export default function StaffPatientInteractionsTable({
                 const transcriptData = generateTranscriptForPatient(patient, staffName);
 
                 return (
-                  <tr key={patient.id} className="hover:bg-blue-50/40 transition-colors">
+                  <tr key={patient.id} className="hover:bg-blue-50/40 dark:hover:bg-slate-800/50 transition-colors">
                     
                     {/* 1. Nombre del Paciente */}
                     <td className="p-3.5 whitespace-nowrap">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
                           {patient.nombre ? patient.nombre.charAt(0).toUpperCase() : 'P'}
                         </div>
                         <div>
-                          <div className="font-bold text-gray-900 text-xs flex items-center gap-1.5">
+                          <div className="font-bold text-gray-900 dark:text-white text-xs flex items-center gap-1.5">
                             {patient.nombre}
                           </div>
-                          <div className="text-[10px] text-gray-500 font-mono">
+                          <div className="text-[10px] text-gray-500 dark:text-slate-400 font-mono">
                             CC: {patient.cc || patient.cedula || 'N/A'} {patient.telefono ? `· ${patient.telefono}` : ''}
                           </div>
                         </div>
@@ -239,7 +239,7 @@ export default function StaffPatientInteractionsTable({
 
                     {/* 2. Ciclos de Vida */}
                     <td className="p-3.5 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 text-cyan-800 border border-cyan-200">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60">
                         {cVida}
                       </span>
                     </td>
@@ -248,20 +248,20 @@ export default function StaffPatientInteractionsTable({
                     <td className="p-3.5 whitespace-nowrap">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {/* WhatsApp */}
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <MessageSquare className="w-3 h-3 text-emerald-600" />
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                          <MessageSquare className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                           <span>{conteo.whatsapp || 0} Whatsapps</span>
                         </span>
                         
                         {/* E-mail */}
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200">
-                          <Mail className="w-3 h-3 text-indigo-600" />
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
+                          <Mail className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
                           <span>{conteo.email || 0} E-mails</span>
                         </span>
 
                         {/* SMS */}
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          <Smartphone className="w-3 h-3 text-amber-600" />
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                          <Smartphone className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           <span>{conteo.sms || 0} SMS</span>
                         </span>
                       </div>
@@ -271,10 +271,10 @@ export default function StaffPatientInteractionsTable({
                     <td className="p-3.5 text-center whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold ${
                         (conteo.call || 0) > 0
-                          ? 'bg-blue-50 text-blue-800 border border-blue-200'
-                          : 'bg-slate-50 text-slate-500 border border-slate-200'
+                          ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60'
+                          : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                       }`}>
-                        <Phone className={`w-3.5 h-3.5 ${(conteo.call || 0) > 0 ? 'text-blue-600' : 'text-slate-400'}`} />
+                        <Phone className={`w-3.5 h-3.5 ${(conteo.call || 0) > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`} />
                         <span>{conteo.call || 0} Llamadas</span>
                       </span>
                     </td>
@@ -286,7 +286,7 @@ export default function StaffPatientInteractionsTable({
                           onClick={() => handleToggleAudio(patient)}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-xs ${
                             isPlayingThis
-                              ? 'bg-red-600 text-white animate-pulse shadow-md shadow-red-200'
+                              ? 'bg-red-600 text-white animate-pulse shadow-md shadow-red-200 dark:shadow-none'
                               : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-md'
                           }`}
                           title="Escuchar audio de la llamada del Agente IA lanzada por esta enfermera"
@@ -304,7 +304,7 @@ export default function StaffPatientInteractionsTable({
                           )}
                         </button>
                       ) : (
-                        <span className="text-[10px] text-slate-400 font-medium px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/60 inline-flex items-center gap-1">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-400 font-medium px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 inline-flex items-center gap-1">
                           Sin audios
                         </span>
                       )}
@@ -315,14 +315,14 @@ export default function StaffPatientInteractionsTable({
                       {(conteo.call || 0) > 0 ? (
                         <button
                           onClick={() => setSelectedTranscript({ patient, data: transcriptData })}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-900 hover:bg-slate-800 text-white transition-all shadow-xs hover:shadow-md"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white border border-transparent dark:border-slate-700 transition-all shadow-xs hover:shadow-md"
                           title="Ver transcripción detallada de la llamada"
                         >
                           <FileText className="w-3.5 h-3.5 text-blue-400" />
                           <span>Ver Transcripción</span>
                         </button>
                       ) : (
-                        <span className="text-[10px] text-slate-400 font-medium px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/60 inline-flex items-center gap-1">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-400 font-medium px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700 inline-flex items-center gap-1">
                           Sin transcripción
                         </span>
                       )}
@@ -377,7 +377,7 @@ export default function StaffPatientInteractionsTable({
 
       {/* MODAL: VISOR DE TRANSCRIPCIÓN DE LLAMADA */}
       <Dialog open={!!selectedTranscript} onOpenChange={() => setSelectedTranscript(null)}>
-        <DialogContent className="max-w-2xl bg-white rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl bg-white dark:bg-slate-900 rounded-3xl p-6 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -388,7 +388,7 @@ export default function StaffPatientInteractionsTable({
                   <DialogTitle className="text-base font-black text-gray-900">
                     Transcripción Oficial de Llamada Asistencial
                   </DialogTitle>
-                  <DialogDescription className="text-xs text-gray-500">
+                  <DialogDescription className="text-xs text-gray-500 dark:text-slate-400">
                     Llamada del Agente IA lanzada por <strong>{staffName}</strong> para <strong>{selectedTranscript?.patient?.nombre}</strong>
                   </DialogDescription>
                 </div>
@@ -400,33 +400,33 @@ export default function StaffPatientInteractionsTable({
             <div className="mt-4 space-y-4 text-xs">
               
               {/* Metadatos de la llamada */}
-              <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+              <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/70 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
                 <div>
-                  <span className="text-[10px] text-gray-400 font-bold block">FECHA Y HORA</span>
-                  <span className="font-bold text-gray-800">{selectedTranscript.data.fechaHora}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">FECHA Y HORA</span>
+                  <span className="font-bold text-gray-800 dark:text-slate-100">{selectedTranscript.data.fechaHora}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-400 font-bold block">DURACIÓN</span>
-                  <span className="font-bold text-blue-700">{selectedTranscript.data.duracion}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">DURACIÓN</span>
+                  <span className="font-bold text-blue-700 dark:text-blue-400">{selectedTranscript.data.duracion}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-400 font-bold block">ENFERMERA A CARGO</span>
-                  <span className="font-bold text-emerald-800 truncate block">{staffName}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">ENFERMERA A CARGO</span>
+                  <span className="font-bold text-emerald-800 dark:text-emerald-400 truncate block">{staffName}</span>
                 </div>
               </div>
 
               {/* Resumen clínico */}
-              <div className="bg-blue-50/70 border border-blue-200 p-3 rounded-2xl">
-                <span className="text-[10px] font-black uppercase text-blue-800 block mb-1">
+              <div className="bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 p-3 rounded-2xl">
+                <span className="text-[10px] font-black uppercase text-blue-800 dark:text-blue-300 block mb-1">
                   Resumen de la Interacción:
                 </span>
-                <p className="text-xs text-blue-950 font-medium leading-relaxed">
+                <p className="text-xs text-blue-950 dark:text-slate-200 font-medium leading-relaxed">
                   {selectedTranscript.data.resumen}
                 </p>
               </div>
 
               {/* Diálogo Transcrito */}
-              <div className="space-y-2.5 bg-slate-900 text-slate-100 p-4 rounded-2xl max-h-72 overflow-y-auto font-mono text-[11px]">
+              <div className="space-y-2.5 bg-slate-900 dark:bg-slate-950 text-slate-100 p-4 rounded-2xl max-h-72 overflow-y-auto font-mono text-[11px] border border-transparent dark:border-slate-800">
                 <div className="text-[10px] text-slate-400 font-bold pb-2 border-b border-slate-800 flex items-center justify-between">
                   <span>LOG AUDITABLE DE DIÁLOGO</span>
                   <span>CANAL: GSM PUERTO 22</span>
@@ -438,7 +438,7 @@ export default function StaffPatientInteractionsTable({
                     <div 
                       key={dIdx} 
                       className={`p-2 rounded-xl ${
-                        isAgent ? 'bg-slate-800/80 border-l-3 border-blue-500' : 'bg-slate-850 border-l-3 border-emerald-500'
+                        isAgent ? 'bg-slate-800/80 border-l-3 border-blue-500' : 'bg-slate-800/40 border-l-3 border-emerald-500'
                       }`}
                     >
                       <div className="flex items-center justify-between text-[10px] mb-1">
@@ -456,7 +456,7 @@ export default function StaffPatientInteractionsTable({
               </div>
 
               {/* Acciones del Modal */}
-              <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+              <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-slate-800">
                 <Button
                   variant="outline"
                   size="sm"
@@ -464,15 +464,15 @@ export default function StaffPatientInteractionsTable({
                     const fullText = selectedTranscript.data.dialogo.map(d => `[${d.tiempo}] ${d.emisor}: ${d.texto}`).join('\n');
                     handleCopyTranscript(fullText);
                   }}
-                  className="text-xs font-bold gap-1.5"
+                  className="text-xs font-bold gap-1.5 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
                 >
-                  {copiedTranscript ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedTranscript ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedTranscript ? '¡Copiado!' : 'Copiar Transcripción'}</span>
                 </Button>
 
                 <Button
                   onClick={() => setSelectedTranscript(null)}
-                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
+                  className="bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-700 text-white text-xs font-bold"
                 >
                   Cerrar
                 </Button>
