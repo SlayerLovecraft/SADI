@@ -75,12 +75,17 @@ const ReportsPage = () => {
   const [selectedComuna, setSelectedComuna] = useState('todos');
   const [selectedZona, setSelectedZona] = useState('todos');
 
-  // Cargar datos consolidados de la matriz
+  const resolvedHospitalId = useMemo(() => {
+    if (!user || user.role === 'super_admin') return null;
+    const rawId = user.hospitalId || user.hospital_id || user.Hospital_ID;
+    return !rawId || rawId === 'hosp-001' ? 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8' : rawId;
+  }, [user]);
+
+  // Cargar datos consolidados reales desde Supabase
   const loadReportsData = useCallback(async () => {
     try {
       setLoading(true);
-      const hospitalId = user?.role === 'super_admin' ? null : user?.hospitalId;
-      const data = await reportsAnalysisService.getChannelMatrixHeader(hospitalId);
+      const data = await reportsAnalysisService.getChannelMatrixHeader(resolvedHospitalId);
       setMatrixData(data);
     } catch (e) {
       console.error('Error cargando reportes:', e);
@@ -92,11 +97,21 @@ const ReportsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, toast]);
+  }, [resolvedHospitalId, toast]);
 
   useEffect(() => {
     loadReportsData();
   }, [loadReportsData]);
+
+  const comunasOptions = useMemo(() => {
+    const dbComunas = matrixData?.filterOptions?.comunas;
+    return dbComunas && dbComunas.length > 0 ? dbComunas : COMUNAS_LIST.slice(1);
+  }, [matrixData]);
+
+  const barriosOptions = useMemo(() => {
+    const dbBarrios = matrixData?.filterOptions?.barrios;
+    return dbBarrios && dbBarrios.length > 0 ? dbBarrios : BARRIOS_LIST.slice(1);
+  }, [matrixData]);
 
   // Cálculo reactivo de los datos para la gráfica de torta según los filtros seleccionados
   const pieChartData = useMemo(() => {
@@ -152,6 +167,7 @@ const ReportsPage = () => {
 
       if (type === 'patients') {
         query = supabase.from('patients').select('patient_id, name, document, phone, email, birthdate, sex, city, program, address, zona, barrio, comuna, created_at');
+        if (resolvedHospitalId) query = query.eq('hospital_id', resolvedHospitalId);
         const { data, error } = await query;
         if (error) throw error;
         filenameBase = 'pacientes_georreferenciados_3280';
@@ -164,13 +180,14 @@ const ReportsPage = () => {
           Email: p.email || '',
           Sexo: p.sex || '',
           'Programa 3280': p.program || '',
-          Zona: p.zona || 'Urbana',
-          Barrio: p.barrio || 'Centro',
-          Comuna: p.comuna || 'Comuna 1',
+          Zona: p.zona || '',
+          Barrio: p.barrio || '',
+          Comuna: p.comuna || '',
           Dirección: p.address || ''
         }));
       } else if (type === 'campaigns') {
         query = supabase.from('campaigns').select('*');
+        if (resolvedHospitalId) query = query.eq('hospital_id', resolvedHospitalId);
         const { data, error } = await query;
         if (error) throw error;
         filenameBase = 'campanas_demanda_inducida';
@@ -186,6 +203,7 @@ const ReportsPage = () => {
         }));
       } else {
         query = supabase.from('interactions').select('*');
+        if (resolvedHospitalId) query = query.eq('hospital_id', resolvedHospitalId);
         const { data, error } = await query;
         if (error) throw error;
         filenameBase = 'interacciones_multicanal';
@@ -279,7 +297,7 @@ const ReportsPage = () => {
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-              Base de Datos Sincronizada
+              Base de Datos Sincronizada • {matrixData?.realPatientsCount ?? 0} pacientes reales
             </span>
           </div>
         </div>
@@ -390,7 +408,7 @@ const ReportsPage = () => {
                 className={FILTER_SELECT_CLASS}
               >
                 <option value="todos">Todas las Comunas y Corregimientos</option>
-                {COMUNAS_LIST.slice(1).map((c) => (
+                {comunasOptions.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
@@ -407,7 +425,7 @@ const ReportsPage = () => {
                 className={FILTER_SELECT_CLASS}
               >
                 <option value="todos">Todos los Barrios y Veredas</option>
-                {BARRIOS_LIST.slice(1).map((b) => (
+                {barriosOptions.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </select>

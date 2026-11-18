@@ -75,7 +75,7 @@ function mapSupabaseToFrontend(patient) {
     }
   } catch (e) { }
 
-  let conteoCanales = { whatsapp: 3, email: 1, call: 2, sms: 1 };
+  let conteoCanales = { whatsapp: 0, email: 0, call: 0, sms: 0 };
   try {
     if (patient.conteo_canales) {
       conteoCanales = typeof patient.conteo_canales === 'object'

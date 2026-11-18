@@ -5,29 +5,23 @@
 // ==============================================================================
 
 import React, { useState } from 'react';
-import { 
-  Phone, 
-  MessageSquare, 
-  Mail, 
-  Send, 
-  Layers, 
-  ShieldAlert, 
-  Sparkles, 
-  Activity,
-  ArrowRight
+import {
+  Phone,
+  MessageSquare,
+  Mail,
+  Send
 } from 'lucide-react';
-import { PROGRAMAS_3280, GRUPOS_RIESGO_PRIORIZADOS } from '@/services/census400kService';
 
 export default function MultichannelReportHeader({ matrixData, loading = false }) {
   // Pestaña de visualización de la tabla del header: 'todos' | 'cursos' | 'riesgos'
   const [activeTableTab, setActiveTableTab] = useState('todos');
 
   const totales = matrixData?.totales || {
-    sms: 125430,
-    email: 98210,
-    call: 84650,
-    whatsapp: 93820,
-    general: 402110
+    sms: 0,
+    email: 0,
+    call: 0,
+    whatsapp: 0,
+    general: 0
   };
 
   const porCursoVida = matrixData?.porCursoVida || [];
@@ -95,7 +89,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
                   {ch.total.toLocaleString('es-CO')}
                 </span>
                 <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                  {((ch.total / totales.general) * 100).toFixed(1)}% de la demanda global
+                  {totales.general > 0 ? ((ch.total / totales.general) * 100).toFixed(1) : '0.0'}% de la demanda global
                 </span>
               </div>
               <div className={`p-3 rounded-xl ${ch.iconBg} shadow-2xs ${ch.color}`}>
@@ -120,7 +114,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
               </h3>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-300 mt-0.5">
-              Desglose cruzado de los 4 canales de contacto por Cursos de Vida (A - J) y Grupos de Riesgo Priorizados.
+              Desglose real en Supabase ({matrixData?.realPatientsCount ?? 0} pacientes) por Cursos de Vida (A - J) y Grupos de Riesgo Priorizados.
             </p>
           </div>
 
@@ -161,6 +155,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
                     <th key={c.id} className="p-2.5 text-center min-w-[105px] border-r border-slate-200/60 dark:border-slate-700/70">
                       <span className="block text-[10px] font-black text-teal-800 dark:text-teal-400">{c.id}</span>
                       <span className="block text-[10px] truncate" title={c.nombre}>{c.nombre}</span>
+                      <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400">{c.totalCenso ?? 0} pac.</span>
                     </th>
                   ))}
 
@@ -170,6 +165,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
                     <th key={r.id} className="p-2.5 text-center min-w-[110px] border-r border-slate-200/60 dark:border-slate-700/70 bg-amber-50/50 dark:bg-amber-950/35">
                       <span className="block text-[10px] font-black text-amber-900 dark:text-amber-400">Riesgo {r.id}</span>
                       <span className="block text-[10px] truncate" title={r.titulo}>{r.titulo}</span>
+                      <span className="block text-[9px] font-semibold text-amber-800/80 dark:text-amber-300/80">{r.totalCenso ?? 0} pac.</span>
                     </th>
                   ))}
 

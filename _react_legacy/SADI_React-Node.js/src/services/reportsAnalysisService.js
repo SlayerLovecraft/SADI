@@ -1,67 +1,79 @@
 // ==============================================================================
 // reportsAnalysisService.js - SERVICIO DE MÉTRICAS MULTICANAL Y ANÁLISIS SADI
-// Calcula la matriz multicanal (SMS, Email, Llamada, WhatsApp) por Curso de Vida
-// (A-J) y Grupo de Riesgo Priorizado (1-7), y computa el desglose del Pie Chart
-// filtrable por Curso de Vida, Grupo de Riesgo, Barrio, Comuna y Zona (Rural/Urbana).
+// Conectado exclusivamente a datos REALES de Supabase (patients, interactions,
+// vapi_agent_sessions, openvox_sms_dispatches, ai_contact_evidence, campaigns).
+// Sin conteos simulados del censo de 400.000.
 // ==============================================================================
 
 import { supabase } from '@/lib/supabase';
-import { 
-  PROGRAMAS_3280, 
-  GRUPOS_RIESGO_PRIORIZADOS 
+import {
+  PROGRAMAS_3280,
+  GRUPOS_RIESGO_PRIORIZADOS,
 } from '@/services/census400kService';
+import { getPatientCursoVida } from '@/services/callCapacityService';
 import * as XLSX from 'xlsx';
 
 export const ZONAS_LIST = ['Todas', 'Urbana', 'Rural'];
 
-export const COMUNAS_LIST = [
-  'Todas las Comunas',
-  'Comuna Atardeceres',
-  'Comuna San José',
-  'Comuna Cumanday',
-  'Comuna Palogrande',
-  'Comuna Ecoturística',
-  'Comuna Tesorito',
-  'Comuna Universitaria',
-  'Corregimiento El Manantial',
-  'Corregimiento El Remanso',
-  'Corregimiento Panorama'
-];
-
-export const BARRIOS_LIST = [
-  'Todos los Barrios',
-  'La Cabaña',
-  'Chipre',
-  'Campohermoso',
-  'Centro',
-  'San Jorge',
-  'Palogrande',
-  'Milan',
-  'La Sultana',
-  'La Enea',
-  'Malabar',
-  'Vereda La Cabaña',
-  'Vereda El Rosario',
-  'Vereda Alto Bonito',
-  'Vereda Morrogacho',
-  'Vereda La Linda'
-];
+export const COMUNAS_LIST = ['Todas las Comunas'];
+export const BARRIOS_LIST = ['Todos los Barrios'];
 
 export const CANALES_CONFIG = [
   { id: 'call', key: 'call', label: 'Llamadas Realizadas (Puerto 22)', color: '#059669', lightBg: 'bg-emerald-50', textColor: 'text-emerald-800' },
   { id: 'whatsapp', key: 'whatsapp', label: 'Interacciones por WhatsApp', color: '#25D366', lightBg: 'bg-green-50', textColor: 'text-green-800' },
   { id: 'email', key: 'email', label: 'E-mails Enviados', color: '#4F46E5', lightBg: 'bg-indigo-50', textColor: 'text-indigo-800' },
-  { id: 'sms', key: 'sms', label: 'SMS Enviados', color: '#0284C7', lightBg: 'bg-sky-50', textColor: 'text-sky-800' }
+  { id: 'sms', key: 'sms', label: 'SMS Enviados', color: '#0284C7', lightBg: 'bg-sky-50', textColor: 'text-sky-800' },
 ];
 
+const EMPTY_COUNTS = () => ({ sms: 0, email: 0, call: 0, whatsapp: 0 });
+
+const normalizeChannelKey = (rawChannel) => {
+  const c = String(rawChannel || '').trim().toLowerCase();
+  if (!c) return null;
+  if (c.includes('sms')) return 'sms';
+  if (c.includes('email') || c.includes('mail') || c.includes('correo')) return 'email';
+  if (c.includes('call') || c.includes('llamada') || c.includes('voz') || c.includes('vapi') || c.includes('tel')) return 'call';
+  if (c.includes('what') || c.includes('wpp')) return 'whatsapp';
+  return null;
+};
+
+const normalizeZona = (rawZona) => {
+  const z = String(rawZona || '').trim().toLowerCase();
+  if (z.startsWith('rural')) return 'Rural';
+  if (z.startsWith('urban')) return 'Urbana';
+  return '';
+};
+
+const classifyGrupoRiesgoPriorizado = (rawGroup, rawProgram) => {
+  const txt = `${rawGroup || ''} ${rawProgram || ''}`.toLowerCase();
+  if (!txt.trim()) return null;
+  if (txt.includes('materno') || txt.includes('gestan') || txt.includes('prenatal') || txt.includes('riamp') || txt.includes('puerper')) return 1;
+  if (txt.includes('cardio') || txt.includes('hipertens') || txt.includes('diabet') || txt.includes('metab') || txt.includes('renal') || txt.includes('hta')) return 2;
+  if (txt.includes('cáncer') || txt.includes('cancer') || txt.includes('oncol') || txt.includes('mama') || txt.includes('próstata') || txt.includes('prostata') || txt.includes('cuello uterino')) return 3;
+  if (txt.includes('respira') || txt.includes('asma') || txt.includes('epoc') || txt.includes('bronqu')) return 4;
+  if (txt.includes('mental') || txt.includes('sustanc') || txt.includes('psico') || txt.includes('depres') || txt.includes('ansied')) return 5;
+  if (txt.includes('infec') || txt.includes('zoonot') || txt.includes('vih') || txt.includes('tubercul') || txt.includes('dengue')) return 6;
+  if (txt.includes('nutric') || txt.includes('desnutr') || txt.includes('crecimiento')) return 7;
+  return null;
+};
+
+const parseChannelCounts = (raw) => {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
 export const reportsAnalysisService = {
-  // Obtiene pacientes de Supabase con información de zona, barrio y comuna
   async getPatientsFromDB(hospitalId) {
     try {
       let query = supabase
         .from('patients')
-        .select('patient_id, name, document, phone, email, birthdate, sex, address, city, program, zona, barrio, comuna');
-      
+        .select('patient_id, hospital_id, name, document, phone, email, birthdate, sex, address, city, program, zona, barrio, comuna, centro_poblado, corregimiento, vereda, grupo_riesgo, conteo_canales');
+
       if (hospitalId) {
         query = query.eq('hospital_id', hospitalId);
       }
@@ -78,7 +90,6 @@ export const reportsAnalysisService = {
     }
   },
 
-  // Obtiene interacciones registradas en Supabase
   async getInteractionsFromDB(hospitalId) {
     try {
       let query = supabase
@@ -102,192 +113,264 @@ export const reportsAnalysisService = {
     }
   },
 
-  // Genera la matriz del Header con datos para los 4 canales vs Cursos de Vida (A a J) y Grupos de Riesgo (1 a 7)
   async getChannelMatrixHeader(hospitalId) {
-    const [patients, interactions] = await Promise.all([
-      this.getPatientsFromDB(hospitalId),
-      this.getInteractionsFromDB(hospitalId)
-    ]);
-
-    // Factores base proporcionales del censo de 400.000 pacientes
-    // Base de volumen: SMS ~125.000, Email ~98.000, Llamadas ~84.000, WhatsApp ~93.000
-    const BASE_METRICS = {
-      sms: { total: 125430, baseRate: 0.31 },
-      email: { total: 98210, baseRate: 0.24 },
-      call: { total: 84650, baseRate: 0.21 },
-      whatsapp: { total: 93820, baseRate: 0.24 }
+    const safeQuery = async (promise) => {
+      try {
+        const { data, error } = await promise;
+        if (error) return [];
+        return data || [];
+      } catch {
+        return [];
+      }
     };
 
-    // Ajuste con interacciones reales de la base de datos
-    interactions.forEach(item => {
-      const canal = (item.tipo_canal || item.tipo || '').toLowerCase();
-      if (canal.includes('sms')) BASE_METRICS.sms.total++;
-      else if (canal.includes('email') || canal.includes('mail')) BASE_METRICS.email.total++;
-      else if (canal.includes('call') || canal.includes('llamada')) BASE_METRICS.call.total++;
-      else if (canal.includes('what') || canal.includes('wpp')) BASE_METRICS.whatsapp.total++;
+    let vapiQuery = supabase
+      .from('vapi_agent_sessions')
+      .select('id, patient_id, hospital_id, estado_llamada, deteccion_buzon, duracion_segundos, created_at');
+    let smsQuery = supabase
+      .from('openvox_sms_dispatches')
+      .select('id, patient_id, hospital_id, status, created_at');
+    let campaignsQuery = supabase
+      .from('campaigns')
+      .select('id, hospital_id');
+
+    if (hospitalId) {
+      vapiQuery = vapiQuery.eq('hospital_id', hospitalId);
+      smsQuery = smsQuery.eq('hospital_id', hospitalId);
+      campaignsQuery = campaignsQuery.eq('hospital_id', hospitalId);
+    }
+
+    const [patients, interactions, vapiSessions, smsDispatches, rawEvidence, campaigns] = await Promise.all([
+      this.getPatientsFromDB(hospitalId),
+      this.getInteractionsFromDB(hospitalId),
+      safeQuery(vapiQuery),
+      safeQuery(smsQuery),
+      safeQuery(supabase.from('ai_contact_evidence').select('id, patient_id, canal, resultado_contacto, created_at')),
+      safeQuery(campaignsQuery),
+    ]);
+
+    let campaignMessages = [];
+    if (campaigns.length > 0) {
+      const campIds = campaigns.map((c) => c.id).filter(Boolean);
+      if (campIds.length > 0) {
+        campaignMessages = await safeQuery(
+          supabase
+            .from('campaign_messages')
+            .select('*')
+            .in('campaign_id', campIds)
+        );
+      }
+    }
+
+    const countsByPatient = new Map();
+    const unlinkedCounts = EMPTY_COUNTS();
+
+    const ensurePatientBucket = (pid) => {
+      const key = String(pid);
+      if (!countsByPatient.has(key)) countsByPatient.set(key, EMPTY_COUNTS());
+      return countsByPatient.get(key);
+    };
+
+    const patientIdSet = new Set(patients.map((p) => String(p.patient_id || p.id)).filter(Boolean));
+
+    const recordChannelEvent = (patientId, channelKey) => {
+      if (!channelKey) return;
+      if (patientId && patientIdSet.has(String(patientId))) {
+        ensurePatientBucket(patientId)[channelKey] += 1;
+      } else {
+        unlinkedCounts[channelKey] += 1;
+      }
+    };
+
+    // 1. Llamadas reales de Vapi / Asterisk SIP
+    vapiSessions.forEach((sess) => {
+      recordChannelEvent(sess.patient_id, 'call');
     });
 
-    // 1. Matriz por Cursos de Vida (A - J)
-    const porCursoVida = PROGRAMAS_3280.map(prog => {
-      const share = prog.totalCenso / 400000;
+    // 2. SMS reales enviados por OpenVox GSM (ignora fallidos purgados sin costo)
+    smsDispatches.forEach((sms) => {
+      if (sms.status === 'sent') {
+        recordChannelEvent(sms.patient_id, 'sms');
+      }
+    });
+
+    // 3. Evidencias de contacto IA (deduplicando llamadas ya contabilizadas en vapi_agent_sessions)
+    const scopedEvidence = hospitalId
+      ? rawEvidence.filter((ev) => ev?.patient_id && patientIdSet.has(String(ev.patient_id)))
+      : rawEvidence;
+
+    scopedEvidence.forEach((ev) => {
+      const channelKey = normalizeChannelKey(ev.canal);
+      if (!channelKey) return;
+      if (channelKey === 'call') {
+        const evTime = new Date(ev.created_at || 0).getTime();
+        const alreadyInVapi = vapiSessions.some((vs) => {
+          if (String(vs.patient_id) !== String(ev.patient_id)) return false;
+          const vsTime = new Date(vs.created_at || 0).getTime();
+          return Math.abs(vsTime - evTime) <= 120000;
+        });
+        if (alreadyInVapi) return;
+      }
+      recordChannelEvent(ev.patient_id, channelKey);
+    });
+
+    // 4. Interacciones multicanal reales registradas en la tabla interactions
+    interactions.forEach((inter) => {
+      const channelKey = normalizeChannelKey(inter.tipo_canal || inter.canal || inter.tipo);
+      if (!channelKey) return;
+      recordChannelEvent(inter.patient_id, channelKey);
+    });
+
+    // 5. Mensajes de campaña enviados/entregados
+    campaignMessages.forEach((msg) => {
+      const status = String(msg.estado || msg.status || '').toLowerCase();
+      if (status && ['failed', 'fallido', 'cancelled', 'cancelado', 'pending', 'pendiente'].includes(status)) return;
+      const channelKey = normalizeChannelKey(msg.canal || msg.channel);
+      if (!channelKey) return;
+      recordChannelEvent(msg.patient_id, channelKey);
+    });
+
+    // Enriquecer cada paciente real con su clasificación clínica y conteo real por canal
+    const comunasSet = new Set();
+    const barriosSet = new Set();
+
+    const enrichedPatients = patients.map((p) => {
+      const pid = String(p.patient_id || p.id || '');
+      const logged = countsByPatient.get(pid) || EMPTY_COUNTS();
+      const stored = parseChannelCounts(p.conteo_canales) || {};
+
+      // Reconciliar logs detallados con conteo_canales del paciente sin inventar valores base
+      const channels = {
+        sms: Math.max(logged.sms, Number(stored.sms) || 0),
+        email: Math.max(logged.email, Number(stored.email) || 0),
+        call: Math.max(logged.call, Number(stored.call) || 0),
+        whatsapp: Math.max(logged.whatsapp, Number(stored.whatsapp) || 0),
+      };
+
+      const cv = getPatientCursoVida(p);
+      const grupoRiesgoId = classifyGrupoRiesgoPriorizado(p.grupo_riesgo, p.program);
+      const zonaNormalized = normalizeZona(p.zona);
+      const comunaLabel = String(p.comuna || p.corregimiento || '').trim();
+      const barrioLabel = String(p.barrio || p.vereda || '').trim();
+
+      if (comunaLabel) comunasSet.add(comunaLabel);
+      if (barrioLabel) barriosSet.add(barrioLabel);
+
+      return {
+        id: pid,
+        cursoVidaId: cv.id,
+        cursoVidaNombre: cv.nombre,
+        grupoRiesgoId,
+        zonaNormalized,
+        comunaLabel,
+        barrioLabel,
+        channels,
+      };
+    });
+
+    // 1. Matriz real por Cursos de Vida (A - J)
+    const porCursoVida = PROGRAMAS_3280.map((prog) => {
+      const matching = enrichedPatients.filter((p) => p.cursoVidaId === prog.id);
       return {
         id: prog.id,
         nombre: prog.nombre,
         color: prog.color,
-        totalCenso: prog.totalCenso,
-        sms: Math.round(BASE_METRICS.sms.total * share),
-        email: Math.round(BASE_METRICS.email.total * share),
-        call: Math.round(BASE_METRICS.call.total * share),
-        whatsapp: Math.round(BASE_METRICS.whatsapp.total * share),
+        totalCenso: matching.length,
+        sms: matching.reduce((acc, p) => acc + p.channels.sms, 0),
+        email: matching.reduce((acc, p) => acc + p.channels.email, 0),
+        call: matching.reduce((acc, p) => acc + p.channels.call, 0),
+        whatsapp: matching.reduce((acc, p) => acc + p.channels.whatsapp, 0),
       };
     });
 
-    // 2. Matriz por Grupos de Riesgo Priorizados (1 - 7)
-    // Proporciones epidemiológicas oficiales de riesgo
-    const RIESGO_SHARES = [0.12, 0.28, 0.16, 0.14, 0.10, 0.08, 0.12]; // Suma 1.00
-    const porGrupoRiesgo = GRUPOS_RIESGO_PRIORIZADOS.map((rg, idx) => {
-      const share = RIESGO_SHARES[idx] || 0.14;
+    // 2. Matriz real por Grupos de Riesgo Priorizados (1 - 7)
+    const porGrupoRiesgo = GRUPOS_RIESGO_PRIORIZADOS.map((rg) => {
+      const matching = enrichedPatients.filter((p) => p.grupoRiesgoId === rg.id);
       return {
         id: rg.id,
         titulo: rg.titulo,
         codigo: rg.codigo,
-        sms: Math.round(BASE_METRICS.sms.total * share),
-        email: Math.round(BASE_METRICS.email.total * share),
-        call: Math.round(BASE_METRICS.call.total * share),
-        whatsapp: Math.round(BASE_METRICS.whatsapp.total * share),
+        totalCenso: matching.length,
+        sms: matching.reduce((acc, p) => acc + p.channels.sms, 0),
+        email: matching.reduce((acc, p) => acc + p.channels.email, 0),
+        call: matching.reduce((acc, p) => acc + p.channels.call, 0),
+        whatsapp: matching.reduce((acc, p) => acc + p.channels.whatsapp, 0),
       };
     });
 
-    // Totales consolidados por canal
+    // Totales reales consolidados por canal (pacientes reales + eventos globales sin paciente asociado)
+    const totalSms = enrichedPatients.reduce((acc, p) => acc + p.channels.sms, 0) + unlinkedCounts.sms;
+    const totalEmail = enrichedPatients.reduce((acc, p) => acc + p.channels.email, 0) + unlinkedCounts.email;
+    const totalCall = enrichedPatients.reduce((acc, p) => acc + p.channels.call, 0) + unlinkedCounts.call;
+    const totalWhatsapp = enrichedPatients.reduce((acc, p) => acc + p.channels.whatsapp, 0) + unlinkedCounts.whatsapp;
+
     const totales = {
-      sms: BASE_METRICS.sms.total,
-      email: BASE_METRICS.email.total,
-      call: BASE_METRICS.call.total,
-      whatsapp: BASE_METRICS.whatsapp.total,
-      general: BASE_METRICS.sms.total + BASE_METRICS.email.total + BASE_METRICS.call.total + BASE_METRICS.whatsapp.total
+      sms: totalSms,
+      email: totalEmail,
+      call: totalCall,
+      whatsapp: totalWhatsapp,
+      general: totalSms + totalEmail + totalCall + totalWhatsapp,
     };
+
+    const sortedComunas = Array.from(comunasSet).sort((a, b) => a.localeCompare(b, 'es'));
+    const sortedBarrios = Array.from(barriosSet).sort((a, b) => a.localeCompare(b, 'es'));
 
     return {
       totales,
       porCursoVida,
       porGrupoRiesgo,
+      patients: enrichedPatients,
+      unlinkedCounts,
+      filterOptions: {
+        comunas: sortedComunas,
+        barrios: sortedBarrios,
+      },
       realPatientsCount: patients.length,
-      realInteractionsCount: interactions.length
+      realInteractionsCount: totales.general,
     };
   },
 
-  // Computa los datos del gráfico de torta según los 5 filtros aplicados
   computePieChartData({
     cursoVida = 'todos',
     grupoRiesgo = 'todos',
     barrio = 'todos',
     comuna = 'todos',
     zona = 'todos',
-    matrixData = null
+    matrixData = null,
   }) {
-    // Si no tenemos matrixData inicial, usamos defaults realistas
-    let baseCall = matrixData?.totales?.call || 84650;
-    let baseWhatsapp = matrixData?.totales?.whatsapp || 93820;
-    let baseEmail = matrixData?.totales?.email || 98210;
-    let baseSms = matrixData?.totales?.sms || 125430;
+    const patients = matrixData?.patients || [];
+    const hasFilter =
+      (cursoVida && cursoVida !== 'todos') ||
+      (grupoRiesgo && grupoRiesgo !== 'todos') ||
+      (zona && zona !== 'todos') ||
+      (comuna && comuna !== 'todos' && !comuna.startsWith('Todas')) ||
+      (barrio && barrio !== 'todos' && !barrio.startsWith('Todos'));
 
-    let multiplier = 1.0;
+    const filteredPatients = patients.filter((p) => {
+      if (cursoVida && cursoVida !== 'todos' && p.cursoVidaId !== cursoVida) return false;
+      if (grupoRiesgo && grupoRiesgo !== 'todos' && Number(grupoRiesgo) !== p.grupoRiesgoId) return false;
+      if (zona && zona !== 'todos' && p.zonaNormalized.toLowerCase() !== zona.toLowerCase()) return false;
+      if (comuna && comuna !== 'todos' && !comuna.startsWith('Todas') && p.comunaLabel !== comuna) return false;
+      if (barrio && barrio !== 'todos' && !barrio.startsWith('Todos') && p.barrioLabel !== barrio) return false;
+      return true;
+    });
 
-    // 1. Filtro Curso de Vida
-    if (cursoVida && cursoVida !== 'todos') {
-      const prog = PROGRAMAS_3280.find(p => p.id === cursoVida);
-      const share = prog ? prog.totalCenso / 400000 : 0.1;
-      multiplier *= share;
+    const unlinked = !hasFilter ? (matrixData?.unlinkedCounts || EMPTY_COUNTS()) : EMPTY_COUNTS();
 
-      // Modulaciones conductuales según edad:
-      // Juventud/Adolescencia usa más WhatsApp; Vejez/Adultez responde más a Llamadas
-      if (['C', 'D'].includes(cursoVida)) {
-        baseWhatsapp *= 1.45;
-        baseSms *= 1.15;
-        baseCall *= 0.75;
-      } else if (['E', 'F'].includes(cursoVida)) {
-        baseCall *= 1.55;
-        baseSms *= 1.1;
-        baseWhatsapp *= 0.70;
-        baseEmail *= 0.85;
-      } else if (['A', 'B'].includes(cursoVida)) { // Padres / Cuidadores
-        baseWhatsapp *= 1.25;
-        baseCall *= 1.20;
-        baseEmail *= 1.10;
-      }
-    }
-
-    // 2. Filtro Grupo de Riesgo
-    if (grupoRiesgo && grupoRiesgo !== 'todos') {
-      const rId = Number(grupoRiesgo);
-      multiplier *= 0.22; // Porción de riesgo priorizado
-
-      // Riesgo cardiovascular o Cáncer requiere llamada directa médica
-      if (rId === 2 || rId === 3) {
-        baseCall *= 1.6;
-        baseWhatsapp *= 1.1;
-      } else if (rId === 1) { // Materno
-        baseWhatsapp *= 1.4;
-        baseCall *= 1.3;
-      } else if (rId === 5) { // Salud mental
-        baseCall *= 1.45;
-      }
-    }
-
-    // 3. Filtro Zona (Rural / Urbana)
-    if (zona && zona !== 'todos') {
-      if (zona.toLowerCase() === 'rural') {
-        multiplier *= 0.25;
-        // En zona rural prevalecen Llamadas GSM y SMS por menor cobertura de datos
-        baseCall *= 1.65;
-        baseSms *= 1.40;
-        baseWhatsapp *= 0.65;
-        baseEmail *= 0.45;
-      } else if (zona.toLowerCase() === 'urbana') {
-        multiplier *= 0.75;
-        // En zona urbana WhatsApp y Email son muy fuertes
-        baseWhatsapp *= 1.25;
-        baseEmail *= 1.20;
-        baseCall *= 0.95;
-      }
-    }
-
-    // 4. Filtro Comuna
-    if (comuna && comuna !== 'todos' && !comuna.startsWith('Todas')) {
-      multiplier *= 0.18;
-      if (comuna.includes('Remanso') || comuna.includes('Manantial') || comuna.includes('Panorama')) {
-        // Corregimientos rurales
-        baseCall *= 1.4;
-        baseSms *= 1.3;
-        baseWhatsapp *= 0.8;
-      } else if (comuna.includes('Palogrande') || comuna.includes('Universitaria')) {
-        baseEmail *= 1.35;
-        baseWhatsapp *= 1.30;
-      }
-    }
-
-    // 5. Filtro Barrio
-    if (barrio && barrio !== 'todos' && !barrio.startsWith('Todos')) {
-      multiplier *= 0.08;
-      if (barrio.toLowerCase().includes('vereda')) {
-        baseCall *= 1.5;
-        baseSms *= 1.35;
-        baseWhatsapp *= 0.7;
-      }
-    }
-
-    // Calcular valores finales enteros redondeados
-    const countCall = Math.max(1, Math.round(baseCall * multiplier));
-    const countWhatsapp = Math.max(1, Math.round(baseWhatsapp * multiplier));
-    const countEmail = Math.max(1, Math.round(baseEmail * multiplier));
-    const countSms = Math.max(1, Math.round(baseSms * multiplier));
+    const countCall = filteredPatients.reduce((acc, p) => acc + p.channels.call, 0) + unlinked.call;
+    const countWhatsapp = filteredPatients.reduce((acc, p) => acc + p.channels.whatsapp, 0) + unlinked.whatsapp;
+    const countEmail = filteredPatients.reduce((acc, p) => acc + p.channels.email, 0) + unlinked.email;
+    const countSms = filteredPatients.reduce((acc, p) => acc + p.channels.sms, 0) + unlinked.sms;
 
     const totalFiltered = countCall + countWhatsapp + countEmail + countSms;
 
-    const pctCall = Number(((countCall / totalFiltered) * 100).toFixed(1));
-    const pctWhatsapp = Number(((countWhatsapp / totalFiltered) * 100).toFixed(1));
-    const pctEmail = Number(((countEmail / totalFiltered) * 100).toFixed(1));
-    const pctSms = Number((100 - pctCall - pctWhatsapp - pctEmail).toFixed(1));
+    const pct = (val) => (totalFiltered > 0 ? Number(((val / totalFiltered) * 100).toFixed(1)) : 0);
+    const pctCall = pct(countCall);
+    const pctWhatsapp = pct(countWhatsapp);
+    const pctEmail = pct(countEmail);
+    const pctSms = totalFiltered > 0
+      ? Number(Math.max(0, 100 - pctCall - pctWhatsapp - pctEmail).toFixed(1))
+      : 0;
 
     const slices = [
       {
@@ -296,8 +379,8 @@ export const reportsAnalysisService = {
         canal: 'Llamada',
         count: countCall,
         percentage: pctCall,
-        color: '#059669', // Emerald
-        icon: 'Phone'
+        color: '#059669',
+        icon: 'Phone',
       },
       {
         id: 'whatsapp',
@@ -305,8 +388,8 @@ export const reportsAnalysisService = {
         canal: 'WhatsApp',
         count: countWhatsapp,
         percentage: pctWhatsapp,
-        color: '#25D366', // WhatsApp Green
-        icon: 'Send'
+        color: '#25D366',
+        icon: 'Send',
       },
       {
         id: 'email',
@@ -314,8 +397,8 @@ export const reportsAnalysisService = {
         canal: 'E-mail',
         count: countEmail,
         percentage: pctEmail,
-        color: '#4F46E5', // Indigo
-        icon: 'Mail'
+        color: '#4F46E5',
+        icon: 'Mail',
       },
       {
         id: 'sms',
@@ -323,35 +406,34 @@ export const reportsAnalysisService = {
         canal: 'SMS',
         count: countSms,
         percentage: pctSms,
-        color: '#0284C7', // Sky Blue
-        icon: 'MessageSquare'
-      }
+        color: '#0284C7',
+        icon: 'MessageSquare',
+      },
     ];
 
-    // Ordenar de mayor a menor para visualización ordenada
     slices.sort((a, b) => b.count - a.count);
 
     return {
       totalContacts: totalFiltered,
+      matchingPatientsCount: filteredPatients.length,
       slices,
       appliedFilters: {
         cursoVida,
         grupoRiesgo,
         barrio,
         comuna,
-        zona
-      }
+        zona,
+      },
     };
   },
 
-  // Exportar datos del gráfico a un archivo Excel (.xlsx) estructurado
   exportPieChartToExcel({ chartData, filterLabels }) {
     const wb = XLSX.utils.book_new();
 
-    // Hoja 1: Resumen y Filtros
     const summaryData = [
-      ['REPORTE DE DEMANDA INDUCIDA - DISTRIBUCIÓN POR CANALES'],
+      ['REPORTE DE DEMANDA INDUCIDA - DISTRIBUCIÓN POR CANALES (DATOS REALES SUPABASE)'],
       ['Fecha de Generación', new Date().toLocaleString('es-CO')],
+      ['Pacientes Coincidentes con el Filtro', chartData.matchingPatientsCount ?? 0],
       ['Total Contactos Filtrados', chartData.totalContacts],
       [],
       ['CRITERIOS DE FILTRO APLICADOS:'],
@@ -362,7 +444,7 @@ export const reportsAnalysisService = {
       ['Barrio', filterLabels.barrio || 'Todos'],
       [],
       ['CANAL', 'CANTIDAD (CONTACTOS)', 'PORCENTAJE (%)'],
-      ...chartData.slices.map(s => [s.label, s.count, `${s.percentage}%`])
+      ...chartData.slices.map((s) => [s.label, s.count, `${s.percentage}%`]),
     ];
 
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
@@ -371,6 +453,5 @@ export const reportsAnalysisService = {
     const fileName = `Reporte_Canales_SADI_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(wb, fileName);
     return fileName;
-  }
+  },
 };
-

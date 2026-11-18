@@ -61,19 +61,23 @@ const DashboardPage = () => {
     return rawId;
   }, [user]);
 
-  const fetchPatientsCount = useCallback(async (hospital_id) => {
+  const fetchPatientsSummary = useCallback(async (hospital_id) => {
     try {
       let query = supabase
         .from('patients')
-        .select('patient_id', { count: 'exact', head: true });
+        .select('patient_id, name, sex, birthdate, program, zona, grupo_riesgo, created_at', { count: 'exact' });
 
       if (hospital_id) query = query.eq('hospital_id', hospital_id);
 
-      const { count, error } = await withTimeout(query, 12000);
+      const { data, count, error } = await withTimeout(query, 12000);
       if (error) throw error;
-      return Number(count) || 0;
+      const list = data || [];
+      return {
+        count: typeof count === 'number' ? count : list.length,
+        patients: list,
+      };
     } catch {
-      return 0;
+      return { count: 0, patients: [] };
     }
   }, []);
 
@@ -93,7 +97,7 @@ const DashboardPage = () => {
     }
   }, []);
 
-  const fetchInteractionsSummary = useCallback(async (hospital_id) => {
+  const fetchInteractionsSummary = useCallback(async (hospital_id, patientIds = []) => {
     try {
       let countQuery = supabase
         .from('interactions')
@@ -105,22 +109,93 @@ const DashboardPage = () => {
         .order('created_at', { ascending: false })
         .limit(10);
 
+      let vapiQuery = supabase
+        .from('vapi_agent_sessions')
+        .select('id, patient_id, estado_llamada, deteccion_buzon, duracion_segundos, facturable_ips, motivo_llamada, created_at')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      let smsQuery = supabase
+        .from('openvox_sms_dispatches')
+        .select('id, patient_id, status, winning_port, created_at')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      let evidenceQuery = supabase
+        .from('ai_contact_evidence')
+        .select('id, patient_id, canal, motivo_contacto, resultado_contacto, deteccion_buzon, duracion_segundos, created_at')
+        .order('created_at', { ascending: false })
+        .limit(200);
+
       if (hospital_id) {
         countQuery = countQuery.eq('hospital_id', hospital_id);
         recentQuery = recentQuery.eq('hospital_id', hospital_id);
+        vapiQuery = vapiQuery.eq('hospital_id', hospital_id);
+        smsQuery = smsQuery.eq('hospital_id', hospital_id);
       }
 
-      const [{ count, error: countError }, { data: recent, error: recentError }] = await Promise.all([
+      const [
+        { count, error: countError },
+        { data: recent, error: recentError },
+        vapiRes,
+        smsRes,
+        evidenceRes,
+      ] = await Promise.all([
         withTimeout(countQuery, 12000),
         withTimeout(recentQuery, 12000),
+        withTimeout(vapiQuery, 12000).catch(() => ({ data: [] })),
+        withTimeout(smsQuery, 12000).catch(() => ({ data: [] })),
+        withTimeout(evidenceQuery, 12000).catch(() => ({ data: [] })),
       ]);
 
       if (countError) throw countError;
       if (recentError) throw recentError;
 
-      return { count: Number(count) || 0, recent: recent || [] };
+      const allowedPatientIds = new Set((patientIds || []).map((id) => String(id)));
+      const vapiSessions = vapiRes?.data || [];
+      const smsDispatches = smsRes?.data || [];
+      const rawEvidence = evidenceRes?.data || [];
+      const hospitalEvidence = hospital_id
+        ? rawEvidence.filter((ev) => ev?.patient_id && allowedPatientIds.has(String(ev.patient_id)))
+        : rawEvidence;
+
+      // Evitar doble conteo cuando vapi-webhook inserta en ambas tablas para la misma llamada
+      const nonDuplicateEvidence = hospitalEvidence.filter((ev) => {
+        const canal = String(ev?.canal || '').toLowerCase();
+        if (!canal.includes('call') && !canal.includes('llamada')) return true;
+        const evTime = new Date(ev.created_at || 0).getTime();
+        return !vapiSessions.some((vs) => {
+          if (String(vs.patient_id) !== String(ev.patient_id)) return false;
+          const vsTime = new Date(vs.created_at || 0).getTime();
+          return Math.abs(vsTime - evTime) <= 120000;
+        });
+      });
+
+      const realDispatchesTotal = vapiSessions.length + smsDispatches.length + nonDuplicateEvidence.length;
+      const realDispatchesSuccess =
+        vapiSessions.filter((s) => !s.deteccion_buzon && (s.estado_llamada === 'completada' || Number(s.duracion_segundos) > 0)).length +
+        smsDispatches.filter((s) => s.status === 'sent').length +
+        nonDuplicateEvidence.filter((ev) => !ev.deteccion_buzon && ev.resultado_contacto === 'contactado_exitoso').length;
+
+      return {
+        count: (Number(count) || 0) + realDispatchesTotal,
+        recent: recent || [],
+        vapiSessions,
+        smsDispatches,
+        evidence: nonDuplicateEvidence,
+        dispatchesTotal: realDispatchesTotal,
+        dispatchesSuccess: realDispatchesSuccess,
+      };
     } catch {
-      return { count: 0, recent: [] };
+      return {
+        count: 0,
+        recent: [],
+        vapiSessions: [],
+        smsDispatches: [],
+        evidence: [],
+        dispatchesTotal: 0,
+        dispatchesSuccess: 0,
+      };
     }
   }, []);
 
@@ -129,11 +204,13 @@ const DashboardPage = () => {
       setLoading(true);
       setError(null);
 
-      const [patientsCount, campaignsData, interactionsSummary] = await Promise.all([
-        fetchPatientsCount(hospital_id),
+      const [patientsSummary, campaignsData] = await Promise.all([
+        fetchPatientsSummary(hospital_id),
         fetchCampaigns(hospital_id),
-        fetchInteractionsSummary(hospital_id),
       ]);
+
+      const patientIds = (patientsSummary.patients || []).map((p) => p.patient_id).filter(Boolean);
+      const interactionsSummary = await fetchInteractionsSummary(hospital_id, patientIds);
 
       const statuses = campaignsData.map(getEffectiveCampaignStatus);
       const pendingCampaigns = statuses.filter((s) => s !== 'Completada').length;
@@ -141,27 +218,28 @@ const DashboardPage = () => {
       const totalDestinatarios = campaignsData.reduce((acc, curr) => acc + (Number(curr.destinatarios) || 0), 0);
       const totalEntregados = campaignsData.reduce((acc, curr) => acc + (Number(curr.entregados) || 0), 0);
 
-      const deliveryRate = totalDestinatarios > 0
-        ? ((totalEntregados / totalDestinatarios) * 100).toFixed(1)
+      const combinedAttempts = totalDestinatarios + (interactionsSummary.dispatchesTotal || 0);
+      const combinedSuccess = totalEntregados + (interactionsSummary.dispatchesSuccess || 0);
+
+      const deliveryRate = combinedAttempts > 0
+        ? ((combinedSuccess / combinedAttempts) * 100).toFixed(1)
         : 0;
 
-      const CENSUS_TOTAL = 400000;
-
       setStats({
-        totalPatients: CENSUS_TOTAL,
+        totalPatients: patientsSummary.count,
         activeCampaigns: pendingCampaigns,
         deliveryRate: deliveryRate,
         totalInteractions: interactionsSummary.count || 0,
       });
 
-      calculateCampaignStats(campaignsData);
-      generateRecentActivity(campaignsData, interactionsSummary.recent);
+      calculateCampaignStats(campaignsData, patientsSummary.patients);
+      generateRecentActivity(campaignsData, interactionsSummary);
     } catch (err) {
       setError(err?.message || 'Error cargando dashboard');
     } finally {
       setLoading(false);
     }
-  }, [fetchCampaigns, fetchInteractionsSummary, fetchPatientsCount]);
+  }, [fetchCampaigns, fetchInteractionsSummary, fetchPatientsSummary]);
 
   useEffect(() => {
     if (!user) return;
@@ -199,24 +277,37 @@ const DashboardPage = () => {
     return () => clearInterval(intervalId);
   }, [hospitalIdForQueries, loadDashboardData, user]);
 
-  const calculateCampaignStats = (campaigns = []) => {
+  const calculateAgeFromBirthdate = (birthdate) => {
+    if (!birthdate) return null;
+    const birth = new Date(birthdate);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const calculateCampaignStats = (campaigns = [], realPatients = []) => {
     const statuses = campaigns.map(getEffectiveCampaignStatus);
     const enProgreso = statuses.filter((s) => s === 'Activa').length;
     const completadas = statuses.filter((s) => s === 'Completada').length;
     const programadas = statuses.filter((s) => s === 'Programada' || s === 'No Enviada').length;
 
-    // Calcular participantes por demografía
+    // Calcular demografía real a partir de los pacientes registrados en Supabase
     let hombres = 0, mujeres = 0, ninos = 0, ninas = 0;
-    campaigns.forEach(campaign => {
-      if (campaign.participantes) {
-        const participantes = typeof campaign.participantes === 'string' 
-          ? JSON.parse(campaign.participantes) 
-          : campaign.participantes;
-        
-        hombres += participantes.hombres || 0;
-        mujeres += participantes.mujeres || 0;
-        ninos += participantes.ninos || 0;
-        ninas += participantes.ninas || 0;
+    (realPatients || []).forEach((p) => {
+      const sexNorm = String(p?.sex || p?.sexo || '').trim().toLowerCase();
+      const isFemale = sexNorm === 'f' || sexNorm === 'femenino' || sexNorm === 'mujer' || sexNorm === 'female';
+      const age = calculateAgeFromBirthdate(p?.birthdate || p?.fecha_nacimiento);
+      if (age !== null && age < 18) {
+        if (isFemale) ninas++;
+        else ninos++;
+      } else {
+        if (isFemale) mujeres++;
+        else hombres++;
       }
     });
 
@@ -231,34 +322,67 @@ const DashboardPage = () => {
     });
   };
 
-  const generateRecentActivity = (campaigns = [], interactions = []) => {
-    const activities = [];
-    
-    // Solo si hay campañas reales
-    const recentCampaigns = campaigns
-      .sort((a, b) => new Date(b.created_at || b.fecha_creacion) - new Date(a.created_at || a.fecha_creacion))
-      .slice(0, 3);
-    
-    recentCampaigns.forEach(campaign => {
+  const generateRecentActivity = (campaigns = [], interactionsSummary = {}) => {
+    const events = [];
+
+    (campaigns || []).forEach((campaign) => {
       const status = getEffectiveCampaignStatus(campaign);
-      activities.push({
+      const ts = campaign.created_at || campaign.fecha_creacion;
+      events.push({
         type: 'campaign',
         message: `Campaña "${campaign.nombre || campaign.name || 'Prevención 3280'}" ${status.toLowerCase()}`,
-        time: 'En curso',
+        createdAt: ts ? new Date(ts).getTime() : 0,
+        time: ts ? getTimeAgo(new Date(ts)) : 'Reciente',
         color: 'bg-blue-500'
       });
     });
 
-    (interactions || []).slice(0, 3).forEach(inter => {
-      activities.push({
+    (interactionsSummary.recent || []).forEach((inter) => {
+      events.push({
         type: 'interaction',
         message: `Interacción ${inter.tipo || inter.type || 'asistencial'} registrada`,
-        time: getTimeAgo(new Date(inter.created_at)),
+        createdAt: inter.created_at ? new Date(inter.created_at).getTime() : 0,
+        time: inter.created_at ? getTimeAgo(new Date(inter.created_at)) : 'Reciente',
         color: 'bg-emerald-500'
       });
     });
 
-    setRecentActivity(activities);
+    (interactionsSummary.vapiSessions || []).slice(0, 5).forEach((sess) => {
+      events.push({
+        type: 'call',
+        message: sess.deteccion_buzon
+          ? 'Llamada cortada por Anti-Buzón ($0 COP)'
+          : `Llamada IA ${sess.estado_llamada || 'registrada'} (${sess.duracion_segundos || 0}s)`,
+        createdAt: sess.created_at ? new Date(sess.created_at).getTime() : 0,
+        time: sess.created_at ? getTimeAgo(new Date(sess.created_at)) : 'Reciente',
+        color: sess.deteccion_buzon ? 'bg-amber-500' : 'bg-teal-500'
+      });
+    });
+
+    (interactionsSummary.smsDispatches || []).slice(0, 5).forEach((sms) => {
+      events.push({
+        type: 'sms',
+        message: sms.status === 'sent'
+          ? `SMS enviado por OpenVox (SIM Puerto ${sms.winning_port || '?'})`
+          : 'Intento SMS purgado (sin señal)',
+        createdAt: sms.created_at ? new Date(sms.created_at).getTime() : 0,
+        time: sms.created_at ? getTimeAgo(new Date(sms.created_at)) : 'Reciente',
+        color: 'bg-sky-500'
+      });
+    });
+
+    (interactionsSummary.evidence || []).slice(0, 5).forEach((ev) => {
+      events.push({
+        type: 'evidence',
+        message: `Contacto IA (${ev.canal || 'call_ia'}): ${ev.resultado_contacto || 'registrado'}`,
+        createdAt: ev.created_at ? new Date(ev.created_at).getTime() : 0,
+        time: ev.created_at ? getTimeAgo(new Date(ev.created_at)) : 'Reciente',
+        color: 'bg-purple-500'
+      });
+    });
+
+    events.sort((a, b) => b.createdAt - a.createdAt);
+    setRecentActivity(events.slice(0, 6));
   };
 
   const getTimeAgo = (date) => {
@@ -276,7 +400,7 @@ const DashboardPage = () => {
       value: typeof stats.totalPatients === 'number' ? stats.totalPatients.toLocaleString('es-CO') : stats.totalPatients,
       icon: Users,
       color: 'bg-blue-500',
-      subtitle: 'Censo Oficial Hospitalario'
+      subtitle: 'Pacientes reales en Supabase'
     },
     {
       title: 'Campañas Pendientes',
@@ -290,14 +414,14 @@ const DashboardPage = () => {
       value: `${stats.deliveryRate}%`,
       icon: TrendingUp,
       color: 'bg-purple-500',
-      subtitle: 'Mensajes entregados'
+      subtitle: 'Contactos y envíos exitosos'
     },
     {
       title: 'Interacciones',
       value: stats.totalInteractions,
       icon: MessageSquare,
       color: 'bg-orange-500',
-      subtitle: 'Pruebas multicanal activas'
+      subtitle: 'Registros reales en Supabase'
     }
   ];
 
@@ -442,7 +566,7 @@ const DashboardPage = () => {
 
               {/* Demographics */}
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">Participantes por Demografía</h3>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">Demografía de Pacientes en BD</h3>
                 <div className="space-y-3">
                   {[
                     { label: '👨 Hombres', value: campaignStats.hombres, color: 'bg-indigo-500' },

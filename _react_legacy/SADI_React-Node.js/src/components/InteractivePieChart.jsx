@@ -33,6 +33,7 @@ export default function InteractivePieChart({
 
   const slices = chartData?.slices || [];
   const totalContacts = chartData?.totalContacts || 0;
+  const matchingPatientsCount = chartData?.matchingPatientsCount ?? 0;
 
   // Cálculo de coordenadas SVG para gráfico Donut / Pie
   const size = 320;
@@ -43,7 +44,8 @@ export default function InteractivePieChart({
   let cumulativeAngle = -Math.PI / 2; // Iniciar en las 12 en punto
 
   const slicePaths = slices.map((slice) => {
-    const angle = (slice.percentage / 100) * 2 * Math.PI;
+    const fraction = totalContacts > 0 ? Math.min(1, Math.max(0, slice.percentage / 100)) : 0;
+    const angle = fraction * 2 * Math.PI;
     const startAngle = cumulativeAngle;
     const endAngle = cumulativeAngle + angle;
     cumulativeAngle = endAngle;
@@ -52,27 +54,39 @@ export default function InteractivePieChart({
     const currentRadius = isHovered ? radius + 8 : radius;
     const currentInner = isHovered ? innerRadius - 4 : innerRadius;
 
-    // Coordenadas exteriores
-    const x1 = center + currentRadius * Math.cos(startAngle);
-    const y1 = center + currentRadius * Math.sin(startAngle);
-    const x2 = center + currentRadius * Math.cos(endAngle);
-    const y2 = center + currentRadius * Math.sin(endAngle);
+    let pathData = '';
+    if (angle >= 2 * Math.PI - 0.001) {
+      // Anillo completo (100% de las emisiones en un solo canal) usando 2 arcos de 180 grados
+      pathData = `
+        M ${center + currentRadius} ${center}
+        A ${currentRadius} ${currentRadius} 0 1 1 ${center - currentRadius} ${center}
+        A ${currentRadius} ${currentRadius} 0 1 1 ${center + currentRadius} ${center}
+        M ${center + currentInner} ${center}
+        A ${currentInner} ${currentInner} 0 1 0 ${center - currentInner} ${center}
+        A ${currentInner} ${currentInner} 0 1 0 ${center + currentInner} ${center}
+        Z
+      `;
+    } else if (angle > 0.001) {
+      const x1 = center + currentRadius * Math.cos(startAngle);
+      const y1 = center + currentRadius * Math.sin(startAngle);
+      const x2 = center + currentRadius * Math.cos(endAngle);
+      const y2 = center + currentRadius * Math.sin(endAngle);
 
-    // Coordenadas interiores
-    const x3 = center + currentInner * Math.cos(endAngle);
-    const y3 = center + currentInner * Math.sin(endAngle);
-    const x4 = center + currentInner * Math.cos(startAngle);
-    const y4 = center + currentInner * Math.sin(startAngle);
+      const x3 = center + currentInner * Math.cos(endAngle);
+      const y3 = center + currentInner * Math.sin(endAngle);
+      const x4 = center + currentInner * Math.cos(startAngle);
+      const y4 = center + currentInner * Math.sin(startAngle);
 
-    const largeArcFlag = angle > Math.PI ? 1 : 0;
+      const largeArcFlag = angle > Math.PI ? 1 : 0;
 
-    const pathData = `
-      M ${x1} ${y1}
-      A ${currentRadius} ${currentRadius} 0 ${largeArcFlag} 1 ${x2} ${y2}
-      L ${x3} ${y3}
-      A ${currentInner} ${currentInner} 0 ${largeArcFlag} 0 ${x4} ${y4}
-      Z
-    `;
+      pathData = `
+        M ${x1} ${y1}
+        A ${currentRadius} ${currentRadius} 0 ${largeArcFlag} 1 ${x2} ${y2}
+        L ${x3} ${y3}
+        A ${currentInner} ${currentInner} 0 ${largeArcFlag} 0 ${x4} ${y4}
+        Z
+      `;
+    }
 
     // Posición del label de porcentaje en el centro del arco
     const midAngle = (startAngle + endAngle) / 2;
@@ -229,7 +243,7 @@ export default function InteractivePieChart({
             </h3>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Porcentaje de uso según los filtros territoriales y clínicos seleccionados.
+            {matchingPatientsCount.toLocaleString('es-CO')} pacientes reales coinciden con los filtros seleccionados.
           </p>
         </div>
 
@@ -273,34 +287,50 @@ export default function InteractivePieChart({
               viewBox={`0 0 ${size} ${size}`}
               className="overflow-visible filter drop-shadow-xs"
             >
-              {slicePaths.map((slice) => (
-                <g key={slice.id} className="transition-all duration-200 cursor-pointer">
-                  <path
-                    d={slice.pathData}
-                    fill={slice.color}
-                    stroke="#ffffff"
-                    strokeWidth={2.5}
-                    onMouseEnter={() => setHoveredSlice(slice.id)}
-                    onMouseLeave={() => setHoveredSlice(null)}
-                    className="stroke-white dark:stroke-slate-900 transition-all duration-200 hover:opacity-95"
-                  />
-                  {slice.percentage >= 8 && (
-                    <text
-                      x={slice.labelX}
-                      y={slice.labelY}
-                      fill="#ffffff"
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize={slice.isHovered ? 13 : 11}
-                      fontWeight="bold"
-                      pointerEvents="none"
-                      className="drop-shadow-sm font-sans"
-                    >
-                      {slice.percentage}%
-                    </text>
-                  )}
-                </g>
-              ))}
+              {totalContacts === 0 ? (
+                <circle
+                  cx={center}
+                  cy={center}
+                  r={(radius + innerRadius) / 2}
+                  fill="none"
+                  stroke="#cbd5e1"
+                  strokeWidth={radius - innerRadius}
+                  strokeDasharray="6 6"
+                  className="stroke-slate-300 dark:stroke-slate-700"
+                />
+              ) : (
+                slicePaths.map((slice) => (
+                  <g key={slice.id} className="transition-all duration-200 cursor-pointer">
+                    {slice.pathData && (
+                      <path
+                        d={slice.pathData}
+                        fill={slice.color}
+                        fillRule="evenodd"
+                        stroke="#ffffff"
+                        strokeWidth={2.5}
+                        onMouseEnter={() => setHoveredSlice(slice.id)}
+                        onMouseLeave={() => setHoveredSlice(null)}
+                        className="stroke-white dark:stroke-slate-900 transition-all duration-200 hover:opacity-95"
+                      />
+                    )}
+                    {slice.percentage >= 8 && (
+                      <text
+                        x={slice.percentage >= 99.9 ? center : slice.labelX}
+                        y={slice.percentage >= 99.9 ? center - ((radius + innerRadius) / 2) : slice.labelY}
+                        fill="#ffffff"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={slice.isHovered ? 13 : 11}
+                        fontWeight="bold"
+                        pointerEvents="none"
+                        className="drop-shadow-sm font-sans"
+                      >
+                        {slice.percentage}%
+                      </text>
+                    )}
+                  </g>
+                ))
+              )}
 
               {/* Centro del Donut con Total de Contactos (atributos fill para PNG y clases dark:fill para UI) */}
               <circle cx={center} cy={center} r={innerRadius - 4} fill="#ffffff" className="fill-white dark:fill-slate-900" />
@@ -329,8 +359,10 @@ export default function InteractivePieChart({
             </svg>
           </div>
 
-          <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 font-medium">
-            Pasa el ratón sobre cada porción para destacar el canal
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 font-medium text-center">
+            {totalContacts === 0
+              ? 'Sin emisiones registradas aún para este filtro (se actualizará con tus pruebas en vivo)'
+              : 'Pasa el ratón sobre cada porción para destacar el canal'}
           </span>
         </div>
 
@@ -386,10 +418,16 @@ export default function InteractivePieChart({
       <div className="bg-slate-50 dark:bg-slate-800/70 rounded-xl p-3 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-600 dark:text-slate-300 gap-2">
         <div className="flex items-center gap-1.5 font-medium">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span>Canal de Mayor Demanda: <strong className="text-slate-900 dark:text-white">{slices[0]?.label || 'Llamada'} ({slices[0]?.percentage}%)</strong></span>
+          <span>
+            {totalContacts > 0 ? (
+              <>Canal de Mayor Demanda: <strong className="text-slate-900 dark:text-white">{slices[0]?.label || 'Llamada'} ({slices[0]?.percentage}%)</strong></>
+            ) : (
+              <>Sin emisiones multicanal todavía • <strong className="text-slate-900 dark:text-white">{matchingPatientsCount} pacientes reales en rango</strong></>
+            )}
+          </span>
         </div>
         <div className="text-[11px] text-slate-400 dark:text-slate-500 font-semibold">
-          * Datos sincronizados con el Censo Territorial SADI
+          * Datos reales consultados en Supabase
         </div>
       </div>
     </div>

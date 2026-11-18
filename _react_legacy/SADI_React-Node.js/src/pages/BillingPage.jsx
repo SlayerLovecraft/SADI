@@ -61,7 +61,10 @@ const BillingPage = () => {
     async function loadData() {
       setLoading(true);
       try {
-        const hospitalId = user?.hospital_id || user?.id || null;
+        const rawId = user?.hospitalId || user?.hospital_id || user?.Hospital_ID;
+        const hospitalId = user?.role === 'super_admin'
+          ? null
+          : (!rawId || rawId === 'hosp-001' ? 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8' : rawId);
         const data = await billingService.getMonthlyBillingData(selectedYear, selectedMonth, hospitalId);
         if (isMounted) {
           setMonthData(data);
