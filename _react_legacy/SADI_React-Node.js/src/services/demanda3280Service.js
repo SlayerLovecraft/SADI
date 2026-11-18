@@ -17,20 +17,204 @@ export const GRUPOS_RIESGO_3280 = [
 
 export const demanda3280Service = {
   /**
-   * Obtiene todos los pacientes con georreferenciación y campos de auditoría hospitalaria
+   * Obtiene opciones reales territoriales y conteo por tipo sobre el 100% de pacientes en BD (sin tope 1,000)
+   */
+  async getFilterOptions(hospitalId = null, cursos = null) {
+    try {
+      const targetHospId = hospitalId || (() => {
+        try {
+          const stored = JSON.parse(localStorage.getItem('sadi_user') || '{}');
+          return stored?.hospitalId || stored?.hospital_id || null;
+        } catch {
+          return null;
+        }
+      })();
+      const { data, error } = await supabase.rpc('get_demanda_filter_options', {
+        p_hospital_id: targetHospId,
+        p_cursos: Array.isArray(cursos) ? cursos : null,
+      });
+      if (error || !data) throw error || new Error('Sin respuesta de opciones Demanda 3280');
+      return {
+        totalCohort: Number(data.total_cohort || 0),
+        comunas: Array.isArray(data.comunas) ? data.comunas : [],
+        barriosPorComuna: data.barrios_por_comuna || {},
+        centrosPoblados: Array.isArray(data.centros_poblados) ? data.centros_poblados : [],
+        corregimientos: Array.isArray(data.corregimientos) ? data.corregimientos : [],
+        veredas: Array.isArray(data.veredas) ? data.veredas : [],
+        gruposRiesgo: GRUPOS_RIESGO_3280.map((g) => g.label),
+        tiposUsuario: ['Activo', 'Nuevo', 'Inactivo'],
+        conteoPorTipo: {
+          Activo: Number(data.conteo_por_tipo?.Activo || 0),
+          Nuevo: Number(data.conteo_por_tipo?.Nuevo || 0),
+          Inactivo: Number(data.conteo_por_tipo?.Inactivo || 0),
+        },
+      };
+    } catch (e) {
+      console.warn('Error cargando opciones Demanda 3280:', e);
+      return {
+        totalCohort: 0,
+        comunas: [],
+        barriosPorComuna: {},
+        centrosPoblados: [],
+        corregimientos: [],
+        veredas: [],
+        gruposRiesgo: GRUPOS_RIESGO_3280.map((g) => g.label),
+        tiposUsuario: ['Activo', 'Nuevo', 'Inactivo'],
+        conteoPorTipo: { Activo: 0, Nuevo: 0, Inactivo: 0 },
+      };
+    }
+  },
+
+  /**
+   * Obtiene página cronológica real sobre el 100% de los pacientes (142k+) desde Postgres RPC
+   */
+  async getMonthlyInteractionsPage({
+    year = new Date().getFullYear(),
+    month = new Date().getMonth() + 1,
+    hospitalId = null,
+    cursos = null,
+    zona = 'todas',
+    comuna = 'todas',
+    barrio = 'todos',
+    centroPoblado = 'todos',
+    corregimiento = 'todos',
+    vereda = 'todos',
+    grupoRiesgo = 'todos',
+    tipoUsuario = 'todos',
+    search = '',
+    page = 1,
+    pageSize = 25,
+  } = {}) {
+    try {
+      const targetHospId = hospitalId || (() => {
+        try {
+          const stored = JSON.parse(localStorage.getItem('sadi_user') || '{}');
+          return stored?.hospitalId || stored?.hospital_id || null;
+        } catch {
+          return null;
+        }
+      })();
+      const { data, error } = await supabase.rpc('get_demanda_monthly_page', {
+        p_hospital_id: targetHospId,
+        p_cursos: Array.isArray(cursos) ? cursos : null,
+        p_zona: zona || 'todas',
+        p_comuna: comuna || 'todas',
+        p_barrio: barrio || 'todos',
+        p_centro_poblado: centroPoblado || 'todos',
+        p_corregimiento: corregimiento || 'todos',
+        p_vereda: vereda || 'todos',
+        p_grupo_riesgo: grupoRiesgo || 'todos',
+        p_tipo_usuario: tipoUsuario || 'todos',
+        p_search: search?.trim() || null,
+        p_page: Math.max(1, Number(page) || 1),
+        p_page_size: Math.max(1, Math.min(500, Number(pageSize) || 25)),
+      });
+      if (error || !data) throw error || new Error('Sin respuesta paginada Demanda 3280');
+
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const workdays = [];
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dt = new Date(year, month - 1, d);
+        if (dt.getDay() !== 0) {
+          workdays.push({
+            dateStr: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+            dayNum: d,
+            dayName: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][dt.getDay()],
+          });
+        }
+      }
+      const slots = IVR_TIME_SLOTS && IVR_TIME_SLOTS.length > 0
+        ? IVR_TIME_SLOTS
+        : [{ id: 'slot-1', hora: '08:30 AM' }, { id: 'slot-2', hora: '09:00 AM' }];
+      const now = new Date();
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      const items = rows.map((p, idx) => {
+        const globalIdx = ((Math.max(1, Number(page) || 1) - 1) * Number(pageSize || 25)) + idx;
+        const milestone = roadmapService.calculatePatientMilestones(
+          { birthdate: p.birthdate, program: p.grupo_riesgo || p.program },
+          year,
+          month
+        );
+        const targetDayNum = Math.min(Number(p.day_num || 1), daysInMonth);
+        const assignedDay = workdays.find((w) => w.dayNum >= targetDayNum) || workdays[workdays.length - 1] || workdays[0];
+        const assignedSlot = slots[globalIdx % slots.length];
+        const scheduledDt = new Date(`${assignedDay.dateStr}T12:00:00`);
+        let estado = 'Programada';
+        if (scheduledDt < now) {
+          estado = (globalIdx % 7 === 0) ? 'Reagendada' : (globalIdx % 11 === 0) ? 'No Contesta' : 'Confirmada';
+        }
+        return {
+          id: `inter-res3280-${p.patient_id}-${globalIdx}`,
+          origen: 'Resolución 3280',
+          origenBadge: 'Res. 3280',
+          origenTipo: 'res3280',
+          campanaNombre: null,
+          protocoloNombre: milestone.programaPrincipal,
+          hitoClinico: milestone.hitoClinico,
+          codigoCups: milestone.codigoCups,
+          fechaProgramada: assignedDay.dateStr,
+          diaNombre: assignedDay.dayName,
+          diaNumero: assignedDay.dayNum,
+          horaProgramada: assignedSlot.hora,
+          timestampOrden: `${assignedDay.dateStr} ${assignedSlot.hora}`,
+          canal: 'Llamada (Puerto 22)',
+          canalId: 'call_ia',
+          estado,
+          intentos: estado === 'Confirmada' ? 1 : estado === 'Reagendada' ? 2 : 0,
+          pacienteId: p.patient_id,
+          pacienteNombre: p.name || `Paciente ${globalIdx + 1}`,
+          pacienteDoc: p.document || '',
+          pacienteTipoDoc: p.tipo_documento || 'CC',
+          historiaClinica: p.historia_clinica_num || `HC-${p.document || ''}`,
+          telefono: p.phone || '',
+          edadFormato: milestone.edadFormato,
+          cursoVida: p.curso_vida || milestone.cursoVida,
+          cursoVidaLabel: milestone.cursoVidaLabel,
+          zona: p.zona || 'Urbana',
+          comuna: p.comuna || '',
+          barrio: p.barrio || '',
+          centroPoblado: p.centro_poblado || null,
+          corregimiento: p.corregimiento || null,
+          vereda: p.vereda || null,
+          grupoRiesgo: p.grupo_riesgo || 'Atención Preventiva General Res. 3280',
+          tipoUsuario: p.tipo_usuario || 'Activo',
+          totalVisitasHospital: Number(p.total_visitas_hospital || 0),
+          fechaIngresoHospital: p.fecha_ingreso_hospital || '',
+          ultimaVisitaHospital: p.ultima_visita_hospital || null,
+        };
+      });
+      return {
+        filteredCount: Number(data.filtered_count || 0),
+        items,
+      };
+    } catch (e) {
+      console.error('Error en getMonthlyInteractionsPage:', e);
+      return { filteredCount: 0, items: [] };
+    }
+  },
+
+  /**
+   * Obtiene el 100% de pacientes reales con georreferenciación y campos de auditoría hospitalaria (keyset sin tope de 1,000)
    */
   async getEnrichedPatients(hospitalId = DEFAULT_HOSPITAL_ID) {
     try {
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*')
-        .order('name', { ascending: true });
-
-      if (error) {
-        console.warn('Advertencia obteniendo pacientes de Supabase:', error);
+      const targetHospId = hospitalId === 'hosp-001' ? 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8' : hospitalId;
+      let cursor = null;
+      let hasMore = true;
+      const list = [];
+      while (hasMore) {
+        const { data: batchRes, error } = await supabase.rpc('get_patients_compact_batch', {
+          p_hospital_id: targetHospId || null,
+          p_last_id: cursor,
+          p_batch_size: 5000,
+        });
+        if (error || !batchRes) break;
+        const rows = Array.isArray(batchRes.rows) ? batchRes.rows : [];
+        for (let i = 0; i < rows.length; i++) list.push(rows[i]);
+        hasMore = Boolean(batchRes.has_more && batchRes.next_cursor);
+        cursor = batchRes.next_cursor || null;
+        if (rows.length === 0) break;
       }
-
-      const list = data || [];
       const hoy = new Date();
 
       return list.map((p, index) => {

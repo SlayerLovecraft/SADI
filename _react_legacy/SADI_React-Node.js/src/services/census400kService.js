@@ -484,19 +484,31 @@ export const census400kService = {
     return CANALES_DISPONIBLES;
   },
 
-  // Obtiene pacientes reales de Supabase
+  // Obtiene pacientes reales de Supabase (sin tope de 100/1,000 filas)
   async getRealSupabasePatients(hospitalId) {
     try {
-      let query = supabase.from('patients').select('*').limit(100);
-      if (hospitalId) {
-        query = query.eq('hospital_id', hospitalId);
+      const allRows = [];
+      let cursor = null;
+      let hasMore = true;
+      while (hasMore) {
+        const { data: batchRes, error } = await supabase.rpc('get_patients_compact_batch', {
+          p_hospital_id: hospitalId || null,
+          p_last_id: cursor,
+          p_batch_size: 5000,
+        });
+        if (error || !batchRes) {
+          console.warn('Advertencia al consultar pacientes de Supabase:', error);
+          break;
+        }
+        const rows = Array.isArray(batchRes.rows) ? batchRes.rows : [];
+        for (let i = 0; i < rows.length; i++) {
+          allRows.push(rows[i]);
+        }
+        hasMore = Boolean(batchRes.has_more && batchRes.next_cursor);
+        cursor = batchRes.next_cursor || null;
+        if (rows.length === 0) break;
       }
-      const { data, error } = await query;
-      if (error) {
-        console.warn('Advertencia al consultar pacientes de Supabase:', error);
-        return [];
-      }
-      return data || [];
+      return allRows;
     } catch (err) {
       console.warn('Excepción al consultar pacientes reales:', err);
       return [];

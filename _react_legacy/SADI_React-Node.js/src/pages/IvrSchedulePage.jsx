@@ -137,12 +137,10 @@ export default function IvrSchedulePage() {
   const loadRoadmapData = async (year = selectedYear, month = selectedMonth) => {
     setLoadingRoadmap(true);
     try {
-      const [resData, campData, indivData] = await Promise.all([
-        roadmapService.getResolutionRoadmap(null, year, month),
+      const [campData, indivData] = await Promise.all([
         roadmapService.getCampaignsRoadmap(null, year, month),
         roadmapService.getIndividualCallsRoadmap(null, year, month)
       ]);
-      setResolutionRoadmap(resData);
       setCampaignsRoadmap(campData);
       setIndividualRoadmap(indivData);
     } catch (e) {
@@ -160,9 +158,17 @@ export default function IvrSchedulePage() {
   const loadDailySchedule = async (force = false) => {
     setLoadingDaily(true);
     try {
-      // Si en caché local había quedado el lote completo de 56 pacientes, forzamos recálculo según la distribución real 3280
+      // Actualizar caché antigua que no incluía universo completo 100% BD
       const cached = localStorage.getItem('sadi_ivr_daily_schedule');
-      const shouldForce = force || (cached && JSON.parse(cached)?.totalPacientes > 32);
+      let shouldForce = force;
+      if (!shouldForce && cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          shouldForce = !parsed?.totalUniversoBD;
+        } catch {
+          shouldForce = true;
+        }
+      }
       const data = await ivrScheduleService.getDailySchedule(null, shouldForce);
       setScheduleData(data);
     } catch (e) {
@@ -178,10 +184,22 @@ export default function IvrSchedulePage() {
     loadRoadmapData(newYear, newMonth);
   };
 
-  const handleDownloadExcel = () => {
+  const handleDownloadExcel = async () => {
     try {
+      let fullRes = resolutionRoadmap;
+      if (!Array.isArray(fullRes) || fullRes.length === 0) {
+        toast({
+          title: "Preparando Exportación Completa (100% BD)...",
+          description: "Descargando todo el universo de pacientes sin tope de 1.000 filas."
+        });
+        fullRes = await roadmapService.getResolutionRoadmap(null, selectedYear, selectedMonth);
+        setResolutionRoadmap(fullRes);
+      }
+      const resForExport = doctorAccess.restricted
+        ? (doctorAccess.keys.length === 0 ? [] : fullRes.filter(item => isPatientAssignedToDoctor(item, user)))
+        : fullRes;
       const fileName = roadmapService.exportRoadmapToExcel(
-        visibleResolutionRoadmap,
+        resForExport,
         visibleCampaignsRoadmap,
         visibleIndividualRoadmap,
         selectedYear,
@@ -577,8 +595,10 @@ export default function IvrSchedulePage() {
                   <span>Programados Hoy</span>
                   <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <p className="text-2xl font-black text-gray-900 dark:text-white mt-2">{totalPacientes}</p>
-                <span className="text-[11px] text-gray-500 dark:text-slate-400">{programados} en cola inicial</span>
+                <p className="text-2xl font-black text-gray-900 dark:text-white mt-2">{totalPacientes.toLocaleString('es-CO')}</p>
+                <span className="text-[11px] text-gray-500 dark:text-slate-400">
+                  {programados} en cola hoy{scheduleData?.totalUniversoBD ? ` • Universo ${Number(scheduleData.totalUniversoBD).toLocaleString('es-CO')} (100% BD)` : ''}
+                </span>
               </div>
 
               <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/50 shadow-sm bg-emerald-50/20 dark:bg-emerald-950/20">

@@ -1186,78 +1186,107 @@ export const telemonitoringService = {
     return SEED_DOCTORS_3280;
   },
 
-  // Obtener lista completa de pacientes
-  async getPatients() {
-    try {
-      const { data, error } = await runWithSupabaseAuthRecovery(
-        supabase,
-        () => supabase.from('patients').select('*'),
-        15000,
-        'Tiempo de espera agotado al consultar pacientes'
-      );
-      if (!error && data && data.length > 0) {
-        return data.map(p => {
-          const birthdate = p.birthdate || p.birth_date || p.fecha_nacimiento;
-          let curso = p.curso_vida || 'adultez';
-          if (!p.curso_vida && birthdate) {
-            const b = new Date(birthdate);
-            if (!isNaN(b.getTime())) {
-              const now = new Date();
-              let age = now.getFullYear() - b.getFullYear();
-              const m = now.getMonth() - b.getMonth();
-              if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
-              if (age <= 5) curso = 'primera_infancia';
-              else if (age <= 11) curso = 'infancia';
-              else if (age <= 17) curso = 'adolescencia';
-              else if (age <= 28) curso = 'juventud';
-              else if (age <= 59) curso = 'adultez';
-              else curso = 'vejez';
-            }
-          }
-          if (!p.curso_vida && (p.program?.toLowerCase().includes('embarazo') || p.program?.toLowerCase().includes('materno') || p.es_gestante)) {
-            curso = 'preventivo_mujer';
-          }
-
-          const assignedEmail = getAssignedDoctorEmailForPatient(p);
-          const docInfoMap = {
-            'paola.gil@sadi.med.co': { id: 'a9165a9c-ebb5-4419-8499-dfce0b5c9c0c', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
-            'juan.bermudez@sadi.med.co': { id: 'd2222222-2222-2222-2222-222222222222', name: 'Dr. Juan Camilo Bermúdez Orozco', email: 'juan.bermudez@sadi.med.co' },
-            'sandra.castano@sadi.med.co': { id: 'd3333333-3333-3333-3333-333333333333', name: 'Dra. Sandra Milena Castaño Ríos', email: 'sandra.castano@sadi.med.co' },
-            'fernando.rincon@sadi.med.co': { id: 'd4444444-4444-4444-4444-444444444444', name: 'Dr. Fernando Rincón Velásquez', email: 'fernando.rincon@sadi.med.co' },
-            'beatriz.arango@sadi.med.co': { id: 'd5555555-5555-5555-5555-555555555555', name: 'Dra. Beatriz Elena Arango Salazar', email: 'beatriz.arango@sadi.med.co' },
-            'mauricio.villa@sadi.med.co': { id: 'd6666666-6666-6666-6666-666666666666', name: 'Dr. Mauricio Villa Cardona', email: 'mauricio.villa@sadi.med.co' },
-            'natalia.ocampo@sadi.med.co': { id: 'd7777777-7777-7777-7777-777777777777', name: 'Dra. Natalia Ocampo Henao', email: 'natalia.ocampo@sadi.med.co' },
-            'carlos.salazar@sadi.med.co': { id: 'd8888888-8888-8888-8888-888888888888', name: 'Dr. Carlos Eduardo Salazar Montoya', email: 'carlos.salazar@sadi.med.co' },
-            'alejandro.morales@sadi.med.co': { id: 'd39515b8-39cb-41e7-b1f8-ceb5fa778371', name: 'Dr. Alejandro Morales Restrepo', email: 'alejandro.morales@sadi.med.co' },
-            'valentina.gomez@sadi.med.co': { id: 'd0200000-0000-0000-0000-000000000002', name: 'Dra. Valentina Gómez Salazar', email: 'valentina.gomez@sadi.med.co' },
-            'daniel.vargas@sadi.med.co': { id: 'd0300000-0000-0000-0000-000000000003', name: 'Dr. Daniel Felipe Vargas Ruiz', email: 'daniel.vargas@sadi.med.co' }
-          };
-
-          const assignedDoc = docInfoMap[assignedEmail] || docInfoMap['alejandro.morales@sadi.med.co'];
-
-          return {
-            ...p,
-            id: p.patient_id || p.id,
-            nombre: p.name || p.nombre,
-            documento: p.document || p.documento,
-            tipo_documento: p.tipo_documento || 'CC',
-            telefono: p.phone || p.telefono,
-            fecha_nacimiento: birthdate,
-            curso_vida: curso,
-            doctor_asignado_id: p.doctor_id || assignedDoc.id,
-            doctor_nombre: assignedDoc.name,
-            doctor_email: assignedDoc.email,
-            dispositivos_caseros: p.program?.toLowerCase().includes('hipertension')
-              ? ['Tensiómetro Digital de Brazo']
-              : p.program?.toLowerCase().includes('asma')
-              ? ['Flujómetro Digital']
-              : ['Equipo de Telemonitoreo 3280'],
-            notas_clinicas: p.program ? `Programa activo: ${p.program}. Seguimiento Res. 3280.` : 'Seguimiento por curso de vida Res. 3280.',
-            regimen: 'Contributivo',
-            eps: 'EPS SADI Salud'
-          };
-        });
+  // Helper de mapeo común para pacientes reales de BD en telemonitoreo
+  _mapTelePatientRow(p) {
+    const birthdate = p.birthdate || p.birth_date || p.fecha_nacimiento;
+    let curso = p.curso_vida || 'adultez';
+    if (!p.curso_vida && birthdate) {
+      const b = new Date(birthdate);
+      if (!isNaN(b.getTime())) {
+        const now = new Date();
+        let age = now.getFullYear() - b.getFullYear();
+        const m = now.getMonth() - b.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+        if (age <= 5) curso = 'primera_infancia';
+        else if (age <= 11) curso = 'infancia';
+        else if (age <= 17) curso = 'adolescencia';
+        else if (age <= 28) curso = 'juventud';
+        else if (age <= 59) curso = 'adultez';
+        else curso = 'vejez';
       }
+    }
+    if (!p.curso_vida && (p.program?.toLowerCase().includes('embarazo') || p.program?.toLowerCase().includes('materno') || p.es_gestante)) {
+      curso = 'preventivo_mujer';
+    }
+
+    const assignedEmail = getAssignedDoctorEmailForPatient(p);
+    const docInfoMap = {
+      'paola.gil@sadi.med.co': { id: 'a9165a9c-ebb5-4419-8499-dfce0b5c9c0c', name: 'Dra. Paola Andrea Gil Restrepo', email: 'paola.gil@sadi.med.co' },
+      'juan.bermudez@sadi.med.co': { id: 'd2222222-2222-2222-2222-222222222222', name: 'Dr. Juan Camilo Bermúdez Orozco', email: 'juan.bermudez@sadi.med.co' },
+      'sandra.castano@sadi.med.co': { id: 'd3333333-3333-3333-3333-333333333333', name: 'Dra. Sandra Milena Castaño Ríos', email: 'sandra.castano@sadi.med.co' },
+      'fernando.rincon@sadi.med.co': { id: 'd4444444-4d44-4444-4444-444444444444', name: 'Dr. Fernando Rincón Velásquez', email: 'fernando.rincon@sadi.med.co' },
+      'beatriz.arango@sadi.med.co': { id: 'd5555555-5555-5555-5555-555555555555', name: 'Dra. Beatriz Elena Arango Salazar', email: 'beatriz.arango@sadi.med.co' },
+      'mauricio.villa@sadi.med.co': { id: 'd6666666-6666-6666-6666-666666666666', name: 'Dr. Mauricio Villa Cardona', email: 'mauricio.villa@sadi.med.co' },
+      'natalia.ocampo@sadi.med.co': { id: 'd7777777-7777-7777-7777-777777777777', name: 'Dra. Natalia Ocampo Henao', email: 'natalia.ocampo@sadi.med.co' },
+      'carlos.salazar@sadi.med.co': { id: 'd8888888-8888-8888-8888-888888888888', name: 'Dr. Carlos Eduardo Salazar Montoya', email: 'carlos.salazar@sadi.med.co' },
+      'alejandro.morales@sadi.med.co': { id: 'd39515b8-39cb-41e7-b1f8-ceb5fa778371', name: 'Dr. Alejandro Morales Restrepo', email: 'alejandro.morales@sadi.med.co' },
+      'valentina.gomez@sadi.med.co': { id: 'd0200000-0000-0000-0000-000000000002', name: 'Dra. Valentina Gómez Salazar', email: 'valentina.gomez@sadi.med.co' },
+      'daniel.vargas@sadi.med.co': { id: 'd0300000-0000-0000-0000-000000000003', name: 'Dr. Daniel Felipe Vargas Ruiz', email: 'daniel.vargas@sadi.med.co' }
+    };
+
+    const assignedDoc = docInfoMap[assignedEmail] || docInfoMap['alejandro.morales@sadi.med.co'];
+
+    return {
+      ...p,
+      id: p.patient_id || p.id,
+      nombre: p.name || p.nombre,
+      documento: p.document || p.documento,
+      tipo_documento: p.tipo_documento || 'CC',
+      telefono: p.phone || p.telefono,
+      fecha_nacimiento: birthdate,
+      curso_vida: curso,
+      doctor_asignado_id: p.doctor_id || assignedDoc.id,
+      doctor_nombre: p.doctor_name || assignedDoc.name,
+      doctor_email: p.doctor_email || assignedDoc.email,
+      dispositivos_caseros: Array.isArray(p.dispositivos_caseros) && p.dispositivos_caseros.length > 0
+        ? p.dispositivos_caseros
+        : (p.program?.toLowerCase().includes('hipertension')
+          ? ['Tensiómetro Digital de Brazo']
+          : p.program?.toLowerCase().includes('asma')
+          ? ['Flujómetro Digital']
+          : ['Equipo de Telemonitoreo 3280']),
+      notas_clinicas: p.program ? `Programa activo: ${p.program}. Seguimiento Res. 3280.` : 'Seguimiento por curso de vida Res. 3280.',
+      regimen: 'Contributivo',
+      eps: p.eps || 'EPS SADI Salud'
+    };
+  },
+
+  // Obtener lista COMPLETA (100%, sin corte en 1,000) por lotes keyset
+  async getPatients(hospitalId = null) {
+    try {
+      const targetHospitalId = hospitalId || (() => {
+        try {
+          const stored = JSON.parse(localStorage.getItem('sadi_user') || '{}');
+          return stored?.hospitalId || stored?.hospital_id || null;
+        } catch {
+          return null;
+        }
+      })();
+
+      let cursor = null;
+      let hasMore = true;
+      const allMapped = [];
+      while (hasMore) {
+        const { data: batchRes, error } = await runWithSupabaseAuthRecovery(
+          supabase,
+          () => supabase.rpc('get_patients_compact_batch', {
+            p_hospital_id: targetHospitalId,
+            p_last_id: cursor,
+            p_batch_size: 5000,
+          }),
+          25000,
+          'Tiempo de espera agotado al consultar pacientes completos'
+        );
+        if (error || !batchRes) break;
+        const rows = Array.isArray(batchRes.rows) ? batchRes.rows : [];
+        for (let i = 0; i < rows.length; i++) {
+          allMapped.push(this._mapTelePatientRow(rows[i]));
+        }
+        hasMore = Boolean(batchRes.has_more && batchRes.next_cursor);
+        cursor = batchRes.next_cursor || null;
+        if (rows.length === 0) break;
+      }
+      if (allMapped.length > 0) return allMapped;
     } catch (e) {
       // Fallback
     }
@@ -1266,10 +1295,23 @@ export const telemonitoringService = {
     return SEED_PATIENTS_3280;
   },
 
-  // Obtener un paciente específico por ID
+  // Obtener un paciente específico por ID directo en BD (O(1))
   async getPatientById(patientId) {
-    const list = await this.getPatients();
-    return list.find(p => p.id === patientId || p.patient_id === patientId) || list[0];
+    if (patientId) {
+      try {
+        const { data, error } = await supabase
+          .from('patients')
+          .select('*')
+          .eq('patient_id', patientId)
+          .maybeSingle();
+        if (!error && data) return this._mapTelePatientRow(data);
+      } catch {
+        // continuar
+      }
+    }
+    const { data: firstRows } = await supabase.from('patients').select('*').limit(1);
+    if (firstRows && firstRows.length > 0) return this._mapTelePatientRow(firstRows[0]);
+    return SEED_PATIENTS_3280[0];
   },
 
   // Obtener mediciones de un paciente o de todos

@@ -7,6 +7,9 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { telemonitoringService, SEED_PATIENTS_3280 } from '@/services/telemonitoringService';
+import { patientService } from '@/services/patientService';
+import { staffService } from '@/services/staffService';
+import { supabase } from '@/lib/supabase';
 import { HomeDeviceSimulatorModal } from '@/components/telemonitoring/HomeDeviceSimulatorModal';
 import { Patient360Modal } from '@/components/telemonitoring/Patient360Modal';
 import { AIEvidenceModal } from '@/components/telemonitoring/AIEvidenceModal';
@@ -19,9 +22,12 @@ const TelemonitoringDashboardPage = () => {
   const { user } = useAuth();
   const [alerts, setAlerts] = useState([]);
   const [patients, setPatients] = useState([]);
+  const [alertPatientsMap, setAlertPatientsMap] = useState({});
+  const [totalMonitoredCount, setTotalMonitoredCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filterSeverity, setFilterSeverity] = useState('todas');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Modales
   const [showSimulator, setShowSimulator] = useState(false);
@@ -30,32 +36,86 @@ const TelemonitoringDashboardPage = () => {
   const [selectedAlertToIntervene, setSelectedAlertToIntervene] = useState(null);
 
   useEffect(() => {
-    loadData();
-    // Polling ligero para actualizar alertas cada 15 segundos si se generan nuevas
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    loadData(patients.length === 0);
+    // Polling ligero para actualizar alertas cada 15 segundos sin descargar 142k pacientes
     const interval = setInterval(() => {
       loadData(false);
     }, 15000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, debouncedSearch]);
 
   const loadData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const [alertsData, patientsData] = await Promise.all([
-        telemonitoringService.getAlerts(),
-        telemonitoringService.getPatients()
-      ]);
+      const hospId = user?.hospitalId || user?.hospital_id || null;
+      const alertsData = await telemonitoringService.getAlerts();
+      const alertIds = [...new Set((alertsData || []).map(a => a.patient_id).filter(Boolean))].slice(0, 100);
+
+      let pageRows = [];
+      let totalFound = 0;
 
       if (user?.role === 'doctor') {
-        const myPatients = (patientsData || []).filter(p => isPatientAssignedToDoctor(p, user));
-        const myPatientIds = myPatients.map(p => p.patient_id || p.id);
-        const myAlerts = (alertsData || []).filter(a => myPatientIds.includes(a.patient_id));
+        const docRes = await staffService.getAssignedPatientsPaginated({
+          doctorId: user?.id || user?.doctor_id,
+          cursos: Array.isArray(user?.cursos_vida_asignados) ? user.cursos_vida_asignados : [],
+          hospitalId: hospId,
+          search: debouncedSearch,
+          mode: 'scope',
+          page: 1,
+          pageSize: 48,
+        });
+        pageRows = (docRes?.data || []).map((p) => telemonitoringService._mapTelePatientRow(p));
+        totalFound = Number(docRes?.totalCount || docRes?.total || pageRows.length);
+      } else {
+        const [pageRes, statsRes] = await Promise.all([
+          patientService.getPaginated({
+            hospitalId: hospId,
+            search: debouncedSearch,
+            page: 1,
+            pageSize: 48,
+          }),
+          staffService.getAssignmentStats(hospId).catch(() => null),
+        ]);
+        pageRows = (pageRes?.data || []).map((p) => telemonitoringService._mapTelePatientRow(p));
+        totalFound = Number(statsRes?.totalPatients || pageRes?.totalCount || pageRes?.total || pageRows.length);
+      }
 
-        setPatients(myPatients);
+      const mapById = {};
+      pageRows.forEach((p) => {
+        if (p?.patient_id) mapById[p.patient_id] = p;
+        if (p?.id) mapById[p.id] = p;
+      });
+
+      const missingIds = alertIds.filter(id => !mapById[id]);
+      if (missingIds.length > 0) {
+        const { data: extraRows } = await supabase
+          .from('patients')
+          .select('*')
+          .in('patient_id', missingIds);
+        (extraRows || []).forEach((row) => {
+          const mapped = telemonitoringService._mapTelePatientRow(row);
+          if (mapped?.patient_id) mapById[mapped.patient_id] = mapped;
+          if (mapped?.id) mapById[mapped.id] = mapped;
+        });
+      }
+
+      setAlertPatientsMap(mapById);
+      setTotalMonitoredCount(totalFound);
+      setPatients(pageRows);
+
+      if (user?.role === 'doctor') {
+        const myAlerts = (alertsData || []).filter(a => {
+          const pat = mapById[a.patient_id];
+          return pat ? isPatientAssignedToDoctor(pat, user) : false;
+        });
         setAlerts(myAlerts);
       } else {
         setAlerts(alertsData || []);
-        setPatients(patientsData || []);
       }
     } catch (e) {
       console.error('Error cargando telemonitoreo:', e);
@@ -83,7 +143,7 @@ const TelemonitoringDashboardPage = () => {
     if (filterSeverity !== 'todas' && a.severidad !== filterSeverity) return false;
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      const patient = patients.find(p => p.patient_id === a.patient_id);
+      const patient = alertPatientsMap[a.patient_id] || patients.find(p => p.patient_id === a.patient_id);
       const name = (patient?.nombre || '').toLowerCase();
       const title = (a.titulo || '').toLowerCase();
       return name.includes(term) || title.includes(term);
@@ -143,7 +203,7 @@ const TelemonitoringDashboardPage = () => {
           <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-sm flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pacientes Monitoreados</span>
-              <div className="text-2xl font-black text-gray-900 mt-1">{patients.length}</div>
+              <div className="text-2xl font-black text-gray-900 mt-1">{totalMonitoredCount.toLocaleString('es-CO')}</div>
               <span className="text-[11px] font-semibold text-emerald-600 mt-1 block">
                 Dispositivos caseros vinculados
               </span>
@@ -268,7 +328,7 @@ const TelemonitoringDashboardPage = () => {
                   </tr>
                 ) : (
                   filteredAlerts.map((alert) => {
-                    const patient = patients.find(p => p.patient_id === alert.patient_id) || SEED_PATIENTS_3280[0];
+                    const patient = alertPatientsMap[alert.patient_id] || patients.find(p => p.patient_id === alert.patient_id) || SEED_PATIENTS_3280[0];
                     const isCritical = alert.severidad === 'critica_roja';
                     const isUrgent = alert.severidad === 'urgente_naranja';
                     const isIntervened = alert.estado === 'intervenida_enfermeria';
@@ -405,7 +465,7 @@ const TelemonitoringDashboardPage = () => {
               <p className="text-xs text-gray-500">Equipos de medición asignados y conectados a la plataforma SADI.</p>
             </div>
             <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-              {patients.length} Pacientes en Seguimiento
+              {totalMonitoredCount.toLocaleString('es-CO')} Pacientes en Seguimiento ({patients.length} en vista)
             </span>
           </div>
 

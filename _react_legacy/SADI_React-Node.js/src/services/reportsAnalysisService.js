@@ -70,20 +70,28 @@ const parseChannelCounts = (raw) => {
 export const reportsAnalysisService = {
   async getPatientsFromDB(hospitalId) {
     try {
-      let query = supabase
-        .from('patients')
-        .select('patient_id, hospital_id, name, document, phone, email, birthdate, sex, address, city, program, zona, barrio, comuna, centro_poblado, corregimiento, vereda, grupo_riesgo, conteo_canales');
-
-      if (hospitalId) {
-        query = query.eq('hospital_id', hospitalId);
+      const allRows = [];
+      let cursor = null;
+      let hasMore = true;
+      while (hasMore) {
+        const { data: batchRes, error } = await supabase.rpc('get_patients_compact_batch', {
+          p_hospital_id: hospitalId || null,
+          p_last_id: cursor,
+          p_batch_size: 5000,
+        });
+        if (error || !batchRes) {
+          console.warn('Error consultando pacientes de Supabase:', error);
+          break;
+        }
+        const rows = Array.isArray(batchRes.rows) ? batchRes.rows : [];
+        for (let i = 0; i < rows.length; i++) {
+          allRows.push(rows[i]);
+        }
+        hasMore = Boolean(batchRes.has_more && batchRes.next_cursor);
+        cursor = batchRes.next_cursor || null;
+        if (rows.length === 0) break;
       }
-
-      const { data, error } = await query;
-      if (error) {
-        console.warn('Error consultando pacientes de Supabase:', error);
-        return [];
-      }
-      return data || [];
+      return allRows;
     } catch (e) {
       console.warn('Excepción consultando pacientes:', e);
       return [];

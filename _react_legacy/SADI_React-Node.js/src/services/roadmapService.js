@@ -39,21 +39,37 @@ export const DEFAULT_HOSPITAL_ID = 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
 
 export const roadmapService = {
   /**
-   * Obtiene todos los pacientes del hospital para el roadmap
+   * Obtiene todos los pacientes del hospital para el roadmap (sin tope de 1,000 filas)
    */
   async getHospitalPatients(hospitalId = DEFAULT_HOSPITAL_ID) {
     try {
       const targetHospId = hospitalId || DEFAULT_HOSPITAL_ID;
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*')
-        .eq('hospital_id', targetHospId)
-        .order('name', { ascending: true });
+      const allRows = [];
+      let cursor = null;
+      let hasMore = true;
 
-      if (error) {
-        console.warn('Error obteniendo pacientes en Supabase:', error);
+      while (hasMore) {
+        const { data: batchRes, error } = await supabase.rpc('get_patients_compact_batch', {
+          p_hospital_id: targetHospId,
+          p_last_id: cursor,
+          p_batch_size: 5000,
+        });
+
+        if (error || !batchRes) {
+          console.warn('Error obteniendo pacientes en Supabase:', error);
+          break;
+        }
+
+        const rows = Array.isArray(batchRes.rows) ? batchRes.rows : [];
+        for (let i = 0; i < rows.length; i++) {
+          allRows.push(rows[i]);
+        }
+        hasMore = Boolean(batchRes.has_more && batchRes.next_cursor);
+        cursor = batchRes.next_cursor || null;
+        if (rows.length === 0) break;
       }
-      return data || [];
+
+      return allRows;
     } catch (e) {
       console.error('Error en getHospitalPatients:', e);
       return [];
@@ -354,11 +370,13 @@ export const roadmapService = {
       return a.slotId.localeCompare(b.slotId);
     });
 
-    // 5. Persistir en localStorage
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(roadmapItems));
-    } catch (e) {
-      console.warn('No se pudo persistir en localStorage:', e);
+    // 5. Persistir en localStorage solo para cohortes medianas (< 2,000) para evitar QuotaExceededError
+    if (roadmapItems.length <= 2000) {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(roadmapItems));
+      } catch (e) {
+        console.warn('No se pudo persistir en localStorage:', e);
+      }
     }
 
     return roadmapItems;

@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { patientService } from '@/services/patientService';
 import { segmentService } from '@/services/segmentService';
+import { staffService } from '@/services/staffService';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +35,8 @@ const SegmentationPage = () => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedSegment, setSelectedSegment] = useState(null);
-  const [patients, setPatients] = useState([]);
+  const [totalPatientsAvailable, setTotalPatientsAvailable] = useState(0);
+  const [segmentCounts, setSegmentCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -108,39 +110,24 @@ const SegmentationPage = () => {
 
   const loadPatients = async () => {
     try {
-      const result = await patientService.getAll();
-      if (result.success && result.data) {
-        setPatients(result.data);
+      const hospitalIdForQuery = user?.role === 'super_admin' ? null : user?.hospitalId;
+      const [statsRes, segCountsRes] = await Promise.all([
+        staffService.getAssignmentStats(hospitalIdForQuery),
+        segmentService.evaluateAllCounts(hospitalIdForQuery),
+      ]);
+      if (statsRes?.success) {
+        setTotalPatientsAvailable(Number(statsRes.totalPatients || 0));
+      }
+      if (segCountsRes?.success && segCountsRes.data) {
+        setSegmentCounts(segCountsRes.data);
       }
     } catch (error) {
-      console.error('Error loading patients:', error);
+      console.error('Error loading segmentation stats:', error);
     }
   };
 
   const calculateSegmentSize = (segment) => {
-    const filtered = patients.filter(p => {
-      let matches = true;
-      
-      if (segment.edadMin && p.edad < parseInt(segment.edadMin)) matches = false;
-      if (segment.edadMax && p.edad > parseInt(segment.edadMax)) matches = false;
-      if (segment.sexo !== 'Todos' && p.sexo !== segment.sexo) matches = false;
-      
-      if (segment.ciudad) {
-        const ciudadSegmento = segment.ciudad.toLowerCase().trim();
-        const ciudadPaciente = (p.ciudad || '').toLowerCase().trim();
-        if (ciudadPaciente !== ciudadSegmento) matches = false;
-      }
-      
-      if (segment.programa) {
-        const programaSegmento = segment.programa.toLowerCase().trim();
-        const programaPaciente = (p.programa || '').toLowerCase().trim();
-        if (programaPaciente !== programaSegmento) matches = false;
-      }
-      
-      return matches;
-    });
-
-    return filtered.length;
+    return Number(segmentCounts[segment.id] ?? 0).toLocaleString('es-CO');
   };
 
   const handleCreateSegment = async (e) => {
@@ -283,7 +270,7 @@ const SegmentationPage = () => {
             <h1 className="text-3xl font-bold text-gray-900">Segmentación</h1>
             <p className="text-gray-500 mt-1">
               Crea y gestiona filtros personalizados para tus campañas 
-              ({patients.length} pacientes disponibles)
+              ({totalPatientsAvailable.toLocaleString('es-CO')} pacientes disponibles)
             </p>
           </div>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>

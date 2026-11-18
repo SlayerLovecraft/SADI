@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { telemonitoringService } from '@/services/telemonitoringService';
+import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from '@/services/rias3280Catalog';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
@@ -40,6 +41,8 @@ export default function Rias3280ManagementPage() {
   const [activeTab, setActiveTab] = useState('lista_mensual'); // 'lista_mensual' | 'disparo_individual' | 'logs'
   
   const [patients, setPatients] = useState([]);
+  const [patientSearchQuery, setPatientSearchQuery] = useState('');
+  const [debouncedPatientQuery, setDebouncedPatientQuery] = useState('');
   const [realCohortTotal, setRealCohortTotal] = useState(0);
   const [selectedCourseFilter, setSelectedCourseFilter] = useState('todos');
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,6 +58,11 @@ export default function Rias3280ManagementPage() {
   const [showLogModal, setShowLogModal] = useState(false);
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedPatientQuery(patientSearchQuery), 300);
+    return () => clearTimeout(t);
+  }, [patientSearchQuery]);
+
+  useEffect(() => {
     async function init() {
       const statsPromise = staffService.getAssignmentStats(user?.hospitalId).catch(() => null);
       let list = [];
@@ -63,13 +71,29 @@ export default function Rias3280ManagementPage() {
           doctorId: user?.doctor_id || user?.id,
           cursos: doctorAccess.keys,
           hospitalId: user?.hospitalId,
+          search: debouncedPatientQuery,
           mode: 'scope',
           page: 1,
-          pageSize: 100,
+          pageSize: 200,
         }).catch(() => ({ data: [], totalCount: 0 }));
         list = docRes?.data || [];
       } else {
-        list = await telemonitoringService.getPatients();
+        const pageRes = await patientService.getPaginated({
+          hospitalId: user?.hospitalId || null,
+          search: debouncedPatientQuery,
+          page: 1,
+          pageSize: 200,
+        }).catch(() => ({ data: [], totalCount: 0 }));
+        list = (pageRes?.data || []).map((p) => ({
+          ...p,
+          id: p.patient_id || p.id,
+          nombre: p.nombre || p.name,
+          documento: p.cc || p.documento || p.document,
+          tipo_documento: p.tipo_documento || 'CC',
+          telefono: p.telefono || p.phone,
+          fecha_nacimiento: p.fechaNacimiento || p.birthdate,
+          curso_vida: p.curso_vida_key || p.curso_vida || 'adultez',
+        }));
       }
       const statsRes = await statsPromise;
       if (statsRes?.success) {
@@ -83,13 +107,15 @@ export default function Rias3280ManagementPage() {
         setRealCohortTotal(list.length);
       }
       setPatients(list);
-      if (list.length > 0) {
+      if (list.length > 0 && !selectedPatient) {
+        setSelectedPatient(list[0]);
+      } else if (debouncedPatientQuery && list.length > 0) {
         setSelectedPatient(list[0]);
       }
-      loadLogs();
+      if (!debouncedPatientQuery) loadLogs();
     }
     init();
-  }, [user]);
+  }, [user, debouncedPatientQuery]);
 
   const loadLogs = async () => {
     setLoadingLogs(true);
@@ -511,8 +537,15 @@ export default function Rias3280ManagementPage() {
                     <div>
                       <label className="block text-xs font-bold text-gray-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
                         <User className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                        Paciente Destinatario (Datos Reales):
+                        Paciente Destinatario ({(realCohortTotal || visiblePatients.length).toLocaleString('es-CO')} en BD):
                       </label>
+                      <input
+                        type="text"
+                        placeholder="Buscar en toda la BD por nombre, CC o teléfono..."
+                        value={patientSearchQuery}
+                        onChange={(e) => setPatientSearchQuery(e.target.value)}
+                        className="w-full mb-1.5 px-3 py-1.5 text-xs rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
                       <select
                         value={selectedPatient?.id || ''}
                         onChange={(e) => {

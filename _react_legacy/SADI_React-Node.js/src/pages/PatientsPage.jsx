@@ -899,6 +899,8 @@ const PatientsPage = () => {
                 <option value={25}>25 / pág.</option>
                 <option value={50}>50 / pág.</option>
                 <option value={100}>100 / pág.</option>
+                <option value={250}>250 / pág.</option>
+                <option value={500}>500 / pág.</option>
               </select>
             </div>
 

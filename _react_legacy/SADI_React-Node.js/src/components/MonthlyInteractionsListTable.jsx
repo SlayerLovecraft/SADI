@@ -31,9 +31,20 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
   const [currentMonth, setCurrentMonth] = useState(11); // Noviembre por defecto
 
   const [interactions, setInteractions] = useState([]);
+  const [totalCohort, setTotalCohort] = useState(0);
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [serverOptions, setServerOptions] = useState({
+    comunas: [],
+    barriosPorComuna: {},
+    centrosPoblados: [],
+    corregimientos: [],
+    veredas: [],
+    conteoPorTipo: { Activo: 0, Nuevo: 0, Inactivo: 0 },
+  });
   const [loading, setLoading] = useState(true);
   const [secondsRemaining, setSecondsRemaining] = useState(60);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
   // Estados de Filtros según especificación:
   // 1. Ubicación (Urbano: Comuna, Barrio / Rural: Centro Poblado, Corregimiento, Vereda)
@@ -50,23 +61,63 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
   // 3. Tipo de Usuario (Activos, Nuevos, Inactivos)
   const [filterTipoUsuario, setFilterTipoUsuario] = useState('todos');
 
-  // Paginación
+  // Paginación servidor (100% sobre 142k+)
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 12;
+  const [itemsPerPage, setItemsPerPage] = useState(25);
 
   // Modal de Detalle / Llamada
   const [selectedItemForModal, setSelectedItemForModal] = useState(null);
   const [callingId, setCallingId] = useState(null);
 
-  // Carga inicial y por cambio de mes/año
+  const doctorCursosParam = useMemo(() => {
+    if (user?.role !== 'doctor') return null;
+    const raw = normalizeCursosArray(user?.cursos_vida_asignados);
+    return raw.map((c) => (c === 'materno_perinatal' ? 'preventivo_mujer' : c));
+  }, [user]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setCurrentPage(1);
+      setDebouncedSearch(searchTerm);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    let active = true;
+    demanda3280Service.getFilterOptions(user?.hospitalId || user?.hospital_id || null, doctorCursosParam)
+      .then((opts) => {
+        if (!active) return;
+        setTotalCohort(Number(opts.totalCohort || 0));
+        setServerOptions(opts);
+      })
+      .catch(() => null);
+    return () => { active = false; };
+  }, [user, doctorCursosParam]);
+
+  // Carga paginada real (100% de pacientes sin límite 1,000)
   const fetchInteractions = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const data = await demanda3280Service.getMonthlyInteractionsList({
+      const res = await demanda3280Service.getMonthlyInteractionsPage({
         year: currentYear,
-        month: currentMonth
+        month: currentMonth,
+        hospitalId: user?.hospitalId || user?.hospital_id || null,
+        cursos: doctorCursosParam,
+        zona: filterZona,
+        comuna: filterComuna,
+        barrio: filterBarrio,
+        centroPoblado: filterCentroPoblado,
+        corregimiento: filterCorregimiento,
+        vereda: filterVereda,
+        grupoRiesgo: filterGrupoRiesgo,
+        tipoUsuario: filterTipoUsuario,
+        search: debouncedSearch,
+        page: currentPage,
+        pageSize: itemsPerPage,
       });
-      setInteractions(data);
+      setInteractions(res.items || []);
+      setFilteredCount(Number(res.filteredCount || 0));
     } catch (e) {
       console.error('Error cargando interacciones mensuales:', e);
       if (!silent) {
@@ -84,7 +135,23 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
   useEffect(() => {
     fetchInteractions();
-  }, [currentYear, currentMonth]);
+  }, [
+    user,
+    doctorCursosParam,
+    currentYear,
+    currentMonth,
+    filterZona,
+    filterComuna,
+    filterBarrio,
+    filterCentroPoblado,
+    filterCorregimiento,
+    filterVereda,
+    filterGrupoRiesgo,
+    filterTipoUsuario,
+    debouncedSearch,
+    currentPage,
+    itemsPerPage,
+  ]);
 
   // Actualización en TIEMPO REAL cada 60 segundos
   useEffect(() => {
@@ -99,12 +166,25 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentYear, currentMonth]);
+  }, [
+    user,
+    doctorCursosParam,
+    currentYear,
+    currentMonth,
+    filterZona,
+    filterComuna,
+    filterBarrio,
+    filterCentroPoblado,
+    filterCorregimiento,
+    filterVereda,
+    filterGrupoRiesgo,
+    filterTipoUsuario,
+    debouncedSearch,
+    currentPage,
+    itemsPerPage,
+  ]);
 
-  // Extraer opciones dinámicas para los selects
-  const filterOptions = useMemo(() => {
-    return demanda3280Service.extractFilterOptions(interactions);
-  }, [interactions]);
+  const filterOptions = serverOptions;
 
   // Reset de sub-filtros al cambiar zona
   const handleZonaChange = (newZona) => {
@@ -127,66 +207,13 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
     setFilterGrupoRiesgo('todos');
     setFilterTipoUsuario('todos');
     setSearchTerm('');
+    setDebouncedSearch('');
     setCurrentPage(1);
   };
 
-  // Filtrado de la lista
-  const filteredInteractions = useMemo(() => {
-    let list = demanda3280Service.filterInteractions(interactions, {
-      zona: filterZona,
-      comuna: filterComuna,
-      barrio: filterBarrio,
-      centroPoblado: filterCentroPoblado,
-      corregimiento: filterCorregimiento,
-      vereda: filterVereda,
-      grupoRiesgo: filterGrupoRiesgo,
-      tipoUsuario: filterTipoUsuario
-    });
-
-    // Restricción por rol de Enfermera / Personal Clínico:
-    // Solo ve los pacientes correspondientes a los Cursos de Vida asignados por el Hospital
-    if (user?.role === 'doctor') {
-      const cursos = normalizeCursosArray(user?.cursos_vida_asignados);
-      if (!cursos.includes('todos')) {
-        list = list.filter(i => {
-          const cv = i.cursoVida === 'materno_perinatal' ? 'preventivo_mujer' : i.cursoVida;
-          return cursos.includes(cv);
-        });
-      }
-    }
-
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      list = list.filter(i => 
-        i.pacienteNombre.toLowerCase().includes(term) ||
-        i.pacienteDoc.toLowerCase().includes(term) ||
-        (i.historiaClinica && i.historiaClinica.toLowerCase().includes(term)) ||
-        i.protocoloNombre.toLowerCase().includes(term) ||
-        i.telefono.includes(term)
-      );
-    }
-
-    return list;
-  }, [
-    interactions,
-    filterZona,
-    filterComuna,
-    filterBarrio,
-    filterCentroPoblado,
-    filterCorregimiento,
-    filterVereda,
-    filterGrupoRiesgo,
-    filterTipoUsuario,
-    searchTerm,
-    user
-  ]);
-
-  // Paginación
-  const totalPages = Math.max(1, Math.ceil(filteredInteractions.length / itemsPerPage));
-  const paginatedInteractions = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredInteractions.slice(start, start + itemsPerPage);
-  }, [filteredInteractions, currentPage]);
+  // Paginación servidor (100% sobre 142k+ pacientes en BD)
+  const totalPages = Math.max(1, Math.ceil(filteredCount / itemsPerPage));
+  const paginatedInteractions = interactions;
 
   // Disparar llamada inmediata por Puerto 22 con validación de permisos
   const handleDirectCall = async (item) => {
@@ -323,7 +350,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
             <Filter className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>Filtros Dinámicos del Mes</span>
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-              {filteredInteractions.length} de {interactions.length} programadas
+              {filteredCount.toLocaleString('es-CO')} de {totalCohort.toLocaleString('es-CO')} programadas (100% BD)
             </span>
           </div>
 
@@ -493,16 +520,16 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
               className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold focus:ring-2 focus:ring-emerald-500"
             >
               <option value="todos">
-                Todos ({interactions.length})
+                Todos ({totalCohort.toLocaleString('es-CO')})
               </option>
               <option value="Activo">
-                🟢 Activos ({filterOptions.conteoPorTipo.Activo || 0}) • &gt;2 visitas HC o &gt;1 año
+                🟢 Activos ({(filterOptions.conteoPorTipo.Activo || 0).toLocaleString('es-CO')}) • &gt;2 visitas HC o &gt;1 año
               </option>
               <option value="Nuevo">
-                🔵 Nuevos ({filterOptions.conteoPorTipo.Nuevo || 0}) • &lt;1 mes o 1 visita HC
+                🔵 Nuevos ({(filterOptions.conteoPorTipo.Nuevo || 0).toLocaleString('es-CO')}) • &lt;1 mes o 1 visita HC
               </option>
               <option value="Inactivo">
-                🟠 Inactivos ({filterOptions.conteoPorTipo.Inactivo || 0}) • &gt;6 meses sin visitas
+                🟠 Inactivos ({(filterOptions.conteoPorTipo.Inactivo || 0).toLocaleString('es-CO')}) • &gt;6 meses sin visitas
               </option>
             </select>
 
@@ -510,19 +537,19 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
               <div className="flex items-center justify-between">
                 <span><strong className="dark:text-slate-200">Activo:</strong> &gt;2 visitas o &gt;1 año en BD</span>
                 <span className="font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded">
-                  {filterOptions.conteoPorTipo.Activo || 0}
+                  {(filterOptions.conteoPorTipo.Activo || 0).toLocaleString('es-CO')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span><strong className="dark:text-slate-200">Nuevo:</strong> &lt;1 mes o 1 visita en HC</span>
                 <span className="font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.2 rounded">
-                  {filterOptions.conteoPorTipo.Nuevo || 0}
+                  {(filterOptions.conteoPorTipo.Nuevo || 0).toLocaleString('es-CO')}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span><strong className="dark:text-slate-200">Inactivo:</strong> &gt;6 meses sin visitas</span>
                 <span className="font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.2 rounded">
-                  {filterOptions.conteoPorTipo.Inactivo || 0}
+                  {(filterOptions.conteoPorTipo.Inactivo || 0).toLocaleString('es-CO')}
                 </span>
               </div>
             </div>
@@ -730,8 +757,21 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
       {/* PAGINACIÓN */}
       {/* ========================================================================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-gray-500 dark:text-slate-400 pt-2 border-t border-gray-100 dark:border-slate-800">
-        <div>
-          Mostrando página <strong className="dark:text-slate-200">{currentPage}</strong> de <strong className="dark:text-slate-200">{totalPages}</strong> ({filteredInteractions.length} interacciones encontradas)
+        <div className="flex items-center gap-2 flex-wrap">
+          <span>
+            Mostrando página <strong className="dark:text-slate-200">{currentPage.toLocaleString('es-CO')}</strong> de <strong className="dark:text-slate-200">{totalPages.toLocaleString('es-CO')}</strong> ({filteredCount.toLocaleString('es-CO')} interacciones reales en BD)
+          </span>
+          <select
+            aria-label="Filas por página Demanda 3280"
+            value={itemsPerPage}
+            onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+            className="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 font-semibold"
+          >
+            <option value={25}>25 / pág.</option>
+            <option value={50}>50 / pág.</option>
+            <option value={100}>100 / pág.</option>
+            <option value={250}>250 / pág.</option>
+          </select>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -746,7 +786,8 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
           </Button>
 
           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            const pageNum = i + 1;
+            const pageNum = Math.max(1, currentPage - 2) + i;
+            if (pageNum > totalPages) return null;
             return (
               <Button
                 key={pageNum}

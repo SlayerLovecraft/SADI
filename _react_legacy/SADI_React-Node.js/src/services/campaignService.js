@@ -108,19 +108,8 @@ export const campaignService = {
         segmentId = defaultSegments?.[0]?.id || '30000000-0000-0000-0000-000000000001';
       }
 
-      // Obtener pacientes para calcular destinatarios
-      let patientsData = [];
-      if (segmentId) {
-        const res = await segmentService.getPatientsInSegment(segmentId);
-        patientsData = res.data || [];
-      } else {
-        const { data: allP } = await supabase.from('patients').select('*').eq('hospital_id', campaignData.hospitalId);
-        patientsData = allP || [];
-      }
-      
-      let destinatarios = patientsData?.length || 0;
-
-      // Calcular participantes por demografía
+      // Calcular destinatarios y demografía exacta en PostgreSQL sobre el 100% de pacientes (142k+)
+      let destinatarios = 0;
       const participantes = {
         hombres: 0,
         mujeres: 0,
@@ -133,27 +122,27 @@ export const campaignService = {
         contexto_agente: campaignData.contextoAgente || ''
       };
 
-      if (patientsData && patientsData.length > 0) {
-        patientsData.forEach(patient => {
-          let edad = patient.edad || 0;
-          if (!edad && (patient.birthdate || patient.fecha_nacimiento)) {
-            const birthDate = new Date(patient.birthdate || patient.fecha_nacimiento);
-            const today = new Date();
-            edad = today.getFullYear() - birthDate.getFullYear();
-          }
-          
-          const sexo = (patient.sex || patient.sexo || '').toLowerCase();
-          const esHombre = ['masculino', 'm', 'male', 'hombre'].includes(sexo);
-          const esMujer = ['femenino', 'f', 'female', 'mujer'].includes(sexo);
-          
-          if (esHombre) {
-            if (edad < 18) participantes.ninos++;
-            else participantes.hombres++;
-          } else if (esMujer) {
-            if (edad < 18) participantes.ninas++;
-            else participantes.mujeres++;
-          }
+      if (segmentId) {
+        const res = await segmentService.getPatientsInSegmentPaginated(segmentId, 1, 1);
+        if (res.success) {
+          destinatarios = Number(res.totalCount || 0);
+          participantes.hombres = Number(res.demografia?.hombres || 0);
+          participantes.mujeres = Number(res.demografia?.mujeres || 0);
+          participantes.ninos = Number(res.demografia?.ninos || 0);
+          participantes.ninas = Number(res.demografia?.ninas || 0);
+        }
+      } else {
+        const { data: demoRows } = await supabase.rpc('get_dashboard_patient_demography', {
+          p_hospital_id: campaignData.hospitalId || null,
         });
+        const row = Array.isArray(demoRows) ? demoRows[0] : demoRows;
+        if (row) {
+          destinatarios = Number(row.total_patients || 0);
+          participantes.hombres = Number(row.hombres || 0);
+          participantes.mujeres = Number(row.mujeres || 0);
+          participantes.ninos = Number(row.ninos || 0);
+          participantes.ninas = Number(row.ninas || 0);
+        }
       }
 
       const anio = campaignData.anio ? Number(campaignData.anio) : new Date().getFullYear();

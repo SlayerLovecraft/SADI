@@ -1051,8 +1051,10 @@ const CampaignsPage = () => {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
                 <span className="text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase block">Total en Cola</span>
-                <span className="text-2xl font-black text-gray-900 dark:text-white mt-1 block">{totalPacientes || 56}</span>
-                <span className="text-[10px] text-gray-400 dark:text-slate-500">Distribuidos en 24 tandas</span>
+                <span className="text-2xl font-black text-gray-900 dark:text-white mt-1 block">{totalPacientes.toLocaleString('es-CO')}</span>
+                <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                  Distribuidos en 24 tandas{scheduleData?.totalUniversoBD ? ` • Censo ${Number(scheduleData.totalUniversoBD).toLocaleString('es-CO')} BD` : ''}
+                </span>
               </div>
               <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
                 <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase block">Confirmados (1)</span>

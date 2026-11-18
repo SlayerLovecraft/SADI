@@ -203,198 +203,71 @@ export const segmentService = {
   },
 
   /**
-   * Obtener pacientes que coinciden con un segmento
-   * OPTIMIZADO para la estructura real de la tabla patients
+   * Evalúa los conteos reales de todos los segmentos del hospital sobre el 100% de pacientes (142k+) en Postgres RPC
+   */
+  async evaluateAllCounts(hospitalId = null) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('evaluate_all_segments_counts', {
+          p_hospital_id: hospitalId || null,
+        }),
+        20000,
+        'Tiempo de espera agotado calculando tamaños de segmentos'
+      );
+      if (error) throw error;
+      return { success: true, data: data || {} };
+    } catch (error) {
+      console.warn('Error calculando conteos de segmentos por RPC:', error);
+      return { success: false, error: error?.message, data: {} };
+    }
+  },
+
+  /**
+   * Obtiene página real de pacientes de un segmento + total exacto + demografía en SQL
+   */
+  async getPatientsInSegmentPaginated(segmentId, page = 1, pageSize = 50, search = null) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase.rpc('get_segment_patients_paginated', {
+          p_segment_id: segmentId,
+          p_page: Math.max(1, Number(page) || 1),
+          p_page_size: Math.max(1, Math.min(1000, Number(pageSize) || 50)),
+          p_search: search?.trim() || null,
+        }),
+        20000,
+        'Tiempo de espera agotado consultando pacientes del segmento'
+      );
+      if (error || !data) throw error || new Error('Sin respuesta de get_segment_patients_paginated');
+      return {
+        success: true,
+        totalCount: Number(data.total_count || 0),
+        demografia: data.demografia || { hombres: 0, mujeres: 0, ninos: 0, ninas: 0 },
+        data: Array.isArray(data.rows) ? data.rows : [],
+      };
+    } catch (error) {
+      return { success: false, error: error?.message, totalCount: 0, demografia: { hombres: 0, mujeres: 0, ninos: 0, ninas: 0 }, data: [] };
+    }
+  },
+
+  /**
+   * Obtener TODOS los pacientes que coinciden con un segmento (sin tope de 1,000)
    */
   async getPatientsInSegment(segmentId) {
     try {
-      console.log('👥 Obteniendo pacientes del segmento:', segmentId);
-      
-      // Primero obtener el segmento
-      const { data: segment, error: segmentError } = await supabase
-        .from('segments')
-        .select('*')
-        .eq('id', segmentId)
-        .single();
-
-      if (segmentError) {
-        console.error('❌ Error obteniendo segmento:', segmentError);
-        throw segmentError;
-      }
-
-      console.log('📋 Segmento a filtrar:', segment);
-
-      // Obtener TODOS los pacientes del hospital
-      const runPatients = async () => withTimeout(
-        supabase
-          .from('patients')
-          .select('patient_id, name, document, phone, email, birthdate, sex, city, program, hospital_id')
-          .eq('hospital_id', segment.hospital_id),
-        20000, // Mayor timeout para pacientes
-        'Tiempo de espera agotado al obtener pacientes para segmento'
-      );
-
-      const { data: allPatients, error: patientsError } = await runPatients();
-
-      if (patientsError) {
-        console.error('❌ Error obteniendo pacientes:', patientsError);
-        throw patientsError;
-      }
-
-      console.log('📊 Total pacientes del hospital:', allPatients?.length || 0);
-
-      // Filtrar pacientes en JavaScript según los criterios del segmento
-      let filteredPatients = allPatients || [];
-
-      // FILTRO POR CURSO DE VIDA O EDAD PERSONALIZADA
-      if (segment.curso_vida && segment.curso_vida !== 'todos' && segment.curso_vida !== 'cualquiera') {
-        filteredPatients = filteredPatients.filter(patient => {
-          if (!patient.birthdate) return false;
-          const birthDate = new Date(patient.birthdate);
-          const today = new Date();
-          let years = today.getFullYear() - birthDate.getFullYear();
-          let months = today.getMonth() - birthDate.getMonth();
-          if (months < 0 || (months === 0 && today.getDate() < birthDate.getDate())) years--;
-          const totalMonths = (today.getFullYear() - birthDate.getFullYear()) * 12 + (today.getMonth() - birthDate.getMonth());
-
-          const isGestante = (patient.program || '').toLowerCase().includes('materno') ||
-                             (patient.program || '').toLowerCase().includes('prenatal');
-
-          switch (segment.curso_vida) {
-            case 'primera_infancia':
-              return totalMonths < 72;
-            case 'infancia':
-              return totalMonths >= 72 && totalMonths < 144;
-            case 'adolescencia':
-              return years >= 12 && years <= 17;
-            case 'juventud':
-              return years >= 18 && years <= 28;
-            case 'adultez':
-              return years >= 29 && years <= 59;
-            case 'vejez':
-              return years >= 60;
-            case 'materno_perinatal':
-              return isGestante;
-            default:
-              return true;
-          }
-        });
-      } else if (segment.edad_custom && (segment.edad_custom.anos || segment.edad_custom.meses || segment.edad_custom.dias)) {
-        const targetAnos = Number(segment.edad_custom.anos) || 0;
-        filteredPatients = filteredPatients.filter(patient => {
-          if (!patient.birthdate) return false;
-          const birthDate = new Date(patient.birthdate);
-          const today = new Date();
-          let years = today.getFullYear() - birthDate.getFullYear();
-          if (today.getMonth() < birthDate.getMonth() || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) years--;
-          return years <= targetAnos;
-        });
-      } else if (segment.edad_min !== null || segment.edad_max !== null) {
-        // FILTRO DE EDAD CLÁSICO (calculada desde birthdate)
-        filteredPatients = filteredPatients.filter(patient => {
-          if (!patient.birthdate) return false;
-          
-          // Calcular edad desde birthdate
-          const birthDate = new Date(patient.birthdate);
-          const today = new Date();
-          let edad = today.getFullYear() - birthDate.getFullYear();
-          const monthDiff = today.getMonth() - birthDate.getMonth();
-          
-          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            edad--;
-          }
-
-          // Aplicar filtros de edad
-          if (segment.edad_min !== null && edad < segment.edad_min) return false;
-          if (segment.edad_max !== null && edad > segment.edad_max) return false;
-          
-          return true;
-        });
-        console.log(`🔍 Después de filtro edad (${segment.edad_min}-${segment.edad_max}):`, filteredPatients.length);
-      }
-
-      // FILTRO DE SEXO
-      if (segment.sexo && segment.sexo !== 'Todos') {
-        filteredPatients = filteredPatients.filter(patient => {
-          if (!patient.sex) return false;
-          
-          const sexoNormalizado = patient.sex.toLowerCase().trim();
-          const filtroNormalizado = segment.sexo.toLowerCase().trim();
-          
-          return sexoNormalizado === filtroNormalizado ||
-                 (filtroNormalizado === 'masculino' && sexoNormalizado === 'masculino') ||
-                 (filtroNormalizado === 'femenino' && sexoNormalizado === 'femenino') ||
-                 (filtroNormalizado === 'm' && sexoNormalizado === 'masculino') ||
-                 (filtroNormalizado === 'f' && sexoNormalizado === 'femenino');
-        });
-        console.log(`🔍 Después de filtro sexo (${segment.sexo}):`, filteredPatients.length);
-      }
-
-      // FILTRO DE CIUDAD
-      if (segment.ciudad) {
-        filteredPatients = filteredPatients.filter(patient => {
-          if (!patient.city) return false;
-          return patient.city.toLowerCase().trim() === segment.ciudad.toLowerCase().trim();
-        });
-        console.log(`🔍 Después de filtro ciudad (${segment.ciudad}):`, filteredPatients.length);
-      }
-
-      // FILTRO DE PROGRAMA
-      if (segment.programa) {
-        filteredPatients = filteredPatients.filter(patient => {
-          if (!patient.program) return false;
-          return patient.program.toLowerCase().trim() === segment.programa.toLowerCase().trim();
-        });
-        console.log(`🔍 Después de filtro programa (${segment.programa}):`, filteredPatients.length);
-      }
-
-      console.log('✅ Pacientes filtrados encontrados:', filteredPatients.length);
-      
-      // Agregar campo edad calculado para uso posterior
-      const patientsWithAge = filteredPatients.map(patient => {
-        let edad = null;
-        if (patient.birthdate) {
-          const birthDate = new Date(patient.birthdate);
-          const today = new Date();
-          edad = today.getFullYear() - birthDate.getFullYear();
-          const monthDiff = today.getMonth() - birthDate.getMonth();
-          if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-            edad--;
-          }
+      const first = await this.getPatientsInSegmentPaginated(segmentId, 1, 1000, null);
+      if (!first.success) throw new Error(first.error || 'Error obteniendo pacientes del segmento');
+      const total = first.totalCount;
+      const allRows = [...(first.data || [])];
+      const totalPages = Math.ceil(total / 1000);
+      for (let p = 2; p <= totalPages; p++) {
+        const nextPage = await this.getPatientsInSegmentPaginated(segmentId, p, 1000, null);
+        if (nextPage.success && Array.isArray(nextPage.data)) {
+          allRows.push(...nextPage.data);
         }
-        return { ...patient, edad };
-      });
-
-      return { success: true, data: patientsWithAge };
-
+      }
+      return { success: true, data: allRows, totalCount: total, demografia: first.demografia };
     } catch (error) {
       console.error('💥 Error en getPatientsInSegment:', error);
-      
-      // Fallback: devolver todos los pacientes del hospital
-      try {
-        const { data: segment } = await supabase
-          .from('segments')
-          .select('hospital_id')
-          .eq('id', segmentId)
-          .single();
-
-        if (segment) {
-          const { data: allPatients } = await supabase
-            .from('patients')
-            .select('*')
-            .eq('hospital_id', segment.hospital_id);
-
-          console.warn('⚠️ Devolviendo todos los pacientes del hospital debido a error en filtros');
-          return { 
-            success: true, 
-            data: allPatients || [],
-            warning: 'No se pudieron aplicar todos los filtros del segmento'
-          };
-        }
-      } catch (fallbackError) {
-        console.error('💥 Error en fallback:', fallbackError);
-      }
-
       return { success: false, error: error.message, data: [] };
     }
   }

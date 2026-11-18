@@ -8,11 +8,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { telemonitoringService } from '@/services/telemonitoringService';
+import { patientService } from '@/services/patientService';
+import { staffService } from '@/services/staffService';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function VapiIntegrationPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [patients, setPatients] = useState([]);
+  const [totalPatientsCount, setTotalPatientsCount] = useState(0);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [vapiContext, setVapiContext] = useState(null);
   const [dynamicPrompt, setDynamicPrompt] = useState('');
@@ -27,17 +34,38 @@ export default function VapiIntegrationPage() {
   const [isSimulating, setIsSimulating] = useState(false);
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(patientSearch), 300);
+    return () => clearTimeout(t);
+  }, [patientSearch]);
+
+  useEffect(() => {
     async function load() {
-      const list = await telemonitoringService.getPatients();
+      const hospId = user?.hospitalId || user?.hospital_id || null;
+      const [pageRes, statsRes] = await Promise.all([
+        patientService.getPaginated({ hospitalId: hospId, search: debouncedSearch, page: 1, pageSize: 50 }),
+        debouncedSearch ? Promise.resolve(null) : staffService.getAssignmentStats(hospId).catch(() => null),
+      ]);
+      const list = (pageRes?.data || []).map((p) => ({
+        ...p,
+        id: p.id || p.patient_id,
+        nombre: p.nombre || p.name,
+        documento: p.documento || p.cc || p.numero_documento,
+        tipo_documento: p.tipo_documento || 'CC',
+        curso_vida: p.curso_vida || p.program || 'adultez',
+      }));
       setPatients(list);
-      if (list.length > 0) {
-        // Seleccionar por defecto a Valentina Restrepo (gestante con preeclampsia)
-        const def = list.find(p => p.nombre.includes('Valentina')) || list[0];
+      if (statsRes?.totalPatients) {
+        setTotalPatientsCount(Number(statsRes.totalPatients));
+      } else if (!debouncedSearch && (pageRes?.totalCount || pageRes?.total)) {
+        setTotalPatientsCount(Number(pageRes.totalCount || pageRes.total));
+      }
+      if (list.length > 0 && (!selectedPatientId || debouncedSearch)) {
+        const def = list.find(p => (p.nombre || '').includes('Valentina')) || list[0];
         setSelectedPatientId(def.id);
       }
     }
     load();
-  }, []);
+  }, [debouncedSearch, user]);
 
   useEffect(() => {
     if (!selectedPatientId) return;
@@ -132,12 +160,21 @@ export default function VapiIntegrationPage() {
             <div className="h-10 w-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-sm">
               <User className="h-5 w-5" />
             </div>
-            <div>
-              <p className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Simular llamada para:</p>
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">
+                Simular llamada para ({totalPatientsCount.toLocaleString('es-CO')} en BD):
+              </p>
+              <input
+                type="text"
+                value={patientSearch}
+                onChange={(e) => setPatientSearch(e.target.value)}
+                placeholder="Filtrar nombre o cédula (100% BD)..."
+                className="w-full mb-1 px-2 py-1 text-[11px] rounded-lg border border-indigo-200 bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
               <select
                 value={selectedPatientId}
                 onChange={(e) => setSelectedPatientId(e.target.value)}
-                className="bg-transparent font-bold text-gray-900 text-xs focus:outline-none cursor-pointer pr-4"
+                className="bg-transparent font-bold text-gray-900 text-xs focus:outline-none cursor-pointer pr-4 max-w-[260px]"
               >
                 {patients.map(p => (
                   <option key={p.id} value={p.id}>

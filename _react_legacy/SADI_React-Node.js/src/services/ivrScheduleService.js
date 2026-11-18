@@ -194,29 +194,7 @@ export const ivrScheduleService = {
       }
     }
 
-    // Cargar pacientes de la base de datos
-    let patients = [];
-    try {
-      const { data: dbPatients } = await supabase
-        .from('patients')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (dbPatients && dbPatients.length > 0) {
-        patients = dbPatients;
-      }
-    } catch (e) {
-      console.error('Error cargando pacientes de BD:', e);
-    }
-
-    if (patients.length === 0) {
-      // Fallback a servicio de telemonitoreo
-      patients = await telemonitoringService.getPatients();
-    }
-
-    // Distribución oficial de la Resolución 3280 a lo largo del mes
-    // Regla de Oro Res. 3280: Los pacientes NO se llaman todos el mismo día, sino que
-    // se distribuyen ordenadamente por días hábiles según sus hitos de control de ruta.
+    // Distribución oficial de la Resolución 3280 a lo largo del mes sobre el 100% del censo BD
     const today = new Date();
     const year = today.getFullYear();
     const month = today.getMonth() + 1;
@@ -231,18 +209,54 @@ export const ivrScheduleService = {
       }
     }
 
-    // Filtrar los pacientes que corresponden a la cohorte de la fecha de hoy
-    let scheduledForToday = patients.filter((p, idx) => {
-      const assignedDate = workdays[idx % workdays.length];
-      return assignedDate === todayStr;
-    });
+    const dailyMaxCapacity = IVR_TIME_SLOTS.length * MAX_PATIENTS_PER_BATCH; // 24 tandas × 32 = 768 pacientes/día
+    const workdayPos = Math.max(0, workdays.indexOf(todayStr));
+    let totalUniversoBD = 0;
+    let scheduledForToday = [];
 
-    // Si hoy es domingo o fecha especial, asegurar una cohorte diaria de 2 a 3 pacientes
+    try {
+      const targetHospId = hospitalId || null;
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('get_patients_paginated', {
+        p_hospital_id: targetHospId,
+        p_search: null,
+        p_curso_vida: 'todos',
+        p_doctor_id: null,
+        p_page: 1,
+        p_page_size: dailyMaxCapacity,
+      });
+
+      const firstRows = Array.isArray(rpcRes) ? rpcRes : (Array.isArray(rpcRes?.rows) ? rpcRes.rows : []);
+      if (!rpcErr && firstRows.length > 0) {
+        totalUniversoBD = Number(firstRows[0]?.total_count || rpcRes?.total_count || firstRows.length);
+        const totalPages = Math.max(1, Math.ceil(totalUniversoBD / dailyMaxCapacity));
+        const targetPage = (workdayPos % totalPages) + 1;
+        if (targetPage === 1) {
+          scheduledForToday = firstRows;
+        } else {
+          const { data: pageRes } = await supabase.rpc('get_patients_paginated', {
+            p_hospital_id: targetHospId,
+            p_search: null,
+            p_curso_vida: 'todos',
+            p_doctor_id: null,
+            p_page: targetPage,
+            p_page_size: dailyMaxCapacity,
+          });
+          const pageRows = Array.isArray(pageRes) ? pageRes : (Array.isArray(pageRes?.rows) ? pageRes.rows : []);
+          scheduledForToday = pageRows.length > 0 ? pageRows : firstRows;
+        }
+      }
+    } catch (e) {
+      console.error('Error cargando cohorte diaria de BD (RPC):', e);
+    }
+
     if (scheduledForToday.length === 0) {
-      const dayIdx = (today.getDate() - 1) % workdays.length;
-      scheduledForToday = patients.slice(dayIdx * 2, (dayIdx * 2) + 3);
-      if (scheduledForToday.length === 0) {
-        scheduledForToday = patients.slice(0, 3);
+      try {
+        const allPatients = await telemonitoringService.getPatients();
+        totalUniversoBD = allPatients.length;
+        const offset = (workdayPos * dailyMaxCapacity) % Math.max(1, allPatients.length);
+        scheduledForToday = allPatients.slice(offset, offset + dailyMaxCapacity);
+      } catch (e) {
+        console.error('Fallback telemonitoringService error:', e);
       }
     }
 
@@ -328,12 +342,17 @@ export const ivrScheduleService = {
     const scheduleData = {
       fecha: todayStr,
       hospitalId: hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
+      totalUniversoBD: totalUniversoBD || scheduleItems.length,
       totalPacientes: scheduleItems.length,
       items: scheduleItems,
       updatedAt: new Date().toISOString()
     };
 
-    localStorage.setItem(STORAGE_KEY_SCHEDULE, JSON.stringify(scheduleData));
+    try {
+      localStorage.setItem(STORAGE_KEY_SCHEDULE, JSON.stringify(scheduleData));
+    } catch (e) {
+      console.warn('No se pudo cachear agenda diaria en localStorage:', e);
+    }
     return scheduleData;
   },
 

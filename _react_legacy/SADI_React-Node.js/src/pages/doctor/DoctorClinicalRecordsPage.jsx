@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
+import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 import { 
@@ -29,8 +30,10 @@ export default function DoctorClinicalRecordsPage() {
   const [doctors, setDoctors] = useState(SEED_DOCTORS_3280);
   const [selectedDoctor, setSelectedDoctor] = useState(SEED_DOCTORS_3280[0]);
   const [patients, setPatients] = useState([]);
+  const [totalPatientsCount, setTotalPatientsCount] = useState(0);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientSearch, setPatientSearch] = useState('');
+  const [debouncedPatientSearch, setDebouncedPatientSearch] = useState('');
   
   // Carpetas y archivos
   const [folderSummary, setFolderSummary] = useState({});
@@ -45,7 +48,12 @@ export default function DoctorClinicalRecordsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
-  // Cargar datos iniciales
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPatientSearch(patientSearch), 300);
+    return () => clearTimeout(t);
+  }, [patientSearch]);
+
+  // Cargar datos iniciales y búsqueda en servidor (100% BD)
   useEffect(() => {
     async function init() {
       setLoading(true);
@@ -69,26 +77,49 @@ export default function DoctorClinicalRecordsPage() {
         };
         setSelectedDoctor(currentDoctor);
 
+        const hospId = currentDoctor.hospital_id || user?.hospitalId || user?.hospital_id || null;
         let myPatients = [];
+        let totalFound = 0;
+
         if (user?.role === 'doctor') {
           const docRes = await staffService.getAssignedPatientsPaginated({
             doctorId: currentDoctor.doctor_id || currentDoctor.id,
             cursos: Array.isArray(currentDoctor.cursos_vida_asignados) ? currentDoctor.cursos_vida_asignados : [],
-            hospitalId: currentDoctor.hospital_id || user?.hospitalId || null,
+            hospitalId: hospId,
+            search: debouncedPatientSearch,
             mode: 'scope',
             page: 1,
             pageSize: 100,
           });
           myPatients = docRes?.data || [];
+          totalFound = Number(docRes?.totalCount || docRes?.total || myPatients.length);
         } else {
-          myPatients = await telemonitoringService.getPatients();
+          const [pageRes, statsRes] = await Promise.all([
+            patientService.getPaginated({
+              hospitalId: hospId,
+              search: debouncedPatientSearch,
+              page: 1,
+              pageSize: 100,
+            }),
+            debouncedPatientSearch ? Promise.resolve(null) : staffService.getAssignmentStats(hospId).catch(() => null),
+          ]);
+          myPatients = (pageRes?.data || []).map((p) => ({
+            ...p,
+            id: p.id || p.patient_id,
+            nombre: p.nombre || p.name,
+            documento: p.documento || p.cc || p.numero_documento,
+            tipo_documento: p.tipo_documento || 'CC',
+            curso_vida: p.curso_vida || p.program || 'adultez',
+          }));
+          totalFound = Number(statsRes?.totalPatients || pageRes?.totalCount || pageRes?.total || myPatients.length);
         }
 
         setPatients(myPatients);
+        setTotalPatientsCount(totalFound);
 
-        if (myPatients.length > 0) {
+        if (myPatients.length > 0 && (!selectedPatient || debouncedPatientSearch)) {
           setSelectedPatient(myPatients[0]);
-        } else {
+        } else if (myPatients.length === 0) {
           setSelectedPatient(null);
         }
       } catch (err) {
@@ -98,7 +129,7 @@ export default function DoctorClinicalRecordsPage() {
       }
     }
     init();
-  }, [user]);
+  }, [user, debouncedPatientSearch]);
 
   // Recargar documentos cuando cambia el paciente seleccionado
   useEffect(() => {
@@ -326,11 +357,11 @@ export default function DoctorClinicalRecordsPage() {
                   {user?.role === 'doctor' ? 'Mis Pacientes Asignados' : 'Pacientes 3280'}
                 </h2>
                 <p className="text-[11px] text-gray-500">
-                  {user?.role === 'doctor' ? 'Solo expedientes bajo su custodia médica' : '5 pacientes por cada curso de vida'}
+                  {user?.role === 'doctor' ? 'Solo expedientes bajo su custodia médica (100% BD)' : 'Censo hospitalario completo (100% BD, búsqueda servidor)'}
                 </p>
               </div>
               <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
-                {patients.length} Asignados
+                {(totalPatientsCount || patients.length).toLocaleString('es-CO')} Asignados
               </span>
             </div>
 

@@ -42,6 +42,7 @@ import {
   COMUNAS_LIST, 
   BARRIOS_LIST 
 } from '@/services/reportsAnalysisService';
+import { patientService } from '@/services/patientService';
 import MultichannelReportHeader from '@/components/MultichannelReportHeader';
 import InteractivePieChart from '@/components/InteractivePieChart';
 import * as XLSX from 'xlsx';
@@ -187,24 +188,26 @@ const ReportsPage = () => {
       let rows = [];
 
       if (type === 'patients') {
-        query = supabase.from('patients').select('patient_id, name, document, phone, email, birthdate, sex, city, program, address, zona, barrio, comuna, created_at');
-        if (resolvedHospitalId) query = query.eq('hospital_id', resolvedHospitalId);
-        const { data, error } = await query;
-        if (error) throw error;
+        const res = await patientService.fetchAllCompact({
+          hospitalId: resolvedHospitalId || null,
+          batchSize: 5000,
+        });
+        if (!res.success) throw new Error(res.error || 'No se pudieron exportar todos los pacientes');
+        const data = res.data || [];
         filenameBase = 'pacientes_georreferenciados_3280';
         columns = ['ID', 'Nombre', 'Documento', 'Teléfono', 'Email', 'Sexo', 'Programa 3280', 'Zona', 'Barrio', 'Comuna', 'Dirección'];
-        rows = (data || []).map(p => ({
-          ID: p.patient_id,
-          Nombre: p.name || '',
-          Documento: p.document || '',
-          Teléfono: p.phone || '',
+        rows = data.map(p => ({
+          ID: p.id || p.patient_id,
+          Nombre: p.nombre || p.name || '',
+          Documento: p.cc || p.document || '',
+          Teléfono: p.telefono || p.phone || '',
           Email: p.email || '',
-          Sexo: p.sex || '',
-          'Programa 3280': p.program || '',
+          Sexo: p.sexo || p.sex || '',
+          'Programa 3280': p.programa || p.program || '',
           Zona: p.zona || '',
           Barrio: p.barrio || '',
           Comuna: p.comuna || '',
-          Dirección: p.address || ''
+          Dirección: p.direccion || p.address || ''
         }));
       } else if (type === 'campaigns') {
         query = supabase.from('campaigns').select('*');

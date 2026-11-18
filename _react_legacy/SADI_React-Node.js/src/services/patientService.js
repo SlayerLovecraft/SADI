@@ -174,7 +174,7 @@ export const patientService = {
       }
 
       const safePage = Math.max(1, Number(page) || 1);
-      const safeSize = Math.max(1, Math.min(250, Number(pageSize) || 50));
+      const safeSize = Math.max(1, Math.min(1000, Number(pageSize) || 50));
 
       const { data: rpcData, error: rpcError } = await withTimeout(
         supabase.rpc('get_patients_paginated', {
@@ -195,7 +195,7 @@ export const patientService = {
 
         // Si estamos buscando o filtrando en una página <=50, el total exacto viene en row.total_count;
         // si rpcData viene vacío y page === 1 con filtros, totalCount es 0.
-        if (mappedData.length > 0) {
+        if (mappedData.length > 0 && mappedData.length <= 200) {
           try {
             const patientIds = mappedData.map((p) => p.patient_id || p.id).filter(Boolean);
             const { data: vitals } = await supabase
@@ -311,12 +311,69 @@ export const patientService = {
   },
 
   /**
-   * Obtener SOLO los pacientes del hospital logueado
-   * Filtrado manual por hospital_id
+   * Descarga por lotes keyset (sin tope de 1,000 filas de PostgREST) el 100% de pacientes del hospital
+   */
+  async fetchAllCompact({ hospitalId: overrideHospitalId = null, batchSize = 5000, onProgress = null, filters = {} } = {}) {
+    try {
+      const hospitalId = overrideHospitalId || getCurrentHospitalId();
+      if (!hospitalId) {
+        return { success: false, error: 'No se pudo identificar el hospital del usuario', data: [] };
+      }
+
+      let cursor = null;
+      let hasMore = true;
+      let totalExpected = 0;
+      const allRows = [];
+
+      while (hasMore) {
+        const { data: batchRes, error } = await withTimeout(
+          supabase.rpc('get_patients_compact_batch', {
+            p_hospital_id: hospitalId,
+            p_last_id: cursor,
+            p_batch_size: Math.max(500, Math.min(10000, Number(batchSize) || 5000)),
+          }),
+          25000,
+          'Tiempo de espera agotado descargando lote completo de pacientes'
+        );
+        if (error) throw error;
+
+        if (!totalExpected && batchRes?.total) {
+          totalExpected = Number(batchRes.total);
+        }
+        const chunk = Array.isArray(batchRes?.rows) ? batchRes.rows : [];
+        for (let i = 0; i < chunk.length; i++) {
+          allRows.push(mapSupabaseToFrontend(chunk[i]));
+        }
+
+        if (typeof onProgress === 'function') {
+          onProgress({ loaded: allRows.length, total: totalExpected || allRows.length });
+        }
+
+        hasMore = Boolean(batchRes?.has_more && batchRes?.next_cursor);
+        cursor = batchRes?.next_cursor || null;
+        if (chunk.length === 0) break;
+      }
+
+      let result = allRows;
+      if (filters?.programa) {
+        result = result.filter((p) => p.programa === filters.programa);
+      }
+      if (filters?.ciudad) {
+        result = result.filter((p) => p.ciudad === filters.ciudad);
+      }
+
+      return { success: true, data: result, totalCount: totalExpected || result.length };
+    } catch (error) {
+      return { success: false, error: error?.message || 'Error descargando censo completo', data: [] };
+    }
+  },
+
+  /**
+   * Obtener TODOS los pacientes del hospital logueado (100% sin tope de 1,000 filas)
    */
   async getAll(filters = {}) {
     try {
-      console.log('🔍 Obteniendo pacientes del hospital...');
+      console.log('🔍 Obteniendo 100% de pacientes del hospital...');
 
       const hospitalId = getCurrentHospitalId();
 
@@ -329,97 +386,12 @@ export const patientService = {
         };
       }
 
-      const makeQuery = () => {
-        let query = supabase
-          .from('patients')
-          .select('*')
-          .eq('hospital_id', hospitalId)
-          .order('created_at', { ascending: false });
-
-        if (filters.programa) {
-          query = query.eq('program', filters.programa);
-        }
-
-        if (filters.ciudad) {
-          query = query.eq('city', filters.ciudad);
-        }
-
-        return query;
-      };
-
-      const run = async () => withTimeout(makeQuery(), 12000, 'Tiempo de espera agotado al cargar pacientes');
-
-      let { data, error } = await run();
-      if (error && isSupabaseAuthError(error)) {
-        await supabase.auth.refreshSession().catch(() => null);
-        ({ data, error } = await run());
+      const batchRes = await this.fetchAllCompact({ hospitalId, batchSize: 5000, filters });
+      if (!batchRes.success) {
+        throw new Error(batchRes.error || 'Error cargando pacientes completos');
       }
 
-      const mapFallbackPatient = (p, defaultHospId) => {
-        const cvObj = getPatientCursoVida(p);
-        const grObj = getPatientGrupoRiesgo(p);
-        const age = calculateAge(p.fecha_nacimiento);
-        const cv = p.curso_vida?.replace('_', ' ') || cvObj.nombre;
-        const gr = p.grupo_riesgo || grObj.nombre;
-        const hasDevice = (p.dispositivos_caseros && p.dispositivos_caseros.length > 0);
-        return {
-          id: p.id,
-          nombre: p.nombre,
-          telefono: p.telefono,
-          email: p.email,
-          cc: p.documento,
-          edad: age,
-          fechaNacimiento: p.fecha_nacimiento,
-          sexo: p.sexo === 'masculino' ? 'M' : 'F',
-          ciudad: 'Cali / Medellín / Bogotá',
-          programa: cv,
-          direccion: p.direccion || 'Dirección registrada',
-          hospitalId: defaultHospId,
-          fechaRegistro: new Date().toISOString(),
-          zona: 'Urbano',
-          barrio: 'El Poblado',
-          comuna: 'Comuna 14',
-          grupo_riesgo: gr,
-          grupo_vida: cv,
-          curso_vida: cv,
-          tipo_usuario: 'Activo',
-          dispositivos: p.dispositivos_caseros || [],
-          dispositivos_caseros: p.dispositivos_caseros || [],
-          valores_criticos: hasDevice ? {
-            tiene_critico: true,
-            tipo: 'Alerta de Parámetro Clínico',
-            valor: 'Fuera de rango',
-            fecha_hora: '2026-11-08 08:30 AM',
-            estado: 'Atendido'
-          } : {
-            tiene_critico: false,
-            tipo: 'Sin Telemetría Registrada',
-            valor: 'Sin Dispositivo en Domicilio',
-            fecha_hora: 'N/A',
-            estado: 'Línea Base'
-          },
-          historial_medidas: hasDevice ? [
-            { fecha: '2026-11-03', valor: 36.6, etiqueta: '36.6 °C' },
-            { fecha: '2026-11-04', valor: 36.8, etiqueta: '36.8 °C' },
-            { fecha: '2026-11-05', valor: 37.1, etiqueta: '37.1 °C' },
-            { fecha: '2026-11-06', valor: 37.5, etiqueta: '37.5 °C' },
-            { fecha: '2026-11-07', valor: 38.6, etiqueta: '38.6 °C (Alerta)' },
-            { fecha: '2026-11-08', valor: 37.0, etiqueta: '37.0 °C' },
-            { fecha: '2026-11-09', valor: 36.6, etiqueta: '36.6 °C' }
-          ] : [],
-          conteo_canales: { whatsapp: 4, email: 2, call: 3, sms: 1 }
-        };
-      };
-
-      if (error) {
-        console.warn('⚠️ Supabase no disponible o error, usando los 35 pacientes de prueba 3280:', error.message);
-        return { success: true, data: SEED_PATIENTS_3280.map(p => mapFallbackPatient(p, hospitalId || 'hosp-001')) };
-      }
-
-      let mappedData = data?.map(mapSupabaseToFrontend) || [];
-      if (mappedData.length === 0) {
-        mappedData = SEED_PATIENTS_3280.map(p => mapFallbackPatient(p, hospitalId || 'hosp-001'));
-      }
+      let mappedData = batchRes.data || [];
 
       // Enriquecer en tiempo real con signos vitales registrados por pacientes desde su panel
       try {
