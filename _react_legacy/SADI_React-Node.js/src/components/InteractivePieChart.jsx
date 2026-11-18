@@ -216,19 +216,19 @@ export default function InteractivePieChart({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-5 flex flex-col justify-between transition-colors">
       {/* Cabecera con Título y Botones de Exportación */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-teal-50 text-teal-700 border border-teal-200">
+            <span className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800/60">
               <PieIcon className="w-4 h-4" />
             </span>
-            <h3 className="text-base font-black text-slate-900 tracking-tight">
+            <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
               Distribución de Canales de Demanda Inducida
             </h3>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Porcentaje de uso según los filtros territoriales y clínicos seleccionados.
           </p>
         </div>
@@ -240,10 +240,10 @@ export default function InteractivePieChart({
             variant="outline"
             onClick={handleExportPNG}
             disabled={isExportingPng || loading}
-            className="rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs gap-1.5 h-9 shadow-2xs"
+            className="rounded-xl bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 font-bold text-xs gap-1.5 h-9 shadow-2xs"
             title="Exportar gráfica como imagen PNG"
           >
-            <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+            <ImageIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
             <span>{isExportingPng ? 'Generando...' : 'Exportar PNG'}</span>
           </Button>
 
@@ -252,10 +252,10 @@ export default function InteractivePieChart({
             variant="outline"
             onClick={handleExportExcel}
             disabled={loading}
-            className="rounded-xl border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-bold text-xs gap-1.5 h-9 shadow-2xs"
+            className="rounded-xl bg-white dark:bg-slate-800 border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 font-bold text-xs gap-1.5 h-9 shadow-2xs"
             title="Exportar datos a Excel"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Exportar Excel</span>
           </Button>
         </div>
@@ -282,7 +282,7 @@ export default function InteractivePieChart({
                     strokeWidth={2.5}
                     onMouseEnter={() => setHoveredSlice(slice.id)}
                     onMouseLeave={() => setHoveredSlice(null)}
-                    className="transition-all duration-200 hover:opacity-95"
+                    className="stroke-white dark:stroke-slate-900 transition-all duration-200 hover:opacity-95"
                   />
                   {slice.percentage >= 8 && (
                     <text
@@ -302,8 +302,8 @@ export default function InteractivePieChart({
                 </g>
               ))}
 
-              {/* Centro del Donut con Total de Contactos */}
-              <circle cx={center} cy={center} r={innerRadius - 4} fill="#ffffff" />
+              {/* Centro del Donut con Total de Contactos (atributos fill para PNG y clases dark:fill para UI) */}
+              <circle cx={center} cy={center} r={innerRadius - 4} fill="#ffffff" className="fill-white dark:fill-slate-900" />
               <text
                 x={center}
                 y={center - 8}
@@ -311,7 +311,7 @@ export default function InteractivePieChart({
                 fontSize={10}
                 fontWeight="bold"
                 fill="#64748b"
-                className="uppercase tracking-wider"
+                className="uppercase tracking-wider fill-slate-500 dark:fill-slate-400"
               >
                 Contactos
               </text>
@@ -322,20 +322,21 @@ export default function InteractivePieChart({
                 fontSize={16}
                 fontWeight="900"
                 fill="#0f172a"
+                className="fill-slate-900 dark:fill-white"
               >
                 {totalContacts.toLocaleString('es-CO')}
               </text>
             </svg>
           </div>
 
-          <span className="text-[11px] text-slate-400 mt-2 font-medium">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 mt-2 font-medium">
             Pasa el ratón sobre cada porción para destacar el canal
           </span>
         </div>
 
         {/* Leyenda y Desglose Cuantitativo */}
         <div className="lg:col-span-5 space-y-2.5">
-          <span className="text-[11px] font-black uppercase text-slate-400 block tracking-wider mb-2">
+          <span className="text-[11px] font-black uppercase text-slate-400 dark:text-slate-500 block tracking-wider mb-2">
             Desglose por Canal de Contacto:
           </span>
 
@@ -350,8 +351,8 @@ export default function InteractivePieChart({
                 onMouseLeave={() => setHoveredSlice(null)}
                 className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
                   isHovered
-                    ? 'border-slate-400 bg-slate-50 shadow-sm scale-[1.02]'
-                    : 'border-slate-200/80 bg-white hover:border-slate-300'
+                    ? 'border-slate-400 dark:border-slate-500 bg-slate-50 dark:bg-slate-800 shadow-sm scale-[1.02]'
+                    : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -360,18 +361,18 @@ export default function InteractivePieChart({
                     style={{ backgroundColor: slice.color }}
                   />
                   <div className="min-w-0">
-                    <strong className="text-xs font-black text-slate-900 block truncate flex items-center gap-1.5">
-                      <Icon className="w-3.5 h-3.5 text-slate-500" />
+                    <strong className="text-xs font-black text-slate-900 dark:text-white block truncate flex items-center gap-1.5">
+                      <Icon className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                       {slice.label}
                     </strong>
-                    <span className="text-[11px] text-slate-500 block">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
                       {slice.count.toLocaleString('es-CO')} contactos
                     </span>
                   </div>
                 </div>
 
                 <div className="text-right shrink-0">
-                  <span className="text-base font-black text-slate-900">
+                  <span className="text-base font-black text-slate-900 dark:text-white">
                     {slice.percentage}%
                   </span>
                 </div>
@@ -382,12 +383,12 @@ export default function InteractivePieChart({
       </div>
 
       {/* Resumen al pie de la gráfica */}
-      <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
+      <div className="bg-slate-50 dark:bg-slate-800/70 rounded-xl p-3 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-600 dark:text-slate-300 gap-2">
         <div className="flex items-center gap-1.5 font-medium">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          <span>Canal de Mayor Demanda: <strong>{slices[0]?.label || 'Llamada'} ({slices[0]?.percentage}%)</strong></span>
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span>Canal de Mayor Demanda: <strong className="text-slate-900 dark:text-white">{slices[0]?.label || 'Llamada'} ({slices[0]?.percentage}%)</strong></span>
         </div>
-        <div className="text-[11px] text-slate-400 font-semibold">
+        <div className="text-[11px] text-slate-400 dark:text-slate-500 font-semibold">
           * Datos sincronizados con el Censo Territorial SADI
         </div>
       </div>

@@ -48,6 +48,18 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+const FILTER_SELECT_CLASS =
+  'w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 hover:bg-white dark:hover:bg-slate-800/90 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors';
+
+const AUDIT_CARD_CLASS =
+  'p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700 transition-colors space-y-3';
+
+const EXCEL_BTN_CLASS =
+  'rounded-xl text-xs font-bold gap-1 bg-white dark:bg-slate-900 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 h-8';
+
+const CSV_BTN_CLASS =
+  'rounded-xl text-xs font-bold gap-1 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 h-8';
+
 const ReportsPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -227,8 +239,8 @@ const ReportsPage = () => {
       <Layout>
         <div className="flex items-center justify-center h-96">
           <div className="text-center">
-            <Loader2 className="h-10 w-10 animate-spin text-teal-600 mx-auto mb-3" />
-            <p className="text-slate-600 text-sm">Cargando reportes hospitalarios...</p>
+            <Loader2 className="h-10 w-10 animate-spin text-teal-600 dark:text-teal-400 mx-auto mb-3" />
+            <p className="text-slate-600 dark:text-slate-400 text-sm">Cargando reportes hospitalarios...</p>
           </div>
         </div>
       </Layout>
@@ -246,27 +258,27 @@ const ReportsPage = () => {
         {/* ========================================================================= */}
         {/* ENCABEZADO DE PÁGINA                                                      */}
         {/* ========================================================================= */}
-        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-100 text-teal-800 border border-teal-200">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-100 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60">
                 Auditoría & Analítica
               </span>
-              <span className="text-xs text-slate-500 font-semibold">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
                 • Resolución 3280 de 2018
               </span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-1 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white mt-1 tracking-tight">
               Reportes y Análisis de Demanda Inducida
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5 max-w-2xl leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-2xl leading-relaxed">
               Consolidación de emisiones multicanal por Curso de Vida y Grupo de Riesgo, con gráfica interactiva filtrable por zona territorial (Rural/Urbana), comuna y barrio.
             </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
               Base de Datos Sincronizada
             </span>
           </div>
@@ -282,17 +294,17 @@ const ReportsPage = () => {
         {/* ========================================================================= */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* COLUMNA FLOTANTE DE FILTROS (IZQUIERDA: 4 COLUMNAS DE 12 = ~33%) */}
-          <div className="lg:col-span-4 lg:sticky lg:top-20 z-10 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="lg:col-span-4 lg:sticky lg:top-20 z-10 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-4 sm:p-5 space-y-4 transition-colors">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-teal-50 text-teal-700 border border-teal-200">
+                <span className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800/60">
                   <Filter className="w-4 h-4" />
                 </span>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
                     Filtros de Segmentación
                   </h3>
-                  <span className="text-[10px] text-slate-400 block font-medium">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-medium">
                     Columna Flotante de Filtro Dinámico
                   </span>
                 </div>
@@ -301,7 +313,7 @@ const ReportsPage = () => {
               {activeFiltersCount > 0 && (
                 <button
                   onClick={handleResetFilters}
-                  className="text-[11px] text-teal-700 hover:text-teal-900 font-bold flex items-center gap-1 bg-teal-50 hover:bg-teal-100 px-2 py-1 rounded-lg transition-colors"
+                  className="text-[11px] text-teal-700 dark:text-teal-300 hover:text-teal-900 dark:hover:text-teal-200 font-bold flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900/60 px-2 py-1 rounded-lg transition-colors"
                   title="Restablecer todos los filtros"
                 >
                   <RotateCcw className="w-3 h-3" />
@@ -312,14 +324,14 @@ const ReportsPage = () => {
 
             {/* 1. SELECT CURSO DE VIDA (A - J) */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>1. Curso de Vida:</span>
-                <span className="text-[10px] font-mono text-teal-700 font-semibold">10 Cursos (A - J)</span>
+                <span className="text-[10px] font-mono text-teal-700 dark:text-teal-400 font-semibold">10 Cursos (A - J)</span>
               </label>
               <select
                 value={selectedCursoVida}
                 onChange={(e) => setSelectedCursoVida(e.target.value)}
-                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors"
+                className={FILTER_SELECT_CLASS}
               >
                 <option value="todos">Todos los Cursos de Vida (A - J)</option>
                 {PROGRAMAS_3280.map((p) => (
@@ -332,14 +344,14 @@ const ReportsPage = () => {
 
             {/* 2. SELECT GRUPO DE RIESGO PRIORIZADO (1 - 7) */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>2. Grupo de Riesgo Priorizado:</span>
-                <span className="text-[10px] font-mono text-amber-700 font-semibold">7 Grupos</span>
+                <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400 font-semibold">7 Grupos</span>
               </label>
               <select
                 value={selectedGrupoRiesgo}
                 onChange={(e) => setSelectedGrupoRiesgo(e.target.value)}
-                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors"
+                className={FILTER_SELECT_CLASS}
               >
                 <option value="todos">Todos los Grupos de Riesgo Priorizados</option>
                 {GRUPOS_RIESGO_PRIORIZADOS.map((rg) => (
@@ -352,14 +364,14 @@ const ReportsPage = () => {
 
             {/* 3. SELECT ZONA (URBANA / RURAL) */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>3. Zona Geográfica:</span>
-                <span className="text-[10px] font-bold text-slate-400">BD Actualizada</span>
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">BD Actualizada</span>
               </label>
               <select
                 value={selectedZona}
                 onChange={(e) => setSelectedZona(e.target.value)}
-                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors"
+                className={FILTER_SELECT_CLASS}
               >
                 <option value="todos">Todas las Zonas (Urbana y Rural)</option>
                 <option value="Urbana">Zona Urbana</option>
@@ -369,13 +381,13 @@ const ReportsPage = () => {
 
             {/* 4. SELECT COMUNA */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
                 4. Comuna o Corregimiento:
               </label>
               <select
                 value={selectedComuna}
                 onChange={(e) => setSelectedComuna(e.target.value)}
-                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors"
+                className={FILTER_SELECT_CLASS}
               >
                 <option value="todos">Todas las Comunas y Corregimientos</option>
                 {COMUNAS_LIST.slice(1).map((c) => (
@@ -386,13 +398,13 @@ const ReportsPage = () => {
 
             {/* 5. SELECT BARRIO */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
                 5. Barrio o Vereda:
               </label>
               <select
                 value={selectedBarrio}
                 onChange={(e) => setSelectedBarrio(e.target.value)}
-                className="w-full text-xs font-semibold px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors"
+                className={FILTER_SELECT_CLASS}
               >
                 <option value="todos">Todos los Barrios y Veredas</option>
                 {BARRIOS_LIST.slice(1).map((b) => (
@@ -402,8 +414,8 @@ const ReportsPage = () => {
             </div>
 
             {/* Banner de Georreferenciación Activa */}
-            <div className="p-3 bg-teal-50/60 rounded-xl border border-teal-100 flex items-start gap-2 text-[11px] text-teal-900 leading-relaxed">
-              <MapPin className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+            <div className="p-3 bg-teal-50/60 dark:bg-teal-950/40 rounded-xl border border-teal-100 dark:border-teal-800/50 flex items-start gap-2 text-[11px] text-teal-900 dark:text-teal-200 leading-relaxed">
+              <MapPin className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
               <div>
                 <strong>Ubicación Exacta Georreferenciada:</strong> La tabla de pacientes cuenta con campos de geolocalización territorial para discriminar canales óptimos de contacto.
               </div>
@@ -423,17 +435,17 @@ const ReportsPage = () => {
         {/* ========================================================================= */}
         {/* SECCIÓN 3: EXPORTACIÓN DE REPORTES DE AUDITORÍA                           */}
         {/* ========================================================================= */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-5 space-y-4 transition-colors">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
             <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/60">
                 <Download className="w-4 h-4" />
               </span>
               <div>
-                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
                   Exportación de Reportes y Auditoría Hospitalaria
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Descargue los conjuntos de datos oficiales en formatos compatibles con sistemas de información en salud.
                 </p>
               </div>
@@ -442,12 +454,12 @@ const ReportsPage = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Card 1: Pacientes con Zonas */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 hover:border-slate-300 transition-colors space-y-3">
+            <div className={AUDIT_CARD_CLASS}>
               <div>
-                <h4 className="text-xs font-black text-slate-900">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white">
                   Pacientes y Territorio 3280
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Lista completa con columnas de zona (Rural/Urbana), comuna y barrio.
                 </p>
               </div>
@@ -458,7 +470,7 @@ const ReportsPage = () => {
                   variant="outline"
                   onClick={() => exportAuditDataset('patients', 'xlsx')}
                   disabled={exporting}
-                  className="rounded-xl text-xs font-bold gap-1 text-emerald-800 border-emerald-200 hover:bg-emerald-50 h-8"
+                  className={EXCEL_BTN_CLASS}
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   Excel (XLSX)
@@ -468,7 +480,7 @@ const ReportsPage = () => {
                   variant="outline"
                   onClick={() => exportAuditDataset('patients', 'csv')}
                   disabled={exporting}
-                  className="rounded-xl text-xs font-bold gap-1 text-slate-700 border-slate-200 hover:bg-slate-50 h-8"
+                  className={CSV_BTN_CLASS}
                 >
                   <Download className="w-3.5 h-3.5" />
                   CSV
@@ -477,12 +489,12 @@ const ReportsPage = () => {
             </div>
 
             {/* Card 2: Campañas */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 hover:border-slate-300 transition-colors space-y-3">
+            <div className={AUDIT_CARD_CLASS}>
               <div>
-                <h4 className="text-xs font-black text-slate-900">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white">
                   Historial de Campañas
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Registro de campañas por canal, estado, grupos de riesgo y tasa de contacto.
                 </p>
               </div>
@@ -493,7 +505,7 @@ const ReportsPage = () => {
                   variant="outline"
                   onClick={() => exportAuditDataset('campaigns', 'xlsx')}
                   disabled={exporting}
-                  className="rounded-xl text-xs font-bold gap-1 text-emerald-800 border-emerald-200 hover:bg-emerald-50 h-8"
+                  className={EXCEL_BTN_CLASS}
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   Excel (XLSX)
@@ -503,7 +515,7 @@ const ReportsPage = () => {
                   variant="outline"
                   onClick={() => exportAuditDataset('campaigns', 'csv')}
                   disabled={exporting}
-                  className="rounded-xl text-xs font-bold gap-1 text-slate-700 border-slate-200 hover:bg-slate-50 h-8"
+                  className={CSV_BTN_CLASS}
                 >
                   <Download className="w-3.5 h-3.5" />
                   CSV
@@ -512,12 +524,12 @@ const ReportsPage = () => {
             </div>
 
             {/* Card 3: Interacciones */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 hover:border-slate-300 transition-colors space-y-3">
+            <div className={AUDIT_CARD_CLASS}>
               <div>
-                <h4 className="text-xs font-black text-slate-900">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white">
                   Interacciones Multicanal
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Logs de llamadas (Puerto 22), mensajes SMS, WhatsApp y correos emitidos.
                 </p>
               </div>
@@ -528,7 +540,7 @@ const ReportsPage = () => {
                   variant="outline"
                   onClick={() => exportAuditDataset('interactions', 'xlsx')}
                   disabled={exporting}
-                  className="rounded-xl text-xs font-bold gap-1 text-emerald-800 border-emerald-200 hover:bg-emerald-50 h-8"
+                  className={EXCEL_BTN_CLASS}
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
                   Excel (XLSX)
@@ -538,7 +550,7 @@ const ReportsPage = () => {
                   variant="outline"
                   onClick={() => exportAuditDataset('interactions', 'csv')}
                   disabled={exporting}
-                  className="rounded-xl text-xs font-bold gap-1 text-slate-700 border-slate-200 hover:bg-slate-50 h-8"
+                  className={CSV_BTN_CLASS}
                 >
                   <Download className="w-3.5 h-3.5" />
                   CSV
