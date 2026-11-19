@@ -4,6 +4,7 @@ import {
   CheckCircle2, AlertCircle, Info, Sparkles 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { isColombiaHoliday } from '@/services/callCapacityService';
 
 const DIAS_SEMANA_NOMBRES = [
   { id: 1, nombre: 'Lunes', abrev: 'Lun' },
@@ -53,8 +54,9 @@ export default function CampaignSchedulingCalendar({
     const daysInTargetM = new Date(targetY, targetM + 1, 0).getDate();
     for (let d = startD; d <= daysInTargetM; d++) {
       const dt = new Date(targetY, targetM, d, 12, 0, 0);
-      if (dt.getDay() !== 0) {
-        return formatDateISO(dt);
+      const iso = formatDateISO(dt);
+      if (dt.getDay() !== 0 && !isColombiaHoliday(iso)) {
+        return iso;
       }
     }
     return formatDateISO(new Date(targetY, targetM, Math.min(startD, daysInTargetM), 12, 0, 0));
@@ -120,8 +122,9 @@ export default function CampaignSchedulingCalendar({
     }
   }, [initialConfig?.fechaInicio, initialConfig?.mes, initialConfig?.year]);
 
-  // Helper: Saber si una fecha es domingo
+  // Helper: Saber si una fecha es domingo o festivo de Colombia
   const isSunday = (date) => date.getDay() === 0;
+  const isHolidayDate = (date) => isColombiaHoliday(formatDateISO(date));
 
   // Helper: Saber si una fecha es anterior a hoy
   const isPast = (date) => {
@@ -130,7 +133,7 @@ export default function CampaignSchedulingCalendar({
     return targetZero < todayZero;
   };
 
-  // Calcular fechas programadas según la frecuencia
+  // Calcular fechas programadas según la frecuencia (excluyendo domingos y festivos de Colombia)
   const scheduledDates = useMemo(() => {
     const dates = [];
 
@@ -141,7 +144,7 @@ export default function CampaignSchedulingCalendar({
 
       let cur = new Date(start);
       while (cur <= end) {
-        if (!isSunday(cur) && !isPast(cur)) {
+        if (!isSunday(cur) && !isHolidayDate(cur) && !isPast(cur)) {
           dates.push(formatDateISO(cur));
         }
         cur.setDate(cur.getDate() + 1);
@@ -152,7 +155,7 @@ export default function CampaignSchedulingCalendar({
       for (let i = 0; i < semanasCount; i++) {
         const d = new Date(start);
         d.setDate(d.getDate() + (i * 7));
-        if (!isSunday(d)) {
+        if (!isSunday(d) && !isHolidayDate(d)) {
           dates.push(formatDateISO(d));
         }
       }
@@ -170,8 +173,8 @@ export default function CampaignSchedulingCalendar({
         const actualDay = Math.min(monthlyDay, daysInTargetMonth);
         let candidate = new Date(y, m, actualDay, 12, 0, 0);
 
-        // Si cae domingo, ajustar al lunes siguiente hábil
-        if (candidate.getDay() === 0) {
+        // Si cae domingo o festivo, ajustar al siguiente día hábil operativo
+        while (candidate.getDay() === 0 || isHolidayDate(candidate)) {
           candidate.setDate(candidate.getDate() + 1);
         }
         if (!isPast(candidate)) {
@@ -268,11 +271,13 @@ export default function CampaignSchedulingCalendar({
     // Días 1 a N
     for (let d = 1; d <= totalDays; d++) {
       const dateObj = new Date(viewYear, viewMonth, d, 12, 0, 0);
+      const isoStr = formatDateISO(dateObj);
       list.push({
         dayNum: d,
         dateObj,
-        isoStr: formatDateISO(dateObj),
+        isoStr,
         isSunday: dateObj.getDay() === 0,
+        isHoliday: isColombiaHoliday(isoStr),
         isPast: isPast(dateObj),
         dayOfWeek: dateObj.getDay() === 0 ? 7 : dateObj.getDay() // 1 = Lunes, 6 = Sáb, 7 = Dom
       });
@@ -304,7 +309,7 @@ export default function CampaignSchedulingCalendar({
 
   // Manejar clic en un día del calendario
   const handleDayClick = (dayItem) => {
-    if (!dayItem || dayItem.isSunday || dayItem.isPast) return;
+    if (!dayItem || dayItem.isSunday || dayItem.isHoliday || dayItem.isPast) return;
 
     if (frecuencia === 'diaria') {
       if (!dailyStartDate || (dailyStartDate && dailyEndDate)) {
@@ -536,14 +541,15 @@ export default function CampaignSchedulingCalendar({
 
             const isSelected = scheduledDates.includes(dayItem.isoStr);
             const isSundayDay = dayItem.isSunday;
+            const isHolidayDay = dayItem.isHoliday;
             const isPastDay = dayItem.isPast;
 
             // En modo semanal: solo se habilitan los días que coinciden con el día de la semana
             const isWeeklyAllowed = frecuencia === 'semanal' 
-              ? dayItem.dayOfWeek === selectedDayOfWeek && !isPastDay && !isSundayDay
+              ? dayItem.dayOfWeek === selectedDayOfWeek && !isPastDay && !isSundayDay && !isHolidayDay
               : true;
 
-            const isDisabled = isSundayDay || isPastDay || (frecuencia === 'semanal' && !isWeeklyAllowed);
+            const isDisabled = isSundayDay || isHolidayDay || isPastDay || (frecuencia === 'semanal' && !isWeeklyAllowed);
 
             return (
               <button
@@ -551,6 +557,7 @@ export default function CampaignSchedulingCalendar({
                 type="button"
                 onClick={() => handleDayClick(dayItem)}
                 disabled={isDisabled}
+                title={isHolidayDay ? 'Festivo oficial de Colombia (No operativo)' : isSundayDay ? 'Domingo (No operativo)' : dayItem.isoStr}
                 className={`h-11 rounded-xl text-xs font-bold transition-all flex flex-col items-center justify-center relative ${
                   isSelected
                     ? 'bg-blue-600 text-white shadow-md font-black ring-2 ring-blue-400/50'
@@ -563,6 +570,9 @@ export default function CampaignSchedulingCalendar({
 
                 {isSundayDay && (
                   <span className="text-[8px] font-semibold text-red-300 dark:text-red-400/70 leading-none">Dom</span>
+                )}
+                {!isSundayDay && isHolidayDay && (
+                  <span className="text-[8px] font-semibold text-amber-500 dark:text-amber-400/80 leading-none">Fest</span>
                 )}
 
                 {isSelected && (

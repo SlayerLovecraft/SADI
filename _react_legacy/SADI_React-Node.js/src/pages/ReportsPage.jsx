@@ -43,6 +43,8 @@ import {
   BARRIOS_LIST 
 } from '@/services/reportsAnalysisService';
 import { patientService } from '@/services/patientService';
+import { getCaliComunas, getCaliCorregimientos } from '@/services/caliDivipola';
+import { getPatientCursoVida, getPatientGruposRiesgo } from '@/services/callCapacityService';
 import MultichannelReportHeader from '@/components/MultichannelReportHeader';
 import InteractivePieChart from '@/components/InteractivePieChart';
 import * as XLSX from 'xlsx';
@@ -106,9 +108,15 @@ const ReportsPage = () => {
   }, [loadReportsData]);
 
   const comunasOptions = useMemo(() => {
-    const dbComunas = matrixData?.filterOptions?.comunas;
-    return dbComunas && dbComunas.length > 0 ? dbComunas : COMUNAS_LIST.slice(1);
-  }, [matrixData]);
+    const dbComunas = matrixData?.filterOptions?.comunas || [];
+    if (selectedZona === 'Rural') {
+      return getCaliCorregimientos(dbComunas.filter((c) => !/^comuna\s/i.test(c)));
+    }
+    if (selectedZona === 'Urbana') {
+      return getCaliComunas(dbComunas.filter((c) => /^comuna\s/i.test(c)));
+    }
+    return [...getCaliComunas(dbComunas), ...getCaliCorregimientos([])].filter((v, i, arr) => arr.indexOf(v) === i);
+  }, [matrixData, selectedZona]);
 
   const barriosOptions = useMemo(() => {
     const dbBarrios = matrixData?.filterOptions?.barrios;
@@ -153,10 +161,10 @@ const ReportsPage = () => {
     const rg = GRUPOS_RIESGO_PRIORIZADOS.find(r => String(r.id) === selectedGrupoRiesgo);
 
     return {
-      cursoVida: prog ? `${prog.id}. ${prog.nombre}` : 'Todos los Cursos (A - J)',
-      grupoRiesgo: rg ? `${rg.id}. ${rg.titulo}` : 'Todos los Grupos (1 - 7)',
+      cursoVida: prog ? `${prog.id}. ${prog.nombre}` : 'Todos los Cursos (A - G)',
+      grupoRiesgo: rg ? `${rg.id}. ${rg.titulo}` : 'Todos los Grupos (1 - 11)',
       barrio: selectedBarrio === 'todos' ? 'Todos los Barrios' : selectedBarrio,
-      comuna: selectedComuna === 'todos' ? 'Todas las Comunas' : selectedComuna,
+      comuna: selectedComuna === 'todos' ? 'Todas las Comunas / Corregimientos' : selectedComuna,
       zona: selectedZona === 'todos' ? 'Todas las Zonas (Urbana y Rural)' : selectedZona
     };
   }, [selectedCursoVida, selectedGrupoRiesgo, selectedBarrio, selectedComuna, selectedZona]);
@@ -195,20 +203,33 @@ const ReportsPage = () => {
         if (!res.success) throw new Error(res.error || 'No se pudieron exportar todos los pacientes');
         const data = res.data || [];
         filenameBase = 'pacientes_georreferenciados_3280';
-        columns = ['ID', 'Nombre', 'Documento', 'Teléfono', 'Email', 'Sexo', 'Programa 3280', 'Zona', 'Barrio', 'Comuna', 'Dirección'];
-        rows = data.map(p => ({
-          ID: p.id || p.patient_id,
-          Nombre: p.nombre || p.name || '',
-          Documento: p.cc || p.document || '',
-          Teléfono: p.telefono || p.phone || '',
-          Email: p.email || '',
-          Sexo: p.sexo || p.sex || '',
-          'Programa 3280': p.programa || p.program || '',
-          Zona: p.zona || '',
-          Barrio: p.barrio || '',
-          Comuna: p.comuna || '',
-          Dirección: p.direccion || p.address || ''
-        }));
+        columns = [
+          'ID', 'Nombre', 'Documento', 'Teléfono', 'Email', 'Sexo',
+          'Curso de Vida', 'Grupos de Riesgo', 'Programa 3280',
+          'Zona', 'Comuna', 'Barrio', 'Corregimiento', 'Vereda', 'Centro Poblado', 'Dirección'
+        ];
+        rows = data.map(p => {
+          const cv = getPatientCursoVida(p);
+          const riesgos = getPatientGruposRiesgo(p);
+          return {
+            ID: p.id || p.patient_id,
+            Nombre: p.nombre || p.name || '',
+            Documento: p.cc || p.document || '',
+            Teléfono: p.telefono || p.phone || '',
+            Email: p.email || '',
+            Sexo: p.sexo || p.sex || '',
+            'Curso de Vida': `${cv.id}. ${cv.nombre}`,
+            'Grupos de Riesgo': riesgos.length > 0 ? riesgos.map(r => r.nombre).join(' | ') : 'Sin grupo de riesgo',
+            'Programa 3280': p.programa || p.program || '',
+            Zona: p.zona || '',
+            Comuna: p.comuna || '',
+            Barrio: p.barrio || '',
+            Corregimiento: p.corregimiento || '',
+            Vereda: p.vereda || '',
+            'Centro Poblado': p.centro_poblado || '',
+            Dirección: p.direccion || p.address || ''
+          };
+        });
       } else if (type === 'campaigns') {
         query = supabase.from('campaigns').select('*');
         if (resolvedHospitalId) query = query.eq('hospital_id', resolvedHospitalId);
@@ -364,18 +385,18 @@ const ReportsPage = () => {
               )}
             </div>
 
-            {/* 1. SELECT CURSO DE VIDA (A - J) */}
+            {/* 1. SELECT CURSO DE VIDA (A - G) */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>1. Curso de Vida:</span>
-                <span className="text-[10px] font-mono text-teal-700 dark:text-teal-400 font-semibold">10 Cursos (A - J)</span>
+                <span className="text-[10px] font-mono text-teal-700 dark:text-teal-400 font-semibold">7 Cursos (A - G)</span>
               </label>
               <select
                 value={selectedCursoVida}
                 onChange={(e) => setSelectedCursoVida(e.target.value)}
                 className={FILTER_SELECT_CLASS}
               >
-                <option value="todos">Todos los Cursos de Vida (A - J)</option>
+                <option value="todos">Todos los Cursos de Vida (A - G)</option>
                 {PROGRAMAS_3280.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.id}. {p.nombre} ({p.rango})
@@ -384,18 +405,18 @@ const ReportsPage = () => {
               </select>
             </div>
 
-            {/* 2. SELECT GRUPO DE RIESGO PRIORIZADO (1 - 7) */}
+            {/* 2. SELECT GRUPO DE RIESGO PRIORIZADO (1 - 11) */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                 <span>2. Grupo de Riesgo Priorizado:</span>
-                <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400 font-semibold">7 Grupos</span>
+                <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400 font-semibold">11 Grupos</span>
               </label>
               <select
                 value={selectedGrupoRiesgo}
                 onChange={(e) => setSelectedGrupoRiesgo(e.target.value)}
                 className={FILTER_SELECT_CLASS}
               >
-                <option value="todos">Todos los Grupos de Riesgo Priorizados</option>
+                <option value="todos">Todos los Grupos de Riesgo (1 - 11)</option>
                 {GRUPOS_RIESGO_PRIORIZADOS.map((rg) => (
                   <option key={rg.id} value={String(rg.id)}>
                     {rg.id}. {rg.titulo}

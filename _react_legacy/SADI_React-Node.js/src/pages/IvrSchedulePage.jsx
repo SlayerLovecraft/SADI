@@ -41,6 +41,9 @@ import {
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import { roadmapService, MESES_DEL_ANIO } from '@/services/roadmapService';
 import ResolutionAnnualMatrix from '@/components/ResolutionAnnualMatrix';
+import NoShowFollowupPanel from '@/components/NoShowFollowupPanel';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
+import { DAILY_CALL_CAPACITY } from '@/services/callCapacityService';
 import {
   Dialog,
   DialogContent,
@@ -237,7 +240,7 @@ export default function IvrSchedulePage() {
         programa3280: item.programa3280 || item.programaPrincipal,
         hitoClinico: item.accion3280,
         cursoVida: item.cursoVida,
-        direccion: item.direccion || 'Caldas'
+        direccion: item.direccion || 'Santiago de Cali'
       }, config);
       if (res.ok) {
         const capaMsg = res.mode === 'asterisk_preanswer_sip_183'
@@ -555,6 +558,18 @@ export default function IvrSchedulePage() {
           </button>
 
           <button
+            onClick={() => setActiveTab('inasistentes')}
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
+              activeTab === 'inasistentes'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-700'
+            }`}
+          >
+            <UserX className="w-4 h-4" />
+            Inasistentes (+3d SMS → +2d SMS+Mail)
+          </button>
+
+          <button
             onClick={() => setActiveTab('config')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'config'
@@ -740,7 +755,8 @@ export default function IvrSchedulePage() {
                     <tr>
                       <th className="p-3">Paciente / Cédula</th>
                       <th className="p-3">Teléfono</th>
-                      <th className="p-3">Curso de Vida & Ruta 3280</th>
+                      <th className="p-3">Curso de Vida &amp; Grupos de Riesgo</th>
+                      <th className="p-3">Ruta 3280</th>
                       <th className="p-3">Estado</th>
                       <th className="p-3">Intentos</th>
                       <th className="p-3 text-right">Acción</th>
@@ -749,7 +765,7 @@ export default function IvrSchedulePage() {
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                     {currentSlotPatients.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center p-8 text-gray-400 dark:text-slate-500">
+                        <td colSpan={7} className="text-center p-8 text-gray-400 dark:text-slate-500">
                           No hay pacientes programados en la tanda de las {selectedSlot.hora}.
                         </td>
                       </tr>
@@ -761,6 +777,12 @@ export default function IvrSchedulePage() {
                             <div className="text-[11px] text-gray-500 dark:text-slate-400">{patient.documento}</div>
                           </td>
                           <td className="p-3 font-mono text-gray-700 dark:text-slate-300">{patient.telefono}</td>
+                          <td className="p-3 max-w-[230px]">
+                            <div className="flex flex-col items-start gap-1">
+                              <CursoVidaBadge patient={{ curso_vida: patient.cursoVida || patient.curso_vida }} />
+                              <GruposRiesgoBadges patient={{ grupo_riesgo: patient.grupoRiesgo || patient.grupo_riesgo, grupos_riesgo: patient.gruposRiesgo || patient.grupos_riesgo }} maxVisible={2} />
+                            </div>
+                          </td>
                           <td className="p-3">
                             <div className="font-semibold text-gray-900 dark:text-slate-100">{patient.programa3280 || patient.programa}</div>
                             <div className="text-[10px] text-blue-700 dark:text-blue-400 font-bold mt-0.5">{patient.accion3280 || patient.cursoVida}</div>
@@ -838,6 +860,7 @@ export default function IvrSchedulePage() {
                   <tr>
                     <th className="p-3">Paciente</th>
                     <th className="p-3">Documento</th>
+                    <th className="p-3">Curso de Vida &amp; Grupos de Riesgo</th>
                     <th className="p-3">Teléfono</th>
                     <th className="p-3">Programa Res. 3280</th>
                     <th className="p-3">Intentos del Agente</th>
@@ -847,7 +870,7 @@ export default function IvrSchedulePage() {
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                   {items.filter(i => i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano').length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center p-8 text-gray-400 dark:text-slate-500">
+                      <td colSpan={7} className="text-center p-8 text-gray-400 dark:text-slate-500">
                         No hay casos aislados pendientes. Todos los pacientes del día fueron contactados o están en reintento programado.
                       </td>
                     </tr>
@@ -856,6 +879,12 @@ export default function IvrSchedulePage() {
                       <tr key={c.id} className="hover:bg-red-50/20 dark:hover:bg-red-950/20">
                         <td className="p-3 font-bold text-gray-900 dark:text-white">{c.nombre}</td>
                         <td className="p-3 text-gray-600 dark:text-slate-400">{c.documento}</td>
+                        <td className="p-3 max-w-[220px]">
+                          <div className="flex flex-col items-start gap-1">
+                            <CursoVidaBadge patient={{ curso_vida: c.cursoVida || c.curso_vida }} />
+                            <GruposRiesgoBadges patient={{ grupo_riesgo: c.grupoRiesgo || c.grupo_riesgo, grupos_riesgo: c.gruposRiesgo || c.grupos_riesgo }} maxVisible={2} />
+                          </div>
+                        </td>
                         <td className="p-3 font-mono text-gray-700 dark:text-slate-300">{c.telefono}</td>
                         <td className="p-3 text-gray-700 dark:text-slate-300">{c.programa}</td>
                         <td className="p-3 text-red-600 dark:text-red-400 font-bold">{c.intentos} intentos fallidos</td>
@@ -878,7 +907,14 @@ export default function IvrSchedulePage() {
         )}
 
         {/* ========================================================================= */}
-        {/* PESTAÑA 4: CONFIGURACIÓN & PARÁMETROS */}
+        {/* PESTAÑA 4: SEGUIMIENTO INASISTENTES (+3d SMS -> +2d SMS + EMAIL)           */}
+        {/* ========================================================================= */}
+        {activeTab === 'inasistentes' && (
+          <NoShowFollowupPanel hospitalId={user?.hospitalId || user?.hospital_id || null} />
+        )}
+
+        {/* ========================================================================= */}
+        {/* PESTAÑA 5: CONFIGURACIÓN & PARÁMETROS */}
         {/* ========================================================================= */}
         {activeTab === 'config' && (
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
@@ -888,7 +924,7 @@ export default function IvrSchedulePage() {
                 Configuración del Motor de Automatización IVR & Campañas
               </h3>
               <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                Ajustes de intervalos de tandas (08:30 AM a 08:00 PM), política de reintentos por tandas sucesivas y control de aforo hospitalario.
+                Ajustes de intervalos de tandas (08:00 AM a 06:00 PM), política de reintentos y tope operativo de {DAILY_CALL_CAPACITY} llamadas IA/día.
               </p>
             </div>
 
@@ -896,7 +932,7 @@ export default function IvrSchedulePage() {
               <div className="p-4 bg-blue-50/50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-800/50">
                 <span className="font-bold text-blue-950 dark:text-blue-200 block mb-1">Capacidad Instalada Hospitalaria:</span>
                 <span className="text-blue-800 dark:text-blue-300 leading-relaxed block">
-                  <strong>24 Tandas de 30 minutos</strong> (08:30 AM a 08:00 PM). Capacidad de hasta <strong>768 llamadas/día</strong> en el Gateway GSM de 32 canales.
+                  <strong>24 Tandas de 30 minutos</strong> (08:00 AM a 06:00 PM). Tope diario oficial de <strong>{DAILY_CALL_CAPACITY} llamadas IA/día</strong> (50/h) con priorización P1→P5 y desborde a <strong>SMS Respaldo (R1-04)</strong>.
                 </span>
               </div>
 

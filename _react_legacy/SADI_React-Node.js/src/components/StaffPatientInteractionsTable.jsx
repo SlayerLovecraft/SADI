@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CURSO_VIDA_CONFIG } from '@/services/cursoVidaConfig';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import {
   Dialog,
   DialogContent,
@@ -206,7 +207,8 @@ export default function StaffPatientInteractionsTable({
           <thead className="bg-slate-900 dark:bg-slate-950 text-white font-bold text-[11px] tracking-wider uppercase border-b dark:border-slate-800">
             <tr>
               <th className="p-3.5 whitespace-nowrap">Nombre del Paciente</th>
-              <th className="p-3.5 whitespace-nowrap">Ciclos de Vida</th>
+              <th className="p-3.5 whitespace-nowrap">Curso de Vida</th>
+              <th className="p-3.5 whitespace-nowrap">Grupos de Riesgo</th>
               <th className="p-3.5 whitespace-nowrap">Mensajes Enviados (SMS, E-mails, Whatsapps)</th>
               <th className="p-3.5 text-center whitespace-nowrap">Llamadas Realizadas</th>
               <th className="p-3.5 text-center whitespace-nowrap">Grabaciones de Audio</th>
@@ -216,7 +218,7 @@ export default function StaffPatientInteractionsTable({
           <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
             {filteredPatients.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-gray-400 dark:text-slate-500">
+                <td colSpan={7} className="text-center py-12 text-gray-400 dark:text-slate-500">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <User className="w-8 h-8 text-gray-300 dark:text-slate-600" />
                     <p className="text-xs font-semibold">{emptyMessage}</p>
@@ -252,11 +254,14 @@ export default function StaffPatientInteractionsTable({
                       </div>
                     </td>
 
-                    {/* 2. Ciclos de Vida */}
+                    {/* 2. Curso de Vida */}
                     <td className="p-3.5 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60">
-                        {cVida}
-                      </span>
+                      <CursoVidaBadge patient={patient} />
+                    </td>
+
+                    {/* 3. Grupos de Riesgo Clínicos Reales */}
+                    <td className="p-3.5 max-w-[230px]">
+                      <GruposRiesgoBadges patient={patient} maxVisible={2} />
                     </td>
 
                     {/* 3. Mensajes Enviados (SMS, E-mails, Whatsapps) */}
@@ -461,6 +466,11 @@ export default function StaffPatientInteractionsTable({
             <div className="mt-4 space-y-4 text-xs">
               
               {/* Metadatos de la llamada */}
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <CursoVidaBadge patient={selectedTranscript.patient} />
+                <GruposRiesgoBadges patient={selectedTranscript.patient} maxVisible={4} />
+              </div>
+
               <div className="grid grid-cols-3 gap-2 bg-slate-50 dark:bg-slate-800/70 p-3 rounded-2xl border border-slate-200 dark:border-slate-700">
                 <div>
                   <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">FECHA Y HORA</span>

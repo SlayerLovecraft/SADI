@@ -12,6 +12,7 @@ import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import { useAuth } from '@/contexts/AuthContext';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 export default function VapiIntegrationPage() {
   const { toast } = useToast();
@@ -189,10 +190,13 @@ export default function VapiIntegrationPage() {
         {/* Resumen del Contexto Inyectado */}
         {vapiContext && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-sm">
-              <span className="text-[10px] font-bold text-gray-400 uppercase">Curso de Vida 3280</span>
-              <p className="text-sm font-black text-gray-900 mt-0.5">{vapiContext.curso.label}</p>
-              <p className="text-xs text-gray-500">{vapiContext.curso.edad}</p>
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200/80 dark:border-slate-800 shadow-sm space-y-1.5">
+              <span className="text-[10px] font-bold text-gray-400 dark:text-slate-400 uppercase block">Curso de Vida &amp; Grupos de Riesgo</span>
+              <div className="flex flex-wrap items-center gap-1">
+                <CursoVidaBadge patient={vapiContext.patient} />
+                <GruposRiesgoBadges patient={vapiContext.patient} maxVisible={3} />
+              </div>
+              <p className="text-xs text-gray-500 dark:text-slate-400">{vapiContext.curso.edad}</p>
             </div>
 
             <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-sm">

@@ -31,6 +31,7 @@ import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from '@/services/rias
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import { roadmapService } from '@/services/roadmapService';
 import MonthlyInteractionsListTable from '@/components/MonthlyInteractionsListTable';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 export default function Rias3280ManagementPage() {
   const { toast } = useToast();
@@ -258,7 +259,7 @@ export default function Rias3280ManagementPage() {
           nombre: selectedPatient.nombre,
           cedula: selectedPatient.documento,
           programa: selectedProgram.nombre,
-          direccion: selectedPatient.direccion || 'Caldas, Antioquia'
+          direccion: selectedPatient.direccion || 'Santiago de Cali, Valle del Cauca'
         });
       }
 
@@ -566,16 +567,17 @@ export default function Rias3280ManagementPage() {
                       </select>
 
                       {selectedPatient && (
-                        <div className="mt-2 p-2.5 bg-blue-50/60 dark:bg-blue-950/40 rounded-xl border border-blue-100 dark:border-blue-800/60 text-[11px] text-blue-900 dark:text-blue-200 flex justify-between items-center">
+                        <div className="mt-2 p-3 bg-blue-50/60 dark:bg-blue-950/40 rounded-xl border border-blue-100 dark:border-blue-800/60 text-[11px] text-blue-900 dark:text-blue-200 space-y-1.5">
                           <div>
                             <p className="font-bold">{selectedPatient.nombre}</p>
                             <p className="text-[10px] text-blue-700 dark:text-blue-300">
-                              {selectedPatient.eps || 'SADI EPS'} • Tel: {selectedPatient.telefono} • Dir: {selectedPatient.direccion || 'Caldas'}
+                              {selectedPatient.eps || 'SADI EPS'} • Tel: {selectedPatient.telefono} • Dir: {selectedPatient.direccion || 'Santiago de Cali'}
                             </p>
                           </div>
-                          <span className="font-bold text-[10px] bg-blue-200/70 dark:bg-blue-900/70 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
-                            {selectedPatient.curso_vida?.replace('_', ' ')}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-blue-200/60 dark:border-blue-800/50">
+                            <CursoVidaBadge patient={selectedPatient} />
+                            <GruposRiesgoBadges patient={selectedPatient} maxVisible={4} />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -692,6 +694,7 @@ export default function Rias3280ManagementPage() {
                 <tr>
                   <th className="p-3">Fecha y Hora</th>
                   <th className="p-3">Paciente / Documento</th>
+                  <th className="p-3">Curso de Vida &amp; Riesgo</th>
                   <th className="p-3">Teléfono</th>
                   <th className="p-3">Motivo / Protocolo 3280</th>
                   <th className="p-3">Resultado</th>
@@ -702,7 +705,7 @@ export default function Rias3280ManagementPage() {
               <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                 {visibleCallLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center p-8 text-gray-400 dark:text-slate-500">
+                    <td colSpan={8} className="text-center p-8 text-gray-400 dark:text-slate-500">
                       No hay llamadas individuales registradas aún. Emite una llamada desde el panel superior para generar el primer LOG.
                     </td>
                   </tr>
@@ -715,6 +718,12 @@ export default function Rias3280ManagementPage() {
                       <td className="p-3">
                         <div className="font-bold text-gray-900 dark:text-white">{log.pacienteNombre}</div>
                         <div className="text-[11px] text-gray-500 dark:text-slate-400">{log.documento}</div>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex flex-col items-start gap-1">
+                          <CursoVidaBadge patient={{ curso_vida: log.cursoVida || log.curso_vida, program: log.motivoContacto }} />
+                          <GruposRiesgoBadges patient={{ grupo_riesgo: log.grupoRiesgo || log.grupo_riesgo, grupos_riesgo: log.gruposRiesgo || log.grupos_riesgo }} maxVisible={2} />
+                        </div>
                       </td>
                       <td className="p-3 font-mono text-gray-700 dark:text-slate-300">
                         {log.telefono}

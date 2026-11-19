@@ -45,15 +45,22 @@ const normalizeZona = (rawZona) => {
 };
 
 const classifyGrupoRiesgoPriorizado = (rawGroup, rawProgram) => {
-  const txt = `${rawGroup || ''} ${rawProgram || ''}`.toLowerCase();
-  if (!txt.trim()) return null;
+  const txt = `${rawGroup || ''} ${rawProgram || ''}`
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (!txt.trim() || txt.includes('preventiva general') || txt.includes('sin grupo')) return null;
   if (txt.includes('materno') || txt.includes('gestan') || txt.includes('prenatal') || txt.includes('riamp') || txt.includes('puerper')) return 1;
-  if (txt.includes('cardio') || txt.includes('hipertens') || txt.includes('diabet') || txt.includes('metab') || txt.includes('renal') || txt.includes('hta')) return 2;
-  if (txt.includes('cáncer') || txt.includes('cancer') || txt.includes('oncol') || txt.includes('mama') || txt.includes('próstata') || txt.includes('prostata') || txt.includes('cuello uterino')) return 3;
+  if (txt.includes('cardio') || txt.includes('hipertens') || txt.includes('diabet') || txt.includes('metab') || txt.includes('renal') || /\bhta\b/.test(txt)) return 2;
+  if (txt.includes('cancer') || txt.includes('oncol')) return 3;
   if (txt.includes('respira') || txt.includes('asma') || txt.includes('epoc') || txt.includes('bronqu')) return 4;
-  if (txt.includes('mental') || txt.includes('sustanc') || txt.includes('psico') || txt.includes('depres') || txt.includes('ansied')) return 5;
-  if (txt.includes('infec') || txt.includes('zoonot') || txt.includes('vih') || txt.includes('tubercul') || txt.includes('dengue')) return 6;
+  if (txt.includes('mental') || txt.includes('sustanc') || txt.includes('psico') || txt.includes('depres') || txt.includes('ansied') || txt.includes('violen') || /\bspa\b/.test(txt)) return 5;
+  if (txt.includes('infec') || txt.includes('zoonot') || /\bvih\b/.test(txt) || txt.includes('tubercul') || txt.includes('dengue')) return 6;
   if (txt.includes('nutric') || txt.includes('desnutr') || txt.includes('crecimiento')) return 7;
+  if (txt.includes('huerfan') || txt.includes('neurol') || txt.includes('epilep')) return 8;
+  if (txt.includes('planific') || txt.includes('anticoncep') || txt.includes('reproductiv')) return 9;
+  if (txt.includes('vacun') || txt.includes('esquema pai') || /\bpai\b/.test(txt)) return 10;
+  if (txt.includes('salud oral') || txt.includes('salud_oral') || txt.includes('bucal') || txt.includes('odont') || txt.includes('fluor')) return 11;
   return null;
 };
 

@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 const BillingPage = () => {
   const { user } = useAuth();
@@ -501,17 +502,14 @@ const BillingPage = () => {
                     onChange={(e) => setSelectedCursoVida(e.target.value)}
                     className="px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 dark:text-slate-200 font-medium"
                   >
-                    <option value="todos">Todos los Cursos de Vida (A - J)</option>
+                    <option value="todos">Todos los Cursos de Vida (A - G)</option>
                     <option value="A">A. Primera Infancia</option>
                     <option value="B">B. Infancia</option>
                     <option value="C">C. Adolescencia</option>
                     <option value="D">D. Juventud</option>
                     <option value="E">E. Adultez</option>
                     <option value="F">F. Vejez</option>
-                    <option value="G">G. Preventivo de la Mujer</option>
-                    <option value="H">H. Planificación Familiar</option>
-                    <option value="I">I. Vacunación</option>
-                    <option value="J">J. Salud Oral</option>
+                    <option value="G">G. Preventivo de la Mujer / Materno-Perinatal</option>
                   </select>
                 </div>
               </div>
@@ -523,7 +521,7 @@ const BillingPage = () => {
                 <thead className="bg-slate-50/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-300 uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-slate-800 text-[11px]">
                   <tr>
                     <th className="py-3 px-4">Paciente</th>
-                    <th className="py-3 px-3">Curso de Vida & Hito</th>
+                    <th className="py-3 px-3">Curso de Vida, Grupos de Riesgo &amp; Hito</th>
                     <th className="py-3 px-3">Envíos Efectivos</th>
                     <th className="py-3 px-3">Llamada Contestada</th>
                     <th className="py-3 px-3 text-right">Total Facturado Hospital</th>
@@ -544,14 +542,13 @@ const BillingPage = () => {
                           </div>
                         </td>
 
-                        {/* Curso de Vida & Hito */}
+                        {/* Curso de Vida, Grupos de Riesgo & Hito */}
                         <td className="py-3 px-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${p.cursoVida?.badgeColor || 'bg-slate-100 dark:bg-slate-800'}`}>
-                              {p.cursoVida?.id}. {p.cursoVida?.nombre}
-                            </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <CursoVidaBadge patient={{ curso_vida: p.curso_vida || p.cursoVida?.key || p.cursoVida?.id, edad: p.edad }} />
+                            <GruposRiesgoBadges patient={{ grupo_riesgo: p.grupo_riesgo, grupos_riesgo: p.grupos_riesgo }} maxVisible={2} />
                           </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[220px]" title={p.hito3280}>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 truncate max-w-[230px]" title={p.hito3280}>
                             {p.hito3280}
                           </div>
                         </td>

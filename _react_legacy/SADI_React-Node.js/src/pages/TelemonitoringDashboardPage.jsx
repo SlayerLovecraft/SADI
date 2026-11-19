@@ -14,6 +14,7 @@ import { HomeDeviceSimulatorModal } from '@/components/telemonitoring/HomeDevice
 import { Patient360Modal } from '@/components/telemonitoring/Patient360Modal';
 import { AIEvidenceModal } from '@/components/telemonitoring/AIEvidenceModal';
 import { NursingInterventionModal } from '@/components/telemonitoring/NursingInterventionModal';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { isPatientAssignedToDoctor } from './doctor/doctorUtils';
@@ -312,7 +313,7 @@ const TelemonitoringDashboardPage = () => {
             <table className="w-full text-left text-xs">
               <thead className="bg-gray-50/80 text-gray-500 font-bold uppercase tracking-wider border-b border-gray-100">
                 <tr>
-                  <th className="py-3.5 px-5">Paciente & Curso de Vida</th>
+                  <th className="py-3.5 px-5">Paciente, Curso de Vida &amp; Grupos de Riesgo</th>
                   <th className="py-3.5 px-4">Alerta Clínica (Res. 3280)</th>
                   <th className="py-3.5 px-4">Severidad / Criterio</th>
                   <th className="py-3.5 px-4">Estado Agente IA</th>
@@ -357,6 +358,10 @@ const TelemonitoringDashboardPage = () => {
                               </div>
                               <div className="text-[11px] text-gray-500">
                                 {patient.documento} • {patient.telefono}
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-1">
+                                <CursoVidaBadge patient={patient} />
+                                <GruposRiesgoBadges patient={patient} maxVisible={2} />
                               </div>
                             </div>
                           </div>

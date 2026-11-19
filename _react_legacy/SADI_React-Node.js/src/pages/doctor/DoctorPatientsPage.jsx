@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
 import { staffService } from '@/services/staffService';
 import { getDoctorLifeCourseTheme, formatCursosVidaLabel, canonicalizeCursoKey } from '@/services/cursoVidaConfig';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 
 const DoctorPatientsPage = () => {
@@ -223,59 +224,39 @@ const DoctorPatientsPage = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredPatients.map((patient) => {
-              const cursoLabels = {
-                primera_infancia: 'Primera Infancia (0 a 5 años)',
-                infancia: 'Infancia (6 a 11 años)',
-                adolescencia: 'Adolescencia (12 a 17 años)',
-                juventud: 'Juventud (18 a 28 años)',
-                adultez: 'Adultez (29 a 59 años)',
-                vejez: 'Vejez (60+ años)',
-                preventivo_mujer: 'Preventivo de la Mujer (RIAMP)',
-                planificacion_familiar: 'Planificación Familiar',
-                vacunacion: 'Vacunación (PAI)',
-                salud_oral: 'Salud Oral',
-                materno_perinatal: 'Ruta Materno Perinatal (RIAMP)'
-              };
-
-              const cursoBadgeColors = {
-                primera_infancia: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                infancia: 'bg-teal-100 text-teal-800 border-teal-200',
-                adolescencia: 'bg-blue-100 text-blue-800 border-blue-200',
-                juventud: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-                adultez: 'bg-purple-100 text-purple-800 border-purple-200',
-                vejez: 'bg-amber-100 text-amber-800 border-amber-200',
-                preventivo_mujer: 'bg-rose-100 text-rose-800 border-rose-200',
-                planificacion_familiar: 'bg-pink-100 text-pink-800 border-pink-200',
-                vacunacion: 'bg-cyan-100 text-cyan-800 border-cyan-200',
-                salud_oral: 'bg-lime-100 text-lime-800 border-lime-200',
-                materno_perinatal: 'bg-rose-100 text-rose-800 border-rose-200'
-              };
-
               return (
                 <div
                   key={patient.id || patient.patient_id}
-                  className="bg-white rounded-3xl p-5 border border-gray-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                  className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-gray-200/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
                 >
                   <div>
                     {/* Header Paciente */}
-                    <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-start justify-between gap-3 mb-2.5">
                       <div className="flex items-center gap-3">
-                        <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
+                        <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-sm shrink-0">
                           {(patient.nombre || patient.name || 'P')[0]}
                         </div>
-                        <div>
-                          <h3 className="font-bold text-gray-900 text-sm leading-tight">
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-gray-900 dark:text-white text-sm leading-tight truncate">
                             {patient.nombre || patient.name}
                           </h3>
-                          <p className="text-[11px] text-gray-500">
+                          <p className="text-[11px] text-gray-500 dark:text-slate-400">
                             {patient.tipo_documento || 'CC'}: {patient.documento || patient.document || 'N/A'}
                           </p>
                         </div>
                       </div>
+                    </div>
 
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${cursoBadgeColors[patient.curso_vida] || 'bg-gray-100 text-gray-800'}`}>
-                        {cursoLabels[patient.curso_vida] || patient.curso_vida || '3280'}
-                      </span>
+                    {/* Curso de Vida (7 Rutas A-G) y Grupos de Riesgo Reales */}
+                    <div className="mb-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 space-y-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Curso:</span>
+                        <CursoVidaBadge patient={patient} />
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Riesgo:</span>
+                        <GruposRiesgoBadges patient={patient} maxVisible={3} />
+                      </div>
                     </div>
 
                     {/* Dispositivos Caseros de Medición */}

@@ -192,19 +192,24 @@ export function getCursoVidaIcon(idOrKey) {
 }
 
 /**
- * Función utilitaria para obtener el componente de icono de Grupo de Riesgo por código o nombre
+ * Función utilitaria para obtener el componente de icono de Grupo de Riesgo por código o nombre (1 a 11)
  */
 export function getGrupoRiesgoIcon(idOrKey) {
-  const norm = String(idOrKey || '').toLowerCase();
-  if (norm === '1' || norm.includes('materno') || norm.includes('parto')) return MaternoPerinatalIcon;
+  const norm = String(idOrKey || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  if (norm === '1' || norm.includes('materno') || norm.includes('parto') || norm.includes('gestan')) return MaternoPerinatalIcon;
   if (norm === '2' || norm.includes('cardio') || norm.includes('metabol') || norm.includes('renal')) return CardiovascularIcon;
-  if (norm === '3' || norm.includes('respira') || norm.includes('epoc') || norm.includes('asma')) return RespiratorioIcon;
-  if (norm === '4' || norm.includes('cancer') || norm.includes('onco') || norm.includes('mama')) return CancerIcon;
-  if (norm === '5' || norm.includes('mental') || norm.includes('sustanc')) return MentalIcon;
-  if (norm === '6' || norm.includes('infec') || norm.includes('vih') || norm.includes('tb')) return InfecciosasIcon;
-  if (norm === '7' || norm.includes('huerfa') || norm.includes('rara') || norm.includes('genet')) return HuerfanasIcon;
-  if (norm === '8' || norm.includes('nutric') || norm.includes('obesi')) return NutricionalIcon;
-  if (norm === '9' || norm.includes('musculo') || norm.includes('esquelet')) return MusculoesqueleticoIcon;
-  if (norm === '10' || norm.includes('oral') || norm.includes('orofac')) return SaludOralRiesgoIcon;
+  if (norm === '3' || norm.includes('cancer') || norm.includes('onco') || norm.includes('mama')) return CancerIcon;
+  if (norm === '4' || norm.includes('respira') || norm.includes('epoc') || norm.includes('asma')) return RespiratorioIcon;
+  if (norm === '5' || norm.includes('mental') || norm.includes('sustanc') || norm.includes('spa')) return MentalIcon;
+  if (norm === '6' || norm.includes('infec') || norm.includes('zoonot') || norm.includes('vih') || norm.includes('tb')) return InfecciosasIcon;
+  if (norm === '7' || norm.includes('nutric') || norm.includes('obesi') || norm.includes('crecimiento')) return NutricionalIcon;
+  if (norm === '8' || norm.includes('huerfa') || norm.includes('neurol') || norm.includes('rara') || norm.includes('genet')) return HuerfanasIcon;
+  if (norm === '9' || norm.includes('planific') || norm.includes('anticoncep')) return PlanificacionFamiliarIcon;
+  if (norm === '10' || norm.includes('vacun') || norm.includes('pai')) return VacunacionIcon;
+  if (norm === '11' || norm.includes('oral') || norm.includes('odonto') || norm.includes('bucal')) return SaludOralRiesgoIcon;
   return CardiovascularIcon;
 }

@@ -271,99 +271,6 @@ export const PROGRAMAS_3280 = [
       { mes: 11, label: 'Rescate de Mamografías Pendientes', hito: 'Llamada Asertiva Puerto 22 a Mujeres Sin Tamizaje', edadTarget: '50 a 69 años (F)', cups: '876801' },
       { mes: 12, label: 'Consolidación Coberturas Cáncer', hito: 'Cumplimiento Indicadores Ruta Materno y Oncológica', edadTarget: '14 a 69 años (F)', cups: '890201' }
     ]
-  },
-  {
-    id: 'H',
-    key: 'planificacion_familiar',
-    nombre: 'Planificación Familiar',
-    rango: 'Población 14 a 49 años',
-    edadMin: 14,
-    edadMax: 49,
-    genero: 'ambos',
-    color: 'bg-amber-600',
-    borderColor: 'border-amber-300',
-    lightBg: 'bg-amber-50/70',
-    textColor: 'text-amber-900',
-    badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
-    totalCenso: 162000,
-    descripcion: 'Asesoría y provisión de métodos anticonceptivos (orales, inyectables, DIU, implantes subdérmicos, vasectomía y ligadura). Consulta preconcepcional.',
-    scheduledPattern: [13500, 13500, 13500, 13500, 13500, 13500, 13500, 13500, 13500, 13500, 13500, 13500],
-    milestones: [
-      { mes: 1, label: 'Asesoría Anticonceptiva Libre', hito: 'Elección Informada y Criterios Médicos Elegibilidad', edadTarget: '14 a 49 años', cups: '890204' },
-      { mes: 2, label: 'Implante Subdérmico (3-5a)', hito: 'Inserción Gratuita de Implante Liberador Levonorgestrel', edadTarget: '14 a 49 años', cups: '861201' },
-      { mes: 3, label: 'Dispositivo Intrauterino (DIU)', hito: 'Inserción T de Cobre o DIU Medicado', edadTarget: '14 a 49 años', cups: '697100' },
-      { mes: 4, label: 'Anticonceptivos Inyectables', hito: 'Aplicación Mensual / Trimestral con Trazabilidad', edadTarget: '14 a 49 años', cups: '993120' },
-      { mes: 5, label: 'Métodos de Doble Protección', hito: 'Preservativo + Método Hormonal contra ITS y Embarazo', edadTarget: '14 a 49 años', cups: '890204' },
-      { mes: 6, label: 'Vasectomía Quirúrgica', hito: 'Procedimiento Ambulatorio sin Bisturí para Hombres', edadTarget: '18 a 49 años (M)', cups: '637300' },
-      { mes: 7, label: 'Ligadura de Trompas (Pomeroy)', hito: 'Anticoncepción Quirúrgica Definitiva Femenina', edadTarget: '18 a 49 años (F)', cups: '662200' },
-      { mes: 8, label: 'Control Tolerancia y Adherencia', hito: 'Manejo de Spotting y Verificación de Continuidad', edadTarget: '14 a 49 años', cups: '890205' },
-      { mes: 9, label: 'Consulta Preconcepcional', hito: 'Planificación Familiar Deseada y Factores de Riesgo', edadTarget: '14 a 45 años', cups: '890203' },
-      { mes: 10, label: 'Anticoncepción Post-Parto (AESP)', hito: 'Inicio Método antes del Alta Hospitalaria', edadTarget: 'Gestantes / Puérperas', cups: '890204' },
-      { mes: 11, label: 'Suministro Píldoras Orales', hito: 'Dispensación Regular Anticonceptivos Combinados', edadTarget: '14 a 49 años', cups: '993120' },
-      { mes: 12, label: 'Satisfacción y Retención Método', hito: 'Evaluación Anual de Cobertura y Bienestar Reproductivo', edadTarget: '14 a 49 años', cups: '890201' }
-    ]
-  },
-  {
-    id: 'I',
-    key: 'vacunacion',
-    nombre: 'Vacunación',
-    rango: 'Todas las edades priorizadas',
-    edadMin: 0,
-    edadMax: 102,
-    genero: 'ambos',
-    color: 'bg-emerald-700',
-    borderColor: 'border-emerald-400',
-    lightBg: 'bg-emerald-50/70',
-    textColor: 'text-emerald-950',
-    badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-400',
-    totalCenso: 215000,
-    descripcion: 'Esquema Nacional PAI (Pentavalente, Triple Viral, Neumococo, Rotavirus, VPH en niñas y niños, Influenza estacional, Tétanos y COVID-19).',
-    scheduledPattern: [17910, 17910, 17920, 17910, 17920, 17910, 17920, 17910, 17920, 17910, 17920, 17980],
-    milestones: [
-      { mes: 1, label: 'Vacuna Recién Nacido', hito: 'BCG y Hepatitis B Pediátrica en primeras 24 horas', edadTarget: '0 a 28 días', cups: '993101' },
-      { mes: 2, label: 'Esquema 2 Meses', hito: 'Pentavalente 1, Polio IPV 1, Rotavirus 1 y Neumococo 1', edadTarget: '2 meses', cups: '993120' },
-      { mes: 3, label: 'Búsqueda Activa Susceptibles', hito: 'Monitoreo Pacientes Retrasados en Esquema PAI', edadTarget: '0 a 5 años', cups: '890208' },
-      { mes: 4, label: 'Esquema 4 Meses', hito: 'Pentavalente 2, Polio IPV 2, Rotavirus 2 y Neumococo 2', edadTarget: '4 meses', cups: '993120' },
-      { mes: 5, label: 'Carnet Digital PAIweb', hito: 'Verificación Nominal y Validación de Dosis', edadTarget: 'Todas las edades', cups: '890201' },
-      { mes: 6, label: 'Esquema 6 Meses', hito: 'Pentavalente 3, Polio 3 e Influenza Pediátrica 1', edadTarget: '6 meses', cups: '993122' },
-      { mes: 7, label: 'Refuerzo Influenza 7m', hito: 'Influenza Pediátrica 2da dosis obligatoria', edadTarget: '7 meses', cups: '993122' },
-      { mes: 8, label: 'Jornada Nacional Vacunación', hito: 'Intensificación de Dosis Faltantes en el Hospital', edadTarget: 'Todas las edades', cups: '993100' },
-      { mes: 9, label: 'Vacuna VPH Escolar', hito: 'VPH Niñas 9-17 años y Niños 9-14 años', edadTarget: '9 a 17 años', cups: '993130' },
-      { mes: 10, label: 'Refuerzos de 18 Meses', hito: 'Fiebre Amarilla, DPT 1er Refuerzo y Polio Oral', edadTarget: '18 meses', cups: '993125' },
-      { mes: 11, label: 'Refuerzo Escolar 5 Años', hito: 'DPT 2do Refuerzo, Polio y Triple Viral SRP', edadTarget: '5 años', cups: '993125' },
-      { mes: 12, label: 'Vacunación Adulto Mayor y Tdap', hito: 'Influenza Adultos, Neumococo 23 y Tdap Gestantes', edadTarget: '60+ años y Gestantes', cups: '993122' }
-    ]
-  },
-  {
-    id: 'J',
-    key: 'salud_oral',
-    nombre: 'Salud Oral',
-    rango: 'Toda la población (Censo completo)',
-    edadMin: 0,
-    edadMax: 102,
-    genero: 'ambos',
-    color: 'bg-sky-700',
-    borderColor: 'border-sky-300',
-    lightBg: 'bg-sky-50/70',
-    textColor: 'text-sky-950',
-    badgeColor: 'bg-sky-100 text-sky-900 border-sky-300',
-    totalCenso: 400000,
-    descripcion: 'Atención odontológica preventiva general y por curso de vida: aplicación de barniz de flúor, sellantes, detartraje supragingival y control de placa bacteriana.',
-    scheduledPattern: [33333, 33333, 33334, 33333, 33333, 33334, 33333, 33333, 33334, 33333, 33333, 33338],
-    milestones: [
-      { mes: 1, label: 'Valoración Odontológica Inicial', hito: 'Examen Estomatológico e Índice de Placa O\'Leary', edadTarget: 'Todas las edades', cups: '890203' },
-      { mes: 2, label: 'Barniz de Flúor Semestre 1', hito: 'Aplicación Tópica de Barniz de Flúor (1-17 años)', edadTarget: '1 a 17 años', cups: '997102' },
-      { mes: 3, label: 'Sellantes Fosas y Fisuras', hito: 'Protección Mecánica en Molares Permanentes', edadTarget: '3 a 15 años', cups: '997101' },
-      { mes: 4, label: 'Detartraje Supragingival', hito: 'Eliminación Ultrasonido de Cálculo y Sarro Dental', edadTarget: '12+ años', cups: '997105' },
-      { mes: 5, label: 'Profilaxis y Remoción Manchas', hito: 'Limpieza Dental con Pasta Profiláctica Profesional', edadTarget: 'Todas las edades', cups: '997100' },
-      { mes: 6, label: 'Control Periodontal Crónicos', hito: 'Monitoreo de Encías en Hipertensos y Diabéticos', edadTarget: 'Adultos / Vejez', cups: '890205' },
-      { mes: 7, label: 'Técnica Cepillado e Hilo', hito: 'Educación Personalizada en Higiene Bucal', edadTarget: 'Todas las edades', cups: '890208' },
-      { mes: 8, label: 'Barniz de Flúor Semestre 2', hito: 'Segunda Dosis Semestral Obligatoria Barniz Flúor', edadTarget: '1 a 17 años', cups: '997102' },
-      { mes: 9, label: 'Tamizaje Lesiones Premalignas', hito: 'Detección Leucoplasias y Neoplasias de Mucosa Oral', edadTarget: 'Adultos / Vejez', cups: '890206' },
-      { mes: 10, label: 'Terapia Básica Periodontal', hito: 'Raspaje y Alisado Radicular Localizado', edadTarget: 'Adultos', cups: '997105' },
-      { mes: 11, label: 'Ajuste Prótesis Geriátrica', hito: 'Evaluación Mucosa de Soporte y Oclusión en Vejez', edadTarget: '60+ años', cups: '890201' },
-      { mes: 12, label: 'Cierre Anual Población Cero Caries', hito: 'Consolidación Índice COP/ceo Comunitario', edadTarget: 'Censo 400.000', cups: '997100' }
-    ]
   }
 ];
 
@@ -382,49 +289,73 @@ export const MESES_TITULOS = [
   { id: 12, nombre: 'Diciembre', abreviatura: 'Dic', label: 'Mes 12' }
 ];
 
-// 7 GRUPOS DE RIESGO PRIORIZADOS ESTIPULADOS POR EL USUARIO (PASO 1 DEL WIZARD)
+// 11 GRUPOS DE RIESGO PRIORIZADOS UNIFICADOS (Incluye Planificación Familiar, Vacunación PAI y Salud Oral reubicados desde H, I, J)
 export const GRUPOS_RIESGO_PRIORIZADOS = [
   {
     id: 1,
     codigo: 'materno_perinatal',
     titulo: 'Población Materno-Perinatal',
-    descripcion: 'Mujeres gestantes, en parto, puerperio y recién nacidos (incluyendo seguimiento especial para prematuros o bajo peso al nacer).'
+    descripcion: 'Mujeres gestantes, en parto, puerperio y recién nacidos (Ruta RIAMP, Prioridad P1).'
   },
   {
     id: 2,
-    codigo: 'cardiovascular_metabolico',
-    titulo: 'Riesgo Cardiovascular y Metabólico',
-    descripcion: 'Personas con antecedentes o diagnóstico de hipertensión arterial, diabetes mellitus, dislipidemias (colesterol/triglicéridos altos), obesidad y enfermedad renal crónica.'
+    codigo: 'cardiovascular',
+    titulo: 'Riesgo Cardiovascular, Metabólico y Renal',
+    descripcion: 'Hipertensión arterial, diabetes mellitus, dislipidemias, obesidad y enfermedad renal crónica.'
   },
   {
     id: 3,
-    codigo: 'cancer_deteccion',
-    titulo: 'Cáncer (Detección temprana)',
-    descripcion: 'Población con factores de riesgo o en rangos de edad para tamizaje de cáncer de cuello uterino, mama, próstata y colon/recto.'
+    codigo: 'cancer',
+    titulo: 'Cáncer (Detección temprana y seguimiento)',
+    descripcion: 'Tamizaje y seguimiento oncológico de cuello uterino, mama, próstata y colon/recto (Prioridad P2).'
   },
   {
     id: 4,
-    codigo: 'respiratorias_cronicas',
+    codigo: 'respiratorias',
     titulo: 'Enfermedades Respiratorias Crónicas',
-    descripcion: 'Pacientes con asma o Enfermedad Pulmonar Obstructiva Crónica (EPOC).'
+    descripcion: 'Pacientes con diagnóstico de Asma o Enfermedad Pulmonar Obstructiva Crónica (EPOC).'
   },
   {
     id: 5,
-    codigo: 'salud_mental_sustancias',
-    titulo: 'Salud Mental y Consumo de Sustancias',
-    descripcion: 'Personas expuestas a violencias (intrafamiliar, de género, conflicto armado), trastornos mentales o consumo problemático de sustancias psicoactivas, alcohol y tabaco.'
+    codigo: 'salud_mental',
+    titulo: 'Salud Mental y Sustancias Psicoactivas',
+    descripcion: 'Violencias, trastornos mentales y consumo problemático de sustancias psicoactivas (SPA).'
   },
   {
     id: 6,
-    codigo: 'infecciosas_zoonoticas',
+    codigo: 'infecciosas',
     titulo: 'Enfermedades Infecciosas y Zoonóticas',
-    descripcion: 'Población expuesta o diagnosticada con VIH/SIDA, tuberculosis, infecciones de transmisión sexual (ITS) o enfermedades transmitidas por vectores (dengue, malaria, Chagas).'
+    descripcion: 'VIH/SIDA, tuberculosis, ITS y enfermedades transmitidas por vectores (dengue, malaria, Chagas).'
   },
   {
     id: 7,
-    codigo: 'alteraciones_nutricionales',
-    titulo: 'Alteraciones Nutricionales',
-    descripcion: 'Niños, gestantes o adultos mayores con desnutrición aguda/crónica o deficiencias de micronutrientes.'
+    codigo: 'nutricionales',
+    titulo: 'Alteraciones Nutricionales y del Crecimiento',
+    descripcion: 'Desnutrición aguda/crónica, anemia y deficiencias de micronutrientes.'
+  },
+  {
+    id: 8,
+    codigo: 'huerfanas_neurologicas',
+    titulo: 'Enfermedades Huérfanas y Neurológicas',
+    descripcion: 'Enfermedades huérfanas, raras y patologías neurológicas en seguimiento.'
+  },
+  {
+    id: 9,
+    codigo: 'planificacion_familiar',
+    titulo: 'Planificación Familiar',
+    descripcion: 'Asesoría y provisión de métodos anticonceptivos y consulta preconcepcional.'
+  },
+  {
+    id: 10,
+    codigo: 'vacunacion',
+    titulo: 'Vacunación (Esquema PAI)',
+    descripcion: 'Esquema Nacional PAI infantil, VPH escolar, Tdap gestantes e influenza/neumococo adulto mayor.'
+  },
+  {
+    id: 11,
+    codigo: 'salud_oral',
+    titulo: 'Salud Oral',
+    descripcion: 'Valoración odontológica preventiva, aplicación de barniz de flúor, sellantes y profilaxis.'
   }
 ];
 

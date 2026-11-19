@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 // Canales disponibles
 const CHANNELS = [
@@ -59,7 +60,7 @@ export default function PatientTelemetryTable({
               )}
               <th className="p-3.5 whitespace-nowrap">Nombre del Paciente</th>
               <th className="p-3.5 whitespace-nowrap">Dispositivo</th>
-              <th className="p-3.5 whitespace-nowrap">Grupos de Vida</th>
+              <th className="p-3.5 whitespace-nowrap">Curso de Vida</th>
               <th className="p-3.5 whitespace-nowrap">Grupos de Riesgo</th>
               <th className="p-3.5 text-center whitespace-nowrap">Historial de Medida</th>
               <th className="p-3.5 text-center whitespace-nowrap">Valores Críticos</th>
@@ -154,12 +155,10 @@ export default function PatientTelemetryTable({
                       )}
                     </td>
 
-                    {/* 3. Grupos de Vida y Profesional Asignado */}
+                    {/* 3. Curso de Vida y Profesional Asignado */}
                     <td className="p-3.5 whitespace-nowrap">
                       <div className="flex flex-col items-start gap-1">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-cyan-50 dark:bg-cyan-950/60 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60">
-                          {patient.grupo_vida || patient.curso_vida || 'Primera Infancia'}
-                        </span>
+                        <CursoVidaBadge patient={patient} />
                         {patient.doctor_nombre && (
                           <span
                             className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-slate-400 max-w-[190px] truncate"
@@ -172,14 +171,9 @@ export default function PatientTelemetryTable({
                       </div>
                     </td>
 
-                    {/* 4. Grupos de Riesgo */}
-                    <td className="p-3.5 max-w-[210px]">
-                      <span 
-                        className="inline-block px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 truncate max-w-full"
-                        title={patient.grupo_riesgo || 'Población Materno-Perinatal'}
-                      >
-                        {patient.grupo_riesgo || 'Población Materno-Perinatal'}
-                      </span>
+                    {/* 4. Grupos de Riesgo Clínicos Reales (nunca inventados) */}
+                    <td className="p-3.5 max-w-[240px]">
+                      <GruposRiesgoBadges patient={patient} maxVisible={3} />
                     </td>
 
                     {/* 5. Historial de Medida (Click -> Curva) */}
@@ -308,16 +302,12 @@ export default function PatientTelemetryTable({
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">CURSO DE VIDA</span>
-                  <span className="font-bold text-cyan-800 dark:text-cyan-300 text-xs">
-                    {curvePatient.grupo_vida || curvePatient.curso_vida || 'Primera Infancia'}
-                  </span>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block mb-1">CURSO DE VIDA</span>
+                  <CursoVidaBadge patient={curvePatient} />
                 </div>
                 <div>
-                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block">GRUPO DE RIESGO</span>
-                  <span className="font-bold text-amber-800 dark:text-amber-300 text-xs truncate block" title={curvePatient.grupo_riesgo}>
-                    {curvePatient.grupo_riesgo || 'Población General'}
-                  </span>
+                  <span className="text-[10px] text-gray-400 dark:text-slate-400 font-bold block mb-1">GRUPOS DE RIESGO</span>
+                  <GruposRiesgoBadges patient={curvePatient} maxVisible={4} />
                 </div>
               </div>
 
@@ -464,6 +454,10 @@ export default function PatientTelemetryTable({
 
           {criticalPatient && (
             <div className="mt-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <CursoVidaBadge patient={criticalPatient} />
+                <GruposRiesgoBadges patient={criticalPatient} maxVisible={4} />
+              </div>
               {criticalPatient.valores_criticos?.tiene_critico ? (
                 <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-2xl p-4 space-y-3">
                   <div className="flex items-center justify-between">

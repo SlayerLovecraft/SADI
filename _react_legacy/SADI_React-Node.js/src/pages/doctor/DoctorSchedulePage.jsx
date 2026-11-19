@@ -5,6 +5,8 @@ import MonthCalendar from '@/components/MonthCalendar';
 import { useAuth } from '@/contexts/AuthContext';
 import { appointmentService } from '@/services/appointmentService';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import {
   Dialog,
   DialogContent,
@@ -21,6 +23,7 @@ const toIsoDate = (d) => {
 
 const DoctorSchedulePage = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const doctorId = useMemo(() => String(user?.doctor_id || user?.id || '').trim(), [user?.doctor_id, user?.id]);
 
   const [monthDate, setMonthDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -104,6 +107,12 @@ const DoctorSchedulePage = () => {
       setError(result.error || 'No se pudo actualizar el estado');
       return;
     }
+    if (status === 'inasistente') {
+      toast({
+        title: '📩 Seguimiento por Inasistencia Programado',
+        description: 'Se agendó automáticamente: 1° SMS a los +3 días de la cita y, si no responde, insistencia con 2° SMS + E-Mail 2 días después (+5 días).',
+      });
+    }
     await load();
   };
 
@@ -169,29 +178,39 @@ const DoctorSchedulePage = () => {
             ) : (
               <div className="space-y-3">
                 {dayAppointments.map((a) => (
-                  <div key={a.id} className="p-4 rounded-xl border border-gray-200 bg-white flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                    <div className="min-w-0">
+                  <div key={a.id} className="p-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                    <div className="min-w-0 space-y-1.5">
                       <div className="flex items-center gap-3">
-                        <div className="text-sm font-semibold text-gray-900">
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
                           {formatTime(a.start_at)}–{formatTime(a.end_at)}
                         </div>
                         <span
-                          className={`text-xs px-2 py-1 rounded-full border ${
+                          className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${
                             a.status === 'confirmada'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60'
                               : a.status === 'pendiente'
-                                ? 'bg-amber-50 text-amber-700 border-amber-100'
-                                : 'bg-rose-50 text-rose-700 border-rose-100'
+                                ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60'
+                                : a.status === 'inasistente'
+                                  ? 'bg-orange-50 dark:bg-orange-950/60 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800/60'
+                                  : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800/60'
                           }`}
                         >
-                          {a.status}
+                          {a.status === 'inasistente' ? 'Inasistente (+3d SMS → +2d SMS+Mail)' : a.status}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-600 mt-1 truncate">Paciente: {a.patient_name || a.patient_id}</div>
+                      <div className="text-sm text-gray-700 dark:text-slate-200 font-semibold truncate">
+                        Paciente: {a.patient_name || a.patient_id}
+                        {a.patient_document ? <span className="text-xs font-mono text-gray-500 dark:text-slate-400 ml-1.5">({a.patient_document})</span> : null}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <CursoVidaBadge patient={{ curso_vida: a.patient_curso_vida }} />
+                        <GruposRiesgoBadges patient={{ grupo_riesgo: a.patient_grupo_riesgo, grupos_riesgo: a.patient_grupos_riesgo }} maxVisible={3} />
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                       <Button
+                        size="sm"
                         variant="outline"
                         disabled={updating || a.status === 'confirmada'}
                         onClick={() => handleStatus(a.id, 'confirmada')}
@@ -199,8 +218,19 @@ const DoctorSchedulePage = () => {
                         Confirmar
                       </Button>
                       <Button
+                        size="sm"
                         variant="outline"
-                        className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                        className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/50"
+                        disabled={updating || a.status === 'inasistente'}
+                        onClick={() => handleStatus(a.id, 'inasistente')}
+                        title="Marca inasistencia y programa SMS a +3 días y SMS + E-Mail a +5 días"
+                      >
+                        Inasistente
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/50"
                         disabled={updating || a.status === 'cancelada'}
                         onClick={() => handleStatus(a.id, 'cancelada')}
                       >

@@ -6,6 +6,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { telemonitoringService } from '@/services/telemonitoringService';
 import { getRequiredRIASAppointments, getCursoVida3280 } from '@/services/rias3280Engine';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 export const Patient360Modal = ({ patient, onClose, onTriggerAICall }) => {
   const [timeline, setTimeline] = useState([]);
@@ -62,18 +63,12 @@ export const Patient360Modal = ({ patient, onClose, onTriggerAICall }) => {
                     {patient.tipo_documento || 'CC'}: {patient.documento}
                   </span>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-300 mt-1.5">
-                  <span className="font-semibold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
-                    {curso.label}
-                  </span>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-300 mt-1.5">
+                  <CursoVidaBadge patient={patient} />
+                  <GruposRiesgoBadges patient={patient} maxVisible={4} />
                   {patient.es_gestante && (
                     <span className="font-semibold text-pink-300 bg-pink-950/60 px-2 py-0.5 rounded border border-pink-500/30 animate-pulse">
-                      🤰 Gestante: Semana {patient.semana_gestacional || 28} (Ruta Materno Perinatal)
-                    </span>
-                  )}
-                  {patient.es_diabetico && (
-                    <span className="font-semibold text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30">
-                      🩺 Diabetes Mellitus
+                      🤰 Gestante: Semana {patient.semana_gestacional || 28}
                     </span>
                   )}
                   <span>📞 {patient.telefono}</span>

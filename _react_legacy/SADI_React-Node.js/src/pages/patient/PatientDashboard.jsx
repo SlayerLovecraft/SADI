@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Activity, Heart, User, Calendar, MapPin, AlertTriangle, Plus, RefreshCw, HeartPulse, Thermometer, Gauge, Droplet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 const PatientDashboard = () => {
   const navigate = useNavigate();
@@ -472,7 +473,17 @@ const loadVitalSigns = async (patientId) => {
               </div>
               <div className="flex items-center">
                 <Activity className="h-4 w-4 mr-2"/> 
-                {patientData.program || 'No asignado'}
+                {patientData.program || 'Resolución 3280'}
+              </div>
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Curso de Vida (Res. 3280)</span>
+                  <CursoVidaBadge patient={patientData} size="sm" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Grupo(s) de Riesgo</span>
+                  <GruposRiesgoBadges patient={patientData} size="sm" maxVisible={5} />
+                </div>
               </div>
             </div>
           </div>

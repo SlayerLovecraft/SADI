@@ -3,7 +3,7 @@ import { isSupabaseAuthError, withTimeout } from '@/lib/utils'
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils'
 import { staffService } from './staffService'
 import { SEED_PATIENTS_3280 } from './telemonitoringService'
-import { getPatientCursoVida, getPatientGrupoRiesgo } from './callCapacityService'
+import { getPatientCursoVida, getPatientGrupoRiesgo, getPatientGruposRiesgo } from './callCapacityService'
 
 // Función auxiliar para calcular edad desde fecha de nacimiento
 function calculateAge(birthdate) {
@@ -20,15 +20,12 @@ function calculateAge(birthdate) {
   return age;
 }
 
-// Función auxiliar para determinar Curso de Vida según edad y programa
+// Función auxiliar para determinar Curso de Vida (7 Cursos A-G) según edad y programa
 function getCursoVidaFromData(age, program) {
   const p = (program || '').toLowerCase();
-  if (p.includes('embarazo') || p.includes('prenatal') || p.includes('materno') || p.includes('ginecolog')) {
+  if (p.includes('embarazo') || p.includes('prenatal') || p.includes('materno') || p.includes('gestan') || p.includes('riamp')) {
     return 'Preventivo de la Mujer';
   }
-  if (p.includes('planificac')) return 'Planificación Familiar';
-  if (p.includes('vacuna')) return 'Vacunación';
-  if (p.includes('oral') || p.includes('odontolog')) return 'Salud Oral';
 
   if (age === null || age === undefined) return 'Adultez';
   if (age <= 5) return 'Primera Infancia';
@@ -39,13 +36,15 @@ function getCursoVidaFromData(age, program) {
   return 'Vejez';
 }
 
-// Mapear de Supabase a Frontend
+// Mapear de Supabase a Frontend (preserva grupos_riesgo[] reales, NUNCA inventa riesgos)
 function mapSupabaseToFrontend(patient) {
   const cvObj = getPatientCursoVida(patient);
+  const grList = getPatientGruposRiesgo(patient);
   const grObj = getPatientGrupoRiesgo(patient);
   const age = calculateAge(patient.birthdate || patient.fecha_nacimiento);
   const cursoVida = cvObj.nombre;
-  const grupoRiesgo = patient.grupo_riesgo || grObj.nombre;
+  const realRiesgoNames = grList.map((r) => r.nombre);
+  const grupoRiesgo = realRiesgoNames.length > 0 ? realRiesgoNames[0] : null;
 
   // Parsing seguro de JSON
   let dispositivos = [];
@@ -104,10 +103,14 @@ function mapSupabaseToFrontend(patient) {
     direccion: patient.address || patient.direccion || '',
     hospitalId: patient.hospital_id || patient.hospitalId,
     fechaRegistro: patient.created_at || new Date().toISOString(),
-    zona: patient.zona || 'Urbano',
-    barrio: patient.barrio || 'Centro',
-    comuna: patient.comuna || 'Comuna 1',
+    zona: patient.zona || 'Urbana',
+    barrio: patient.barrio || '',
+    comuna: patient.comuna || '',
+    corregimiento: patient.corregimiento || null,
+    vereda: patient.vereda || null,
+    centro_poblado: patient.centro_poblado || null,
     grupo_riesgo: grupoRiesgo,
+    grupos_riesgo: realRiesgoNames,
     grupo_vida: cursoVida,
     curso_vida: cursoVida,
     curso_vida_key: cvObj.key,

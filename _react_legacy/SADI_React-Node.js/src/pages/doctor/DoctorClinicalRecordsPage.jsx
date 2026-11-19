@@ -14,6 +14,7 @@ import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitor
 import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { isPatientAssignedToDoctor } from './doctorUtils';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import { 
   clinicalRecordsService, 
   FOLDER_CATEGORIES, 
@@ -404,7 +405,11 @@ export default function DoctorClinicalRecordsPage() {
 
                     <div className="flex items-center justify-between mt-1 text-[11px] opacity-80">
                       <span>{p.eps} • {p.regimen}</span>
-                      <span className="capitalize font-semibold">{p.curso_vida?.replace('_', ' ')}</span>
+                    </div>
+
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      <CursoVidaBadge patient={p} />
+                      <GruposRiesgoBadges patient={p} maxVisible={2} />
                     </div>
 
                     {p.es_gestante && (
@@ -440,6 +445,10 @@ export default function DoctorClinicalRecordsPage() {
                     <span className="text-slate-400 text-[11px]">Expediente de:</span>
                     <p className="font-bold text-white text-xs">{selectedPatient.nombre}</p>
                     <p className="text-[10px] text-slate-400">{selectedPatient.eps} • Tel: {selectedPatient.telefono}</p>
+                    <div className="mt-1.5 flex flex-wrap justify-end gap-1">
+                      <CursoVidaBadge patient={selectedPatient} />
+                      <GruposRiesgoBadges patient={selectedPatient} maxVisible={3} />
+                    </div>
                   </div>
                 </div>
 

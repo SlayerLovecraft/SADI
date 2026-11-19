@@ -10,6 +10,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { normalizeCursosArray } from '@/services/cursoVidaConfig';
 import { demanda3280Service, GRUPOS_RIESGO_3280 } from '@/services/demanda3280Service';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
+import {
+  getCaliComunas,
+  getCaliBarriosForComuna,
+  getCaliCorregimientos,
+  getCaliVeredasForCorregimiento,
+  getCaliCentrosPobladosForCorregimiento,
+} from '@/services/caliDivipola';
 import {
   Dialog,
   DialogContent,
@@ -186,6 +194,30 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
   const filterOptions = serverOptions;
 
+  const caliComunas = useMemo(() => getCaliComunas(filterOptions.comunas), [filterOptions.comunas]);
+  const caliBarrios = useMemo(() => {
+    if (filterComuna !== 'todas') {
+      return getCaliBarriosForComuna(filterComuna, filterOptions.barriosPorComuna);
+    }
+    const set = new Set();
+    Object.values(filterOptions.barriosPorComuna || {}).forEach((arr) => (arr || []).forEach((b) => set.add(b)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [filterComuna, filterOptions.barriosPorComuna]);
+
+  const caliCorregimientos = useMemo(() => getCaliCorregimientos(filterOptions.corregimientos), [filterOptions.corregimientos]);
+  const caliVeredas = useMemo(() => {
+    if (filterCorregimiento !== 'todos') {
+      return getCaliVeredasForCorregimiento(filterCorregimiento);
+    }
+    return (filterOptions.veredas || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
+  }, [filterCorregimiento, filterOptions.veredas]);
+  const caliCentrosPoblados = useMemo(() => {
+    if (filterCorregimiento !== 'todos') {
+      return getCaliCentrosPobladosForCorregimiento(filterCorregimiento);
+    }
+    return (filterOptions.centrosPoblados || []).slice().sort((a, b) => a.localeCompare(b, 'es'));
+  }, [filterCorregimiento, filterOptions.centrosPoblados]);
+
   // Reset de sub-filtros al cambiar zona
   const handleZonaChange = (newZona) => {
     setFilterZona(newZona);
@@ -238,7 +270,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
         nombre: item.pacienteNombre,
         cedula: item.pacienteDoc,
         programa: item.protocoloNombre,
-        direccion: item.barrio ? `${item.barrio}, ${item.zona}` : 'Caldas, Antioquia'
+        direccion: item.barrio ? `${item.barrio}, ${item.zona}` : 'Santiago de Cali, Valle del Cauca'
       });
 
       toast({
@@ -384,22 +416,22 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
               1. Ubicación / Territorio:
             </label>
 
-            {/* Select Zona: Urbana o Rural */}
+            {/* Select Zona: Urbana o Rural (DIVIPOLA Santiago de Cali) */}
             <select
               value={filterZona}
               onChange={(e) => handleZonaChange(e.target.value)}
               className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="todas">Todas las Ubicaciones (Urbano y Rural)</option>
+              <option value="todas">Todo Santiago de Cali (Urbano y Rural)</option>
+              <option value="Rural">🌾 Rural (Corregimiento, Vereda y Centro Poblado)</option>
               <option value="Urbana">🏙️ Urbano (Comuna y Barrio)</option>
-              <option value="Rural">🌾 Rural (Centro Poblado, Corregimiento y Vereda)</option>
             </select>
 
-            {/* Sub-opciones Urbanas: Comuna y Barrio */}
+            {/* Sub-opciones Urbanas: Comuna -> Barrio */}
             {filterZona === 'Urbana' && (
               <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                 <div>
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Comuna:</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Comuna (Cali 1–22):</span>
                   <select
                     value={filterComuna}
                     onChange={(e) => {
@@ -410,75 +442,83 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
                     className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
                   >
                     <option value="todas">Todas las Comunas</option>
-                    {filterOptions.comunas.map(c => (
+                    {caliComunas.map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
                 </div>
 
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Barrio:</span>
-                  <select
-                    value={filterBarrio}
-                    onChange={(e) => { setFilterBarrio(e.target.value); setCurrentPage(1); }}
-                    className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  >
-                    <option value="todos">Todos los Barrios</option>
-                    {(filterComuna !== 'todas' && filterOptions.barriosPorComuna[filterComuna] 
-                      ? filterOptions.barriosPorComuna[filterComuna] 
-                      : Object.values(filterOptions.barriosPorComuna).flat()
-                    ).map(b => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
-                </div>
+                {filterComuna !== 'todas' && (
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Barrio ({filterComuna}):</span>
+                    <select
+                      value={filterBarrio}
+                      onChange={(e) => { setFilterBarrio(e.target.value); setCurrentPage(1); }}
+                      className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+                    >
+                      <option value="todos">Todos los Barrios</option>
+                      {caliBarrios.map(b => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Sub-opciones Rurales: Centro Poblado, Corregimiento y Vereda */}
+            {/* Sub-opciones Rurales: Corregimiento -> Vereda / Centro Poblado */}
             {filterZona === 'Rural' && (
               <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                 <div>
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Centro Poblado:</span>
-                  <select
-                    value={filterCentroPoblado}
-                    onChange={(e) => { setFilterCentroPoblado(e.target.value); setCurrentPage(1); }}
-                    className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  >
-                    <option value="todos">Todos los Centros Poblados</option>
-                    {filterOptions.centrosPoblados.map(cp => (
-                      <option key={cp} value={cp}>{cp}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Corregimiento:</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Corregimiento (15 de Cali):</span>
                   <select
                     value={filterCorregimiento}
-                    onChange={(e) => { setFilterCorregimiento(e.target.value); setCurrentPage(1); }}
+                    onChange={(e) => {
+                      setFilterCorregimiento(e.target.value);
+                      setFilterVereda('todas');
+                      setFilterCentroPoblado('todos');
+                      setCurrentPage(1);
+                    }}
                     className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
                   >
                     <option value="todos">Todos los Corregimientos</option>
-                    {filterOptions.corregimientos.map(cr => (
+                    {caliCorregimientos.map(cr => (
                       <option key={cr} value={cr}>{cr}</option>
                     ))}
                   </select>
                 </div>
 
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Vereda:</span>
-                  <select
-                    value={filterVereda}
-                    onChange={(e) => { setFilterVereda(e.target.value); setCurrentPage(1); }}
-                    className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
-                  >
-                    <option value="todas">Todas las Veredas</option>
-                    {filterOptions.veredas.map(v => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
+                {filterCorregimiento !== 'todos' && (
+                  <>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Vereda ({filterCorregimiento}):</span>
+                      <select
+                        value={filterVereda}
+                        onChange={(e) => { setFilterVereda(e.target.value); setCurrentPage(1); }}
+                        className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+                      >
+                        <option value="todas">Todas las Veredas</option>
+                        {caliVeredas.map(v => (
+                          <option key={v} value={v}>{v}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Centro Poblado ({filterCorregimiento}):</span>
+                      <select
+                        value={filterCentroPoblado}
+                        onChange={(e) => { setFilterCentroPoblado(e.target.value); setCurrentPage(1); }}
+                        className="w-full p-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100"
+                      >
+                        <option value="todos">Todos los Centros Poblados</option>
+                        {caliCentrosPoblados.map(cp => (
+                          <option key={cp} value={cp}>{cp}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -495,7 +535,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
               onChange={(e) => { setFilterGrupoRiesgo(e.target.value); setCurrentPage(1); }}
               className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="todos">Todos los Grupos de Riesgo (1 a 7)</option>
+              <option value="todos">Todos los Grupos de Riesgo (1 a 11)</option>
               {GRUPOS_RIESGO_3280.map(g => (
                 <option key={g.id} value={g.label}>{g.label}</option>
               ))}
@@ -567,6 +607,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
             <tr>
               <th className="p-3 whitespace-nowrap">Fecha / Hora</th>
               <th className="p-3">Paciente / Documento</th>
+              <th className="p-3">Curso de Vida &amp; Grupos de Riesgo</th>
               <th className="p-3">Origen</th>
               <th className="p-3">Procedimiento / Protocolo 3280</th>
               <th className="p-3">Ubicación Territorial</th>
@@ -579,7 +620,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
           <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
             {loading ? (
               <tr>
-                <td colSpan={9} className="text-center py-12 text-gray-400 dark:text-slate-500">
+                <td colSpan={10} className="text-center py-12 text-gray-400 dark:text-slate-500">
                   <div className="flex flex-col items-center gap-2">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
                     <span className="text-xs font-semibold text-gray-500 dark:text-slate-400">Cargando lista mensual de interacciones...</span>
@@ -588,7 +629,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
               </tr>
             ) : paginatedInteractions.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center py-10 text-gray-400 dark:text-slate-500">
+                <td colSpan={10} className="text-center py-10 text-gray-400 dark:text-slate-500">
                   No se encontraron interacciones programadas que coincidan con los filtros seleccionados para este mes.
                 </td>
               </tr>
@@ -622,6 +663,14 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
                       </div>
                       <div className="text-[10px] text-gray-400 dark:text-slate-400">
                         {item.edadFormato} • Tel: {item.telefono}
+                      </div>
+                    </td>
+
+                    {/* Curso de Vida & Grupos de Riesgo Reales */}
+                    <td className="p-3 max-w-[220px]">
+                      <div className="flex flex-col items-start gap-1">
+                        <CursoVidaBadge patient={{ curso_vida: item.cursoVida, edad: item.edad }} />
+                        <GruposRiesgoBadges patient={{ grupo_riesgo: item.grupoRiesgo, grupos_riesgo: item.gruposRiesgo }} maxVisible={2} />
                       </div>
                     </td>
 
@@ -834,6 +883,10 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
           {selectedItemForModal && (
             <div className="space-y-4 pt-2 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                <CursoVidaBadge patient={{ curso_vida: selectedItemForModal.cursoVida, edad: selectedItemForModal.edad }} />
+                <GruposRiesgoBadges patient={{ grupo_riesgo: selectedItemForModal.grupoRiesgo, grupos_riesgo: selectedItemForModal.gruposRiesgo }} maxVisible={4} />
+              </div>
 
               <div className="grid grid-cols-2 gap-3 bg-gray-50 dark:bg-slate-800/70 p-3.5 rounded-2xl border border-gray-200 dark:border-slate-700">
                 <div>

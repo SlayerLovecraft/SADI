@@ -114,15 +114,15 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
               </h3>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-300 mt-0.5">
-              Desglose real en Supabase ({(matrixData?.realPatientsCount ?? 0).toLocaleString('es-CO')} pacientes) por Cursos de Vida (A - J) y Grupos de Riesgo Priorizados.
+              Desglose real en Supabase ({(matrixData?.realPatientsCount ?? 0).toLocaleString('es-CO')} pacientes) por 7 Cursos de Vida (A - G) y 11 Grupos de Riesgo Priorizados.
             </p>
           </div>
 
           <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
             {[
               { id: 'todos', label: 'Vista Panorámica' },
-              { id: 'cursos', label: 'Cursos de Vida (A - J)' },
-              { id: 'riesgos', label: 'Grupos de Riesgo (1 - 7)' },
+              { id: 'cursos', label: 'Cursos de Vida (A - G)' },
+              { id: 'riesgos', label: 'Grupos de Riesgo (1 - 11)' },
             ].map((tab) => (
               <button
                 key={tab.id}

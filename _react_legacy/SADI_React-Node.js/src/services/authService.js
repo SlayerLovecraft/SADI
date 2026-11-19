@@ -327,7 +327,7 @@ export const authService = {
               puede_crear_campanas: Boolean(staffDoc?.puede_crear_campanas),
               puede_editar_pacientes: Boolean(staffDoc?.puede_editar_pacientes),
               hospitalId: row.hospital_id || staffDoc?.hospital_id || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
-              hospital_name: row.hospital_name || 'Hospital Central SADI (Caldas)'
+              hospital_name: row.hospital_name || 'EPS SADI Salud (Santiago de Cali)'
             }
           };
         } else if (row?.message && !row.message.toLowerCase().includes('no encontrado')) {
@@ -362,7 +362,7 @@ export const authService = {
             return { success: false, error: 'Contraseña incorrecta (Use password123)' };
           }
 
-          let hospitalName = 'Hospital Central SADI (Caldas)';
+          let hospitalName = 'EPS SADI Salud (Santiago de Cali)';
           if (doctor.hospital_id) {
             const { data: hospital } = await supabase
               .from('hospitals')

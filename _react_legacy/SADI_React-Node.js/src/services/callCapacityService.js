@@ -1,509 +1,437 @@
 // ==============================================================================
-// callCapacityService.js - MOTOR DE CAPACIDAD DIARIA Y REPARTO ANUAL RES. 3280
-// - Capacidad: 8:00 AM a 6:00 PM (10 Horas) = 350 llamadas/hora = 3.500 llamadas/día
-// - Control estricto de aforo: Resolución 3280 + Campañas acumuladas <= 3.500
-// - Reparto de 365 días por ventana de oportunidad clínica
-// - Generador de prompts clínicos individualizados
+// callCapacityService.js - MOTOR DE CAPACIDAD GSM (500 LLAMADAS/DÍA), PRIORIDADES
+// P1-P5 (TABLERO_SADI_CAMPANAS.XLSX), FESTIVOS COLOMBIA Y GUIONES RES. 3280
+// - Capacidad operativa diaria: 500 llamadas IA/día (08:00 AM - 06:00 PM · 50/h)
+// - Días operativos: Lunes a Sábado excluyendo Domingos y Festivos de Colombia
+// - Prioridad de cola de voz: P1 (Materno) -> P2 (Cáncer) -> P3 (Inasist./Pediát. Riesgo)
+//   -> P4 (Grupos de Riesgo Crónicos) -> P5 (Valoración Preventiva Res. 3280)
+// - Excedente > 500/día: derivado automáticamente a SMS Respaldo (R1-04)
+// - CERO grupos de riesgo inventados: solo riesgos clínicos reales de la BD
 // ==============================================================================
 
-import { CURSOS_VIDA_PALETTE, GRUPOS_RIESGO_PALETTE } from './clinicalPalettes';
-import { GRUPOS_RIESGO_10 } from './gruposRiesgoCatalog';
-import { PROGRAMAS_3280 } from './census400kService';
 import {
-  classifyPatientCursoVidaKey,
-  canonicalizeCursoKey,
-  CURSO_KEY_TO_CODE,
-} from './cursoVidaConfig';
+  CURSOS_VIDA_PALETTE,
+  GRUPOS_RIESGO_PALETTE,
+  getGrupoRiesgoPalette,
+} from './clinicalPalettes';
+import { GRUPOS_RIESGO_CATALOG } from './gruposRiesgoCatalog';
+import { classifyPatientCursoVidaKey, CURSO_KEY_TO_CODE } from './cursoVidaConfig';
+import { CALI_IPS_SEDES } from './caliDivipola';
+import { NOSHOW_POLICY } from './noShowFollowupService';
 
-export const DAILY_CALL_CAPACITY = 3500; // 350 llamadas/hora x 10 horas
-export const HOURLY_CALL_CAPACITY = 350;
-export const OPERATING_HOURS_START = '08:00 AM';
-export const OPERATING_HOURS_END = '06:00 PM';
-export const TOTAL_OPERATING_HOURS = 10;
+export const OPERATING_HOURS_START = 8; // 08:00 AM
+export const OPERATING_HOURS_END = 18;  // 06:00 PM
+export const OPERATING_TOTAL_HOURS = 10;
+export const CALLS_PER_HOUR = 50;
+export const DAILY_CALL_CAPACITY = 500; // 50 llamadas/hora × 10 horas = 500 llamadas IA/día
 
-// Helper: Formato de fecha YYYY-MM-DD
-export function toISODate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+// Festivos oficiales de Colombia 2025-2027 (alineados con Tablero_SADI_Campanas.xlsx hoja Festivos)
+export const COLOMBIA_HOLIDAYS = new Set([
+  // 2025
+  '2025-01-01', '2025-01-06', '2025-03-24', '2025-04-17', '2025-04-18',
+  '2025-05-01', '2025-06-02', '2025-06-23', '2025-06-30', '2025-07-20',
+  '2025-08-07', '2025-08-18', '2025-10-13', '2025-11-03', '2025-11-17',
+  '2025-12-08', '2025-12-25',
+  // 2026
+  '2026-01-01', '2026-01-12', '2026-03-23', '2026-04-02', '2026-04-03',
+  '2026-05-01', '2026-05-18', '2026-06-08', '2026-06-15', '2026-06-29',
+  '2026-07-20', '2026-08-07', '2026-08-17', '2026-10-12', '2026-11-02',
+  '2026-11-16', '2026-12-08', '2026-12-25',
+  // 2027
+  '2027-01-01', '2027-01-11', '2027-03-22', '2027-03-25', '2027-03-26',
+  '2027-05-01', '2027-05-10', '2027-05-31', '2027-06-07', '2027-07-05',
+  '2027-07-20', '2027-08-07', '2027-08-16', '2027-10-18', '2027-11-01',
+  '2027-11-15', '2027-12-08', '2027-12-25',
+]);
+
+export function isColombiaHoliday(isoDate) {
+  return COLOMBIA_HOLIDAYS.has(String(isoDate || '').slice(0, 10));
 }
 
-// Helper: Saber si es domingo (0 = Domingo)
-export function isSundayDate(date) {
-  return date.getDay() === 0;
+export function isOperationalWorkday(isoOrDate) {
+  let dObj;
+  let iso;
+  if (isoOrDate instanceof Date) {
+    dObj = isoOrDate;
+    iso = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+  } else {
+    iso = String(isoOrDate || '').slice(0, 10);
+    dObj = new Date(`${iso}T12:00:00`);
+  }
+  if (isNaN(dObj.getTime())) return false;
+  if (dObj.getDay() === 0) return false; // Domingo
+  if (COLOMBIA_HOLIDAYS.has(iso)) return false; // Festivo Colombia
+  return true;
+}
+
+export const CALL_PRIORITY_META = {
+  1: {
+    id: 1,
+    code: 'P1',
+    label: 'P1 · Materno-Perinatal',
+    shortLabel: 'P1 Materno',
+    rule: 'R3-04/05/06',
+    colorHex: '#E11D48',
+    badgeClass: 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/70 dark:text-rose-200 dark:border-rose-800',
+  },
+  2: {
+    id: 2,
+    code: 'P2',
+    label: 'P2 · Cáncer / Tamizajes',
+    shortLabel: 'P2 Cáncer',
+    rule: 'R3-03',
+    colorHex: '#9333EA',
+    badgeClass: 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/70 dark:text-purple-200 dark:border-purple-800',
+  },
+  3: {
+    id: 3,
+    code: 'P3',
+    label: 'P3 · Inasistentes / Ped. Riesgo',
+    shortLabel: 'P3 Prioritaria',
+    rule: 'R3-01 / +3d SMS',
+    colorHex: '#EA580C',
+    badgeClass: 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/70 dark:text-orange-200 dark:border-orange-800',
+  },
+  4: {
+    id: 4,
+    code: 'P4',
+    label: 'P4 · Grupos de Riesgo Crónicos',
+    shortLabel: 'P4 Crónicos',
+    rule: 'R3-07/08/09',
+    colorHex: '#2563EB',
+    badgeClass: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-200 dark:border-blue-800',
+  },
+  5: {
+    id: 5,
+    code: 'P5',
+    label: 'P5 · Preventiva Res. 3280',
+    shortLabel: 'P5 Preventiva',
+    rule: 'Res. 3280 Base',
+    colorHex: '#059669',
+    badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-200 dark:border-emerald-800',
+  },
+};
+
+export function getPriorityMeta(prioNum) {
+  return CALL_PRIORITY_META[Number(prioNum)] || CALL_PRIORITY_META[5];
 }
 
 /**
- * Calcula la urgencia de ventana clínica de un paciente para la Resolución 3280.
- * Menor puntaje = Menos días para salir de la ventana = MAYOR PRIORIDAD.
+ * Clasifica el Curso de Vida real del paciente (7 Cursos oficiales A-G).
  */
-export function calculateWindowUrgency(patient) {
-  const edad = Number(patient.edad) || 0;
-  const curso = (patient.curso_vida || patient.ciclo_vida || '').toLowerCase();
-  const riesgo = (patient.grupo_riesgo || '').toLowerCase();
-
-  // 1. Materno-Perinatal / Gestantes: Urgencia crítica semanal
-  if (riesgo.includes('materno') || riesgo.includes('gestan')) {
-    // Si está en último trimestre o cercana al parto
-    return 3; // Muy urgente
-  }
-
-  // 2. Primera Infancia al límite de salir del rango (4.8 - 5.9 años)
-  if (curso.includes('primera infancia') || edad <= 5) {
-    if (edad >= 5) return 5; // Cerca de cumplir 6 años (sale de primera infancia)
-    if (edad === 0) return 7; // Neonato / lactante menor
-    return 12;
-  }
-
-  // 3. Infancia límite (11 años a punto de pasar a adolescencia)
-  if (curso.includes('infancia') || (edad >= 6 && edad <= 11)) {
-    if (edad === 11) return 8;
-    return 15;
-  }
-
-  // 4. Adolescencia límite (17 años a punto de adultez)
-  if (curso.includes('adolescen') || (edad >= 12 && edad <= 17)) {
-    if (edad === 17) return 10;
-    return 18;
-  }
-
-  // 5. Riesgo Cardiovascular descompensado o Cáncer
-  if (riesgo.includes('cardio') || riesgo.includes('cáncer') || riesgo.includes('cancer')) {
-    return 10;
-  }
-
-  // 6. Adultos y Vejez general
-  return 20 + ((patient.id || 1) % 10);
+export function getPatientCursoVida(patient) {
+  const cursoKey = classifyPatientCursoVidaKey(patient);
+  const code = CURSO_KEY_TO_CODE[cursoKey] || 'E';
+  const pal = CURSOS_VIDA_PALETTE[code] || CURSOS_VIDA_PALETTE.E;
+  return {
+    id: pal.id,
+    key: pal.key,
+    nombre: pal.nombre,
+    rango: pal.rango,
+    colorHex: pal.colorHex,
+    bgClass: pal.bgClass,
+    badgeClass: pal.badgeClass,
+  };
 }
 
 /**
- * Genera el plan de llamadas anual de la Resolución 3280 repartiendo los pacientes
- * en los 365 días del año según prioridad de ventana clínica.
+ * Extrae TODOS los Grupos de Riesgo clínicos REALES del paciente (NUNCA inventa riesgos).
+ * Retorna [] cuando el paciente no pertenece a ningún grupo de riesgo clínico.
  */
-export function generateAnnualResolutionRoadmap(patients, year = 2026) {
-  const roadmap365 = {};
+export function getPatientGruposRiesgo(patient) {
+  if (!patient) return [];
 
-  // Inicializar los 365 días del año
-  const startDate = new Date(year, 0, 1, 12, 0, 0);
-  for (let dayIdx = 0; dayIdx < 365; dayIdx++) {
-    const curDate = new Date(startDate);
-    curDate.setDate(startDate.getDate() + dayIdx);
-    const iso = toISODate(curDate);
-    const isSun = curDate.getDay() === 0;
-
-    roadmap365[iso] = {
-      dayIndex: dayIdx + 1,
-      date: curDate,
-      isoDate: iso,
-      dayOfWeek: curDate.getDay(), // 0 = Dom, 1 = Lun...
-      isSunday: isSun,
-      isOperative: !isSun,
-      callsResolucion: [],
-      cursosVidaPresentes: new Set(),
-      gruposRiesgoPresentes: new Set(),
-      totalLlamadasResolucion: 0,
-      totalLlamadasCampanas: 0,
-      cupoDisponible: isSun ? 0 : DAILY_CALL_CAPACITY
-    };
-  }
-
-  // Agrupar pacientes por mes objetivo (según fecha de nacimiento o ID)
-  const pacientesPorMes = Array.from({ length: 12 }, () => []);
-  patients.forEach(pat => {
-    let birthMonth = 0;
-    if (pat.fechaNacimiento || pat.fecha_nacimiento) {
-      const fn = pat.fechaNacimiento || pat.fecha_nacimiento;
-      const parts = fn.split('-');
-      if (parts.length >= 2) {
-        const m = parseInt(parts[1], 10);
-        if (m >= 1 && m <= 12) birthMonth = m - 1;
+  const rawList = [];
+  if (Array.isArray(patient.grupos_riesgo)) {
+    rawList.push(...patient.grupos_riesgo);
+  } else if (typeof patient.grupos_riesgo === 'string' && patient.grupos_riesgo.trim()) {
+    const trimmed = patient.grupos_riesgo.trim();
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) rawList.push(...parsed);
+      } catch {
+        rawList.push(trimmed);
       }
+    } else if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      trimmed
+        .slice(1, -1)
+        .split(',')
+        .map((s) => s.replace(/^"|"$/g, '').trim())
+        .filter(Boolean)
+        .forEach((s) => rawList.push(s));
     } else {
-      birthMonth = (pat.id || 1) % 12;
+      rawList.push(trimmed);
     }
-    pacientesPorMes[birthMonth].push(pat);
-  });
-
-  // Para cada mes, ordenar pacientes por urgencia de ventana y repartirlos en días hábiles
-  for (let m = 0; m < 12; m++) {
-    const pacientesDelMes = [...pacientesPorMes[m]];
-    // Ordenar: menor urgencia = más urgente
-    pacientesDelMes.sort((a, b) => calculateWindowUrgency(a) - calculateWindowUrgency(b));
-
-    // Obtener días hábiles del mes
-    const daysInMonth = new Date(year, m + 1, 0).getDate();
-    const diasHabilesDelMes = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dt = new Date(year, m, d, 12, 0, 0);
-      if (!isSundayDate(dt)) {
-        diasHabilesDelMes.push(toISODate(dt));
-      }
-    }
-
-    if (diasHabilesDelMes.length === 0) continue;
-
-    // Repartir los pacientes del mes entre los días hábiles
-    pacientesDelMes.forEach((pat, pIdx) => {
-      const targetDayISO = diasHabilesDelMes[pIdx % diasHabilesDelMes.length];
-      if (roadmap365[targetDayISO]) {
-        const cvProg = getCursoVidaProg(pat);
-        const grProg = getGrupoRiesgoProg(pat);
-        const hito = getHitoClinico3280(pat, m);
-
-        const callItem = {
-          patientId: pat.id,
-          nombre: pat.nombre,
-          documento: pat.cc || pat.numero_documento,
-          telefono: pat.telefono,
-          cursoVidaId: cvProg.id,
-          cursoVidaNombre: cvProg.nombre,
-          cursoVidaColorHex: cvProg.colorHex,
-          grupoRiesgoId: grProg.id,
-          grupoRiesgoNombre: grProg.nombre,
-          grupoRiesgoColorHex: grProg.colorHex,
-          accion3280: hito.titulo,
-          cups: hito.cups,
-          indicaciones: hito.indicaciones,
-          urgenciaScore: calculateWindowUrgency(pat),
-          estado: 'programada'
-        };
-
-        roadmap365[targetDayISO].callsResolucion.push(callItem);
-        roadmap365[targetDayISO].cursosVidaPresentes.add(cvProg.id);
-        roadmap365[targetDayISO].gruposRiesgoPresentes.add(grProg.id);
-        roadmap365[targetDayISO].totalLlamadasResolucion += 1;
-        roadmap365[targetDayISO].cupoDisponible = Math.max(0, DAILY_CALL_CAPACITY - roadmap365[targetDayISO].totalLlamadasResolucion);
-      }
-    });
   }
 
-  return roadmap365;
+  if (Array.isArray(patient.patient_grupos_riesgo)) {
+    rawList.push(...patient.patient_grupos_riesgo);
+  }
+
+  if (rawList.length === 0) {
+    const single = patient.grupo_riesgo || patient.grupoRiesgo || patient.patient_grupo_riesgo || '';
+    if (single) rawList.push(single);
+  }
+
+  const seenIds = new Set();
+  const resolved = [];
+  for (const raw of rawList) {
+    const pal = getGrupoRiesgoPalette(raw);
+    if (pal && !seenIds.has(pal.id)) {
+      seenIds.add(pal.id);
+      resolved.push({
+        id: pal.id,
+        codigo: pal.codigo,
+        nombre: pal.nombre,
+        prioridad: pal.prioridad,
+        colorHex: pal.colorHex,
+        bgClass: pal.bgClass,
+        badgeClass: pal.badgeClass,
+      });
+    }
+  }
+
+  return resolved.sort((a, b) => a.prioridad - b.prioridad || a.id - b.id);
 }
 
 /**
- * Valida si una campaña puede programarse en las fechas seleccionadas
- * comprobando que no supere el saldo disponible de 3.500 llamadas diarias.
- * 
- * @param {Array<string>} selectedDates - Arreglo de fechas ISO ['YYYY-MM-DD']
- * @param {number} totalDestinatarios - Total de llamadas que requiere la campaña
- * @param {Object} roadmap365 - El estado del roadmap anual
- * @param {Array<Object>} existingCampaigns - Campañas activas ya programadas
- * @returns {Object} { allowed: boolean, message?: string, balanceDetails?: Array }
+ * Retorna el Grupo de Riesgo principal REAL del paciente, o un descriptor neutro "Sin grupo de riesgo"
+ * (id: null) cuando el paciente no tiene ningún riesgo clínico registrado.
  */
-export function validateCampaignCallCapacity(selectedDates, totalDestinatarios, roadmap365, existingCampaigns = []) {
+export function getPatientGrupoRiesgo(patient) {
+  const list = getPatientGruposRiesgo(patient);
+  if (list.length > 0) return list[0];
+  return {
+    id: null,
+    codigo: 'sin_grupo_riesgo',
+    nombre: 'Sin grupo de riesgo',
+    prioridad: 5,
+    colorHex: '#64748B',
+    bgClass: 'bg-slate-500',
+    badgeClass: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+  };
+}
+
+/**
+ * Calcula la prioridad real (1..5) de un paciente para la cola de voz de 500 llamadas/día.
+ */
+export function getPatientCallPriority(patient) {
+  if (patient?.prioridad_llamada) return Number(patient.prioridad_llamada);
+  const cv = getPatientCursoVida(patient);
+  const risks = getPatientGruposRiesgo(patient);
+  const rids = new Set(risks.map((r) => r.id));
+  if (cv.id === 'G' || rids.has(1)) return 1;
+  if (rids.has(3)) return 2;
+  if (cv.id === 'A' && rids.size > 0) return 3;
+  if (rids.size > 0) return 4;
+  return 5;
+}
+
+/**
+ * Valida la capacidad de una campaña contra el límite real de 500 llamadas IA/día
+ * (excluyendo domingos y festivos de Colombia) y calcula derivación automática a SMS Respaldo (R1-04)
+ * en caso de excedente para que ningún paciente quede sin contacto.
+ */
+export function validateCampaignCallCapacity(
+  selectedDates,
+  patientCount,
+  roadmap365 = {},
+  existingCampaigns = [],
+  { allowSmsOverflow = true } = {}
+) {
   if (!selectedDates || selectedDates.length === 0) {
     return {
       allowed: false,
-      message: 'Debes seleccionar al menos una fecha hábil para el lanzamiento de la campaña.'
+      hasOverflow: false,
+      callsPerDay: 0,
+      voiceAssignedTotal: 0,
+      smsOverflowTotal: 0,
+      conflicts: ['No se han seleccionado fechas hábiles en el calendario.'],
+      message: 'Debes seleccionar al menos una fecha hábil (Lunes a Sábado, sin festivos) para programar la campaña.',
     };
   }
 
-  // Dividir equitativamente el volumen entre los días seleccionados
-  const callsPerDay = Math.ceil(totalDestinatarios / selectedDates.length);
+  const validDates = selectedDates.filter((iso) => isOperationalWorkday(iso));
+  if (validDates.length === 0) {
+    return {
+      allowed: false,
+      hasOverflow: false,
+      callsPerDay: 0,
+      voiceAssignedTotal: 0,
+      smsOverflowTotal: 0,
+      conflicts: ['Las fechas seleccionadas corresponden a domingos o festivos de Colombia.'],
+      message: 'No es posible emitir llamadas IA en domingos ni festivos oficiales de Colombia.',
+    };
+  }
+
+  const totalPatients = Math.max(1, Number(patientCount || 0));
+  const callsPerDay = Math.ceil(totalPatients / validDates.length);
   const conflicts = [];
-  const balanceSummary = [];
+  const dailyDetails = [];
+  let voiceAssignedTotal = 0;
+  let smsOverflowTotal = 0;
+  let remaining = totalPatients;
 
-  for (const dateISO of selectedDates) {
-    const dayData = roadmap365[dateISO];
-    if (!dayData) {
-      // Si la fecha no está pre-mapeada (ej. fechas de meses siguientes o año siguiente), validar que no sea domingo
-      const parsedDate = new Date(dateISO + 'T12:00:00');
-      if (parsedDate.getDay() === 0) {
-        conflicts.push(`El día ${dateISO} es domingo. La operación del Gateway GSM solo opera de Lunes a Sábado.`);
-        continue;
-      }
-      balanceSummary.push({
-        dateISO,
-        resolucionCalls: 0,
-        otherCampaignsCalls: 0,
-        solicitadas: callsPerDay,
-        saldoDisponible: DAILY_CALL_CAPACITY,
-        restanteFinal: DAILY_CALL_CAPACITY - callsPerDay
-      });
-      continue;
-    }
+  for (const dateISO of validDates) {
+    const dayDemand = Math.min(callsPerDay, remaining);
+    remaining = Math.max(0, remaining - dayDemand);
 
-    if (dayData.isSunday) {
-      conflicts.push(`El día ${dateISO} es domingo. La operación del Gateway GSM solo opera de Lunes a Sábado.`);
-      continue;
-    }
+    const resolucionCalls = Number(roadmap365?.[dateISO]?.llamadasAsignadas ?? roadmap365?.[dateISO]?.totalLlamadasResolucion ?? 0);
 
-    // Calcular llamadas de resolución
-    const resolucionCalls = dayData.totalLlamadasResolucion || 0;
-
-    // Calcular llamadas de otras campañas en ese mismo día
     let otherCampaignsCalls = 0;
-    existingCampaigns.forEach(camp => {
-      if (camp.fechas_ejecucion && camp.fechas_ejecucion.includes(dateISO)) {
-        const campPerDay = Math.ceil((camp.pacientes_asignados || camp.destinatarios || 0) / camp.fechas_ejecucion.length);
-        otherCampaignsCalls += campPerDay;
+    (existingCampaigns || []).forEach((camp) => {
+      if (camp && camp.estado !== 'completada' && camp.estado !== 'cancelada') {
+        const dates = camp.fechas_ejecucion || camp.config_frecuencia?.selectedDates || [];
+        if (dates.includes(dateISO)) {
+          const vol = Number(camp.pacientes_asignados || camp.destinatarios || 0);
+          otherCampaignsCalls += Math.ceil(vol / Math.max(1, dates.length));
+        }
       }
     });
 
-    const ocupadasActuales = resolucionCalls + otherCampaignsCalls;
-    const saldoDisponible = Math.max(0, DAILY_CALL_CAPACITY - ocupadasActuales);
+    const saldoDisponible = Math.max(0, DAILY_CALL_CAPACITY - resolucionCalls - otherCampaignsCalls);
+    const voiceForDay = Math.min(dayDemand, saldoDisponible);
+    const smsForDay = Math.max(0, dayDemand - voiceForDay);
 
-    balanceSummary.push({
+    voiceAssignedTotal += voiceForDay;
+    smsOverflowTotal += smsForDay;
+
+    dailyDetails.push({
       dateISO,
       resolucionCalls,
       otherCampaignsCalls,
-      solicitadas: callsPerDay,
       saldoDisponible,
-      restanteFinal: saldoDisponible - callsPerDay
+      dayDemand,
+      voiceForDay,
+      smsForDay,
     });
 
-    if (callsPerDay > saldoDisponible) {
+    if (smsForDay > 0) {
       conflicts.push(
-        `Día ${dateISO}: Se requieren ${callsPerDay} llamadas, pero solo quedan ${saldoDisponible} disponibles de las 3.500 máximas (${resolucionCalls} reservadas por Res. 3280 y ${otherCampaignsCalls} por otras campañas).`
+        `Día ${dateISO}: Demanda ${dayDemand} · Cupo voz restante ${saldoDisponible}/${DAILY_CALL_CAPACITY} (${resolucionCalls} Res. 3280 + ${otherCampaignsCalls} campañas) → ${voiceForDay} Llamadas IA + ${smsForDay} SMS Respaldo (R1-04).`
       );
     }
   }
 
-  if (conflicts.length > 0) {
+  const hasOverflow = smsOverflowTotal > 0;
+  if (hasOverflow && !allowSmsOverflow) {
     return {
       allowed: false,
-      message: `No es posible agendar la campaña: Se superaría la capacidad máxima del Gateway GSM (3.500 llamadas/día):\n• ${conflicts.slice(0, 3).join('\n• ')}${conflicts.length > 3 ? `\n...y ${conflicts.length - 3} días más.` : ''}\n\nPor favor distribuye la campaña en más días hábiles o selecciona otra fecha con saldo.`,
-      balanceSummary
+      hasOverflow: true,
+      callsPerDay,
+      voiceAssignedTotal,
+      smsOverflowTotal,
+      dailyDetails,
+      conflicts,
+      message: `Se supera el límite diario de ${DAILY_CALL_CAPACITY} llamadas IA/día:\n• ${conflicts.slice(0, 3).join('\n• ')}`,
     };
   }
 
   return {
     allowed: true,
+    hasOverflow,
     callsPerDay,
-    balanceSummary,
-    message: `Capacidad validada con éxito: Se programarán ${callsPerDay} llamadas/día dentro del límite autorizado de 3.500 diarias.`
+    voiceAssignedTotal,
+    smsOverflowTotal,
+    dailyDetails,
+    conflicts,
+    message: hasOverflow
+      ? `Cupo de ${DAILY_CALL_CAPACITY} llamadas/día aplicado con derivación inteligente: ${voiceAssignedTotal.toLocaleString('es-CO')} llamadas IA + ${smsOverflowTotal.toLocaleString('es-CO')} respaldos SMS (R1-04) en ${validDates.length} día(s) hábil(es).`
+      : `Capacidad validada al 100%: ${voiceAssignedTotal.toLocaleString('es-CO')} llamadas IA (~${callsPerDay}/día) dentro del tope operativo de ${DAILY_CALL_CAPACITY} llamadas/día.`,
   };
 }
 
 /**
- * Generador de Prompt Clínico Particular e Individualizado por Paciente.
- * Personalizado por:
- * - Paciente (Nombre, edad, documento, sede)
- * - Resolución 3280 (Hito preventivo, código CUPS 890201)
- * - Grupo de Riesgo Priorizado
- * - Directriz de Campaña
+ * Genera el guion/prompt clínico individualizado del Agente IA para Santiago de Cali (Res. 3280)
  */
-export function generateIndividualClinicalPrompt(patientOrOptions, maybeHito, maybeCurso, maybeRiesgo, maybeCampaignName, maybeCampaignDirectriz, maybeSede) {
-  let patient = {};
-  let cursoVida = {};
-  let grupoRiesgo = {};
-  let hitoClinico = {};
-  let campaignName = '';
-  let campaignDirectriz = '';
-  let sede = 'Sede Principal - Manizales (Caldas)';
+export function generateIndividualClinicalPrompt(patient, contextItem, contextType, customDirective = '') {
+  const nombre = patient.nombre || patient.name || 'Paciente';
+  const doc = patient.documento || patient.document || patient.cc || 'No registrado';
+  const tel = patient.telefono || patient.phone || 'Sin teléfono';
+  const cv = getPatientCursoVida(patient);
+  const riesgos = getPatientGruposRiesgo(patient);
+  const riesgosTxt = riesgos.length > 0 ? riesgos.map((r) => r.nombre).join(', ') : 'Sin grupo de riesgo clínico registrado (Atención Preventiva Res. 3280)';
+  const prio = getPriorityMeta(getPatientCallPriority(patient));
+  const edad = patient.edad !== undefined && patient.edad !== null ? `${patient.edad} años` : 'Edad registrada en HC';
+  const hito = patient.accion_3280 || patient.accion3280 || contextItem?.hito || contextItem?.nombre || 'Valoración Integral Resolución 3280';
+  const cups = patient.cups_3280 || patient.cups || contextItem?.cups || '890201';
+  const sede = patient.ips_asignada || CALI_IPS_SEDES[0];
+  const ubicacion =
+    patient.zona === 'Rural'
+      ? `Rural · ${patient.corregimiento || 'Santiago de Cali'}${patient.vereda ? ` (${patient.vereda})` : ''}`
+      : `Urbana · ${patient.comuna || 'Santiago de Cali'}${patient.barrio ? ` - ${patient.barrio}` : ''}`;
 
-  if (patientOrOptions && (patientOrOptions.patient || patientOrOptions.hitoClinico || patientOrOptions.campaignDirectriz)) {
-    // Modo objeto de opciones
-    patient = patientOrOptions.patient || {};
-    cursoVida = patientOrOptions.cursoVida || {};
-    grupoRiesgo = patientOrOptions.grupoRiesgo || {};
-    hitoClinico = patientOrOptions.hitoClinico || {};
-    campaignName = patientOrOptions.campaignName || '';
-    campaignDirectriz = patientOrOptions.campaignDirectriz || '';
-    sede = patientOrOptions.sede || sede;
-  } else {
-    // Modo posicional: (patient, accion/hito, cursoVida, grupoRiesgo, campaignName, directriz, sede)
-    patient = patientOrOptions || {};
-    hitoClinico = typeof maybeHito === 'string' ? { titulo: maybeHito, cups: '890201' } : (maybeHito || {});
-    cursoVida = typeof maybeCurso === 'string' ? { nombre: maybeCurso } : (maybeCurso || {});
-    grupoRiesgo = typeof maybeRiesgo === 'string' ? { nombre: maybeRiesgo } : (maybeRiesgo || {});
-    campaignName = maybeCampaignName || '';
-    campaignDirectriz = maybeCampaignDirectriz || '';
-    sede = maybeSede || sede;
-  }
+  const directrizFinal =
+    customDirective ||
+    `Confirmar asistencia a ${hito} (CUPS ${cups}) en ${sede}, validando signos de alarma y continuidad clínica.`;
 
-  const nombre = patient.nombre || 'Paciente';
-  const doc = patient.cc || patient.numero_documento || 'Sin documento';
-  const edad = patient.edad || 'Edad no registrada';
-  const cvNombre = cursoVida?.nombre || 'General';
-  const grNombre = grupoRiesgo?.nombre || 'General';
-  const cups = hitoClinico?.cups || '890201';
-  const accion = hitoClinico?.titulo || hitoClinico?.hito || 'Consulta Médica Preventiva';
-  const indicaciones = hitoClinico?.indicaciones || 'Asistir puntual con documento de identidad.';
-
-  return `
-[DIRECTRIZ CLÍNICA DEL AGENTE SADI - RESOLUCIÓN 3280 DE 2018]
-- Paciente: ${nombre} | Documento: ${doc} | Edad: ${edad} años.
-- Sede de Atención: ${sede}.
-- Curso de Vida 3280: ${cvNombre}.
-- Grupo de Riesgo Priorizado: ${grNombre}.
-- Intervención Obligatoria: ${accion} (Código CUPS: ${cups} - Medicina General / Demanda Inducida).
-${campaignName ? `- Campaña Activa: "${campaignName}"` : ''}
-${campaignDirectriz ? `- Instrucción Especial de Campaña: "${campaignDirectriz}"` : ''}
-
-[GUION CONVERSACIONAL Y PROTOCOLO DE VOZ IA]
-1. Saludo Institucional y Verificación de Identidad:
-   "Buenos días/tardes, ¿me comunico con ${nombre}? Le habla SADI, el asistente clínico del Hospital Central de Caldas."
-2. Propósito Clínico Preventivo:
-   "Por normativa de la Resolución 3280 y para cuidar su salud en el programa de ${grNombre}, le informamos que tiene programado su control de ${accion}."
-3. Instrucciones Clínicas Pre-Consulta:
-   "${indicaciones}"
-4. Confirmación de Cita (Captura DTMF o Voz):
-   "Presione la tecla 1 para confirmar su asistencia en ${sede}, o la tecla 2 si requiere reagendar una nueva fecha."
-5. Cierre:
-   "Su salud es nuestra prioridad. Que tenga un excelente día."
-`.trim();
-}
-
-// ==============================================================================
-// CLASIFICACIÓN CLÍNICA Y SEGMENTACIÓN CRUZADA RIGUROSA (RES. 3280 DE 2018)
-// ==============================================================================
-
-function calculatePatientAge(birthdate) {
-  if (!birthdate) return 30;
-  const parts = String(birthdate).split('-');
-  if (parts.length < 3) return 30;
-  const birthYear = parseInt(parts[0], 10);
-  const birthMonth = parseInt(parts[1], 10) - 1;
-  const birthDay = parseInt(parts[2], 10);
-  const today = new Date(2026, 10, 11);
-  let age = today.getFullYear() - birthYear;
-  const m = today.getMonth() - birthMonth;
-  if (m < 0 || (m === 0 && today.getDate() < birthDay)) {
-    age--;
-  }
-  return Math.max(0, age);
-}
-
-/**
- * Obtiene el Curso de Vida exacto de un paciente según rutas transversales (G-J) y edad/ciclo vital (A-F)
- */
-export function getPatientCursoVida(pat) {
-  if (!pat) return { id: 'E', key: 'adultez', nombre: 'Adultez', colorHex: '#3B82F6' };
-  const canonicalKey = classifyPatientCursoVidaKey(pat);
-  const code = CURSO_KEY_TO_CODE[canonicalKey] || 'E';
-  const pal = CURSOS_VIDA_PALETTE[code] || CURSOS_VIDA_PALETTE['E'];
-  const progMeta = PROGRAMAS_3280.find(p => p.id === code);
   return {
-    id: code,
-    key: canonicalKey,
-    nombre: progMeta?.nombre || pal.nombre,
-    colorHex: pal.colorHex,
+    asunto: `Guion Clínico IA · ${prio.shortLabel} · ${cv.nombre}`,
+    sede,
+    promptCompleto: `=== CONFIGURACIÓN DE AGENTE IA SADI (SANTIAGO DE CALI · RES. 3280) ===
+• PACIENTE: ${nombre} (${patient.tipo_documento || 'CC'}: ${doc} · ${edad})
+• TELÉFONO: ${tel} | UBICACIÓN: ${ubicacion}
+• CURSO DE VIDA (A-G): ${cv.id}. ${cv.nombre} (${cv.rango})
+• GRUPOS DE RIESGO REALES: ${riesgosTxt}
+• PRIORIDAD DE COLA (TOPE 500/DÍA): ${prio.label} (${prio.rule})
+• HITO CLÍNICO & CUPS: ${hito} | CUPS: ${cups}
+• SEDE / IPS ASIGNADA: ${sede}
+• POLÍTICA INASISTENCIA: ${NOSHOW_POLICY.resumenCorto}
+
+--- DIRECTRIZ CLÍNICA ---
+${directrizFinal}
+
+--- GUION CONVERSACIONAL SUGERIDO ---
+1. SALUDO: "Buenos días/tardes, ¿me comunico con ${nombre}? Le habla SADI, el asistente clínico de su IPS en Santiago de Cali."
+2. MOTIVO: "Le llamamos en el marco de la Resolución 3280 (${cv.nombre}) para agendar su ${hito} (CUPS ${cups}) en ${sede}."
+3. CIERRE: "¿Desea confirmar su cita para esta semana? Presione 1 para confirmar o 2 para reprogramar."`,
   };
 }
 
-/**
- * Obtiene el Grupo de Riesgo Priorizado de un paciente según su condición clínica y diagnóstico
- */
-export function getPatientGrupoRiesgo(pat) {
-  if (!pat) return { id: 2, codigo: 'cardiovascular', nombre: 'Riesgo Cardiovascular, Metabólico y Renal', colorHex: '#EF4444' };
-  const gr = (pat.grupo_riesgo || pat.condicion || pat.diagnostico || pat.notas_clinicas || '').toLowerCase();
-  
-  let id = 2; // Cardiovascular default
-  if (pat.es_gestante || gr.includes('materno') || gr.includes('gestan') || gr.includes('prenatal') || gr.includes('puerper')) id = 1;
-  else if (gr.includes('cardio') || gr.includes('hipertens') || gr.includes('diabet') || gr.includes('renal') || gr.includes('hta') || gr.includes('erc')) id = 2;
-  else if (gr.includes('respira') || gr.includes('asma') || gr.includes('epoc') || gr.includes('bronqu') || gr.includes('inhalat')) id = 3;
-  else if (gr.includes('cáncer') || gr.includes('cancer') || gr.includes('oncol') || gr.includes('tumor') || gr.includes('mama') || gr.includes('próstata') || gr.includes('cuello uterino')) id = 4;
-  else if (gr.includes('mental') || gr.includes('depres') || gr.includes('ansied') || gr.includes('sustanc') || gr.includes('psico') || gr.includes('estrés')) id = 5;
-  else if (gr.includes('infec') || gr.includes('tbc') || gr.includes('tuberculosis') || gr.includes('vih') || gr.includes('sida') || gr.includes('hepatit')) id = 6;
-  else if (gr.includes('huerfa') || gr.includes('huérfa') || gr.includes('rara')) id = 7;
-  else if (gr.includes('nutric') || gr.includes('desnutr') || gr.includes('obesi') || gr.includes('peso')) id = 8;
-  else if (gr.includes('musculo') || gr.includes('esquelet') || gr.includes('artrit') || gr.includes('osteo') || gr.includes('gonartrosis')) id = 9;
-  else if (gr.includes('oral') || gr.includes('bucal') || gr.includes('caries') || gr.includes('periodont') || gr.includes('gingivit')) id = 10;
-  else {
-    const rawId = String(pat.id || pat.patient_id || '1');
-    const numPart = parseInt(rawId.replace(/\D/g, '') || '2', 10);
-    id = (numPart % 10) + 1;
+// Compatibilidad para llamadas heredadas (no inventa riesgos ni excede 500/día)
+export function generateAnnualResolutionRoadmap(patients = [], year = 2026) {
+  const map = {};
+  for (let m = 0; m < 12; m++) {
+    const daysInMonth = new Date(year, m + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const iso = `${year}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dt = new Date(year, m, d, 12, 0, 0);
+      map[iso] = {
+        isoDate: iso,
+        dayOfMonth: d,
+        isSunday: dt.getDay() === 0,
+        isHoliday: COLOMBIA_HOLIDAYS.has(iso),
+        callsResolucion: [],
+        cursosVidaPresentes: new Set(),
+        gruposRiesgoPresentes: new Set(),
+        cursoCounts: {},
+        riesgoCounts: {},
+        priorityCounts: {},
+        totalLlamadasResolucion: 0,
+        llamadasAsignadas: 0,
+        smsRespaldo: 0,
+        cupoDisponible: DAILY_CALL_CAPACITY,
+      };
+    }
   }
-
-  const pal = GRUPOS_RIESGO_PALETTE[id] || GRUPOS_RIESGO_PALETTE[2];
-  return { id, codigo: pal.codigo, nombre: pal.nombre, colorHex: pal.colorHex };
+  return map;
 }
 
-/**
- * Filtra de forma estricta los pacientes que cumplen la INTERSECCIÓN clínica:
- * Si el origen es Curso de Vida -> Pertenece al Curso Y al menos a uno de los Grupos de Riesgo seleccionados
- * Si el origen es Grupo de Riesgo -> Pertenece al Grupo de Riesgo Y al menos a uno de los Cursos de Vida seleccionados
- */
-export function getCampaignFilteredPatients(patients, tipoOrigen, origenItem, crossSegments = []) {
-  if (!Array.isArray(patients) || !origenItem) return [];
-
-  return patients.filter(patient => {
-    const cv = getPatientCursoVida(patient);
-    const gr = getPatientGrupoRiesgo(patient);
-
-    if (tipoOrigen === 'curso_vida') {
-      // 1. Debe pertenecer ESTRICTAMENTE al Curso de Vida de origen
-      const origenKey = canonicalizeCursoKey(origenItem.key || origenItem.id || origenItem.nombre);
-      const matchCurso =
-        cv.id === origenItem.id ||
-        (origenKey && origenKey === canonicalizeCursoKey(cv.key || cv.id)) ||
-        cv.nombre.toLowerCase() === (origenItem.nombre || '').toLowerCase();
-      if (!matchCurso) return false;
-
-      // 2. Si se seleccionaron grupos de riesgo en el Paso 2, filtrar estrictamente por ellos
-      if (Array.isArray(crossSegments) && crossSegments.length > 0) {
-        return crossSegments.some(seg => {
-          const s = (seg || '').toLowerCase().trim();
-          const grName = gr.nombre.toLowerCase().trim();
-          return grName.includes(s) || s.includes(grName) ||
-                 (s.includes('respira') && grName.includes('respira')) ||
-                 (s.includes('cardio') && grName.includes('cardio')) ||
-                 (s.includes('materno') && grName.includes('materno')) ||
-                 (s.includes('cancer') && grName.includes('cancer')) ||
-                 (s.includes('mental') && grName.includes('mental')) ||
-                 (s.includes('infec') && grName.includes('infec')) ||
-                 (s.includes('huerfa') && grName.includes('huerfa')) ||
-                 (s.includes('nutric') && grName.includes('nutric')) ||
-                 (s.includes('musculo') && grName.includes('musculo')) ||
-                 (s.includes('oral') && grName.includes('oral'));
-        });
-      }
-      return true;
-    } else {
-      // Origen es 'grupo_riesgo'
-      // 1. Debe pertenecer ESTRICTAMENTE al Grupo de Riesgo de origen
-      const origenNorm = (origenItem.nombre || '').toLowerCase();
-      const grName = gr.nombre.toLowerCase();
-      const matchRiesgo = String(gr.id) === String(origenItem.id) ||
-                          grName.includes(origenNorm) || origenNorm.includes(grName) ||
-                          (origenNorm.includes('respira') && grName.includes('respira')) ||
-                          (origenNorm.includes('cardio') && grName.includes('cardio')) ||
-                          (origenNorm.includes('materno') && grName.includes('materno')) ||
-                          (origenNorm.includes('cancer') && grName.includes('cancer')) ||
-                          (origenNorm.includes('mental') && grName.includes('mental')) ||
-                          (origenNorm.includes('infec') && grName.includes('infec')) ||
-                          (origenNorm.includes('huerfa') && grName.includes('huerfa')) ||
-                          (origenNorm.includes('nutric') && grName.includes('nutric')) ||
-                          (origenNorm.includes('musculo') && grName.includes('musculo')) ||
-                          (origenNorm.includes('oral') && grName.includes('oral'));
-      if (!matchRiesgo) return false;
-
-      // 2. Si se seleccionaron cursos de vida en el Paso 2, filtrar estrictamente por ellos
-      if (Array.isArray(crossSegments) && crossSegments.length > 0) {
-        const cvCanon = canonicalizeCursoKey(cv.key || cv.id || cv.nombre);
-        return crossSegments.some(seg => {
-          const segCanon = canonicalizeCursoKey(seg);
-          if (segCanon && cvCanon && segCanon === cvCanon) return true;
-          const s = (seg || '').toLowerCase().trim();
-          const cvName = cv.nombre.toLowerCase().trim();
-          return cvName.includes(s) || s.includes(cvName) || cv.id === seg;
-        });
-      }
+export function getCampaignFilteredPatients(patients = [], contextType, contextItem, crossItems = []) {
+  return (patients || []).filter((p) => {
+    const cv = getPatientCursoVida(p);
+    const riesgos = getPatientGruposRiesgo(p);
+    const riesgoNames = riesgos.map((r) => r.nombre);
+    if (contextType === 'curso_vida') {
+      if (cv.id !== contextItem?.id && cv.nombre !== contextItem?.nombre) return false;
+      if (crossItems.length > 0 && !riesgoNames.some((n) => crossItems.includes(n))) return false;
       return true;
     }
+    if (!riesgoNames.includes(contextItem?.nombre)) return false;
+    if (crossItems.length > 0 && !crossItems.includes(cv.nombre) && !crossItems.includes(cv.id)) return false;
+    return true;
   });
 }
 
-// Helpers internos para obtener metadatos de Curso y Riesgo (usando las funciones unificadas)
-function getCursoVidaProg(pat) {
-  return getPatientCursoVida(pat);
-}
-
-function getGrupoRiesgoProg(pat) {
-  return getPatientGrupoRiesgo(pat);
-}
-
-function getHitoClinico3280(pat, monthIndex) {
-  const grProg = getGrupoRiesgoProg(pat);
-  const rgCatalog = GRUPOS_RIESGO_10.find(g => g.id === grProg.id);
-  const milestone = rgCatalog?.milestones?.[monthIndex];
-
-  return {
-    titulo: milestone?.hito || 'Tamizaje y Consulta Preventiva Res. 3280',
-    cups: milestone?.cups || '890201',
-    indicaciones: milestone?.indicaciones || 'Presentarse 15 minutos antes con documento original en la sede asignada.'
-  };
-}
-
+export { GRUPOS_RIESGO_CATALOG };

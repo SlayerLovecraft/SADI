@@ -55,8 +55,11 @@ import {
   formatCursosVidaLabel,
 } from '@/services/cursoVidaConfig';
 import { isPatientAssignedToDoctor } from '@/pages/doctor/doctorUtils';
+import { CALI_IPS_SEDES } from '@/services/caliDivipola';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
+import NoShowFollowupPanel from '@/components/NoShowFollowupPanel';
 
-// Horarios autorizados: 10 Horas (08:00 AM a 06:00 PM • 350 llamadas/hora = 3.500/día)
+// Horarios autorizados: 10 Horas (08:00 AM a 06:00 PM • Tope 500 llamadas IA/día = 50 llamadas/hora)
 const FRANJAS_HORARIAS_10H = [
   '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
   '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'
@@ -93,7 +96,7 @@ const CampaignsPage = () => {
     selectedDates: [],
     summary: 'Diario (Lunes a Sábado)'
   });
-  const [relaunchLugar, setRelaunchLugar] = useState('Sede Principal - Manizales (Caldas)');
+  const [relaunchLugar, setRelaunchLugar] = useState(CALI_IPS_SEDES[0]);
   const [relaunchFranjas, setRelaunchFranjas] = useState(['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
   const [relaunchRetryUntilAnswer, setRelaunchRetryUntilAnswer] = useState(true);
   const [relaunchMaxRetries, setRelaunchMaxRetries] = useState(3);
@@ -323,7 +326,7 @@ const CampaignsPage = () => {
       return;
     }
     setSelectedCampaign(campaign);
-    setRelaunchLugar(campaign.lugar || 'Sede Principal - Manizales (Caldas)');
+    setRelaunchLugar(campaign.lugar || CALI_IPS_SEDES[0]);
     setRelaunchFranjas(campaign.horarios || ['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
     setRelaunchRetryUntilAnswer(campaign.reintentos ? true : true);
     setRelaunchMaxRetries(campaign.reintentos || 3);
@@ -554,7 +557,7 @@ const CampaignsPage = () => {
         accion3280: item.accion3280 || 'Control Preventivo de Salud',
         hitoClinico: item.accion3280 || 'Jornada Preventiva',
         cursoVida: item.cursoVida,
-        direccion: item.direccion || 'Caldas',
+        direccion: item.direccion || 'Santiago de Cali',
         antiVoicemailConfig: config
       });
       if (res.ok) {
@@ -718,7 +721,19 @@ const CampaignsPage = () => {
             )}
           </button>
 
-          {/* PASO 4: PARÁMETROS DE AUTOMATIZACIÓN */}
+          {/* PASO 4: SEGUIMIENTO DE INASISTENTES (+3d SMS -> +2d SMS + EMAIL) */}
+          <button
+            onClick={() => setActiveTab('inasistentes')}
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'inasistentes'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
+              }`}
+          >
+            <UserX className="w-4 h-4" />
+            Inasistentes (+3d SMS → +2d SMS+Mail)
+          </button>
+
+          {/* PASO 5: PARÁMETROS DE AUTOMATIZACIÓN */}
           <button
             onClick={() => setActiveTab('config')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${activeTab === 'config'
@@ -934,7 +949,7 @@ const CampaignsPage = () => {
                               Sede / Lugar:
                             </span>
                             <span className="font-semibold text-slate-800 dark:text-slate-200">
-                              {campaign.lugar || 'Sede Principal - Manizales (Caldas)'}
+                              {campaign.lugar || CALI_IPS_SEDES[0]}
                             </span>
                           </div>
 
@@ -1170,10 +1185,14 @@ const CampaignsPage = () => {
               ) : (
                 <div className="divide-y divide-gray-100 dark:divide-slate-800 max-h-[380px] overflow-y-auto">
                   {currentSlotPatients.map(item => (
-                    <div key={item.id} className="p-3 hover:bg-gray-50 dark:hover:bg-slate-800/50 flex items-center justify-between text-xs">
-                      <div>
+                    <div key={item.id} className="p-3 hover:bg-gray-50 dark:hover:bg-slate-800/50 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="space-y-1">
                         <div className="font-bold text-gray-800 dark:text-white">{item.nombre}</div>
                         <div className="text-gray-500 dark:text-slate-400">Doc: {item.documento} • Tel: {item.telefono}</div>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <CursoVidaBadge patient={{ curso_vida: item.cursoVida || item.curso_vida }} />
+                          <GruposRiesgoBadges patient={{ grupo_riesgo: item.grupoRiesgo || item.grupo_riesgo, grupos_riesgo: item.gruposRiesgo || item.grupos_riesgo }} maxVisible={2} />
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.estado === 'confirmada' ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300' :
@@ -1214,14 +1233,46 @@ const CampaignsPage = () => {
               </span>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-6 text-center text-xs text-gray-500 dark:text-slate-400">
-              No hay casos aislados pendientes en este momento. La plataforma ha procesado con éxito las confirmaciones.
-            </div>
+            {currentSlotPatients.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-6 text-center text-xs text-gray-500 dark:text-slate-400">
+                No hay casos aislados pendientes en este momento. La plataforma ha procesado con éxito las confirmaciones.
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 divide-y divide-gray-100 dark:divide-slate-800">
+                {currentSlotPatients.map(item => (
+                  <div key={item.id} className="p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="space-y-1">
+                      <div className="font-bold text-gray-900 dark:text-white">{item.nombre}</div>
+                      <div className="text-gray-500 dark:text-slate-400">Doc: {item.documento} • Tel: {item.telefono} • {item.intentos || 0} intentos</div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <CursoVidaBadge patient={{ curso_vida: item.cursoVida || item.curso_vida }} />
+                        <GruposRiesgoBadges patient={{ grupo_riesgo: item.grupoRiesgo || item.grupo_riesgo, grupos_riesgo: item.gruposRiesgo || item.grupos_riesgo }} maxVisible={2} />
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCallSinglePatient(item)}
+                      className="text-xs font-bold rounded-xl"
+                    >
+                      <PhoneCall className="w-3.5 h-3.5 mr-1" /> Reintentar Llamada
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* PESTAÑA 4: PARÁMETROS DE AUTOMATIZACIÓN                                   */}
+        {/* PESTAÑA 4: SEGUIMIENTO AUTOMÁTICO DE INASISTENTES (+3d SMS -> +2d SMS+MAIL)*/}
+        {/* ========================================================================= */}
+        {activeTab === 'inasistentes' && (
+          <NoShowFollowupPanel hospitalId={hospitalId} />
+        )}
+
+        {/* ========================================================================= */}
+        {/* PESTAÑA 5: PARÁMETROS DE AUTOMATIZACIÓN                                   */}
         {/* ========================================================================= */}
         {activeTab === 'config' && (
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
@@ -1234,9 +1285,9 @@ const CampaignsPage = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div className="p-4 bg-blue-50/50 dark:bg-blue-950/35 rounded-2xl border border-blue-200 dark:border-blue-800/60">
-                <span className="font-bold text-blue-950 dark:text-blue-200 block mb-1">Franjas de Operación:</span>
+                <span className="font-bold text-blue-950 dark:text-blue-200 block mb-1">Franjas de Operación &amp; Tope Diario:</span>
                 <span className="text-blue-800 dark:text-blue-300 leading-relaxed block">
-                  <strong>24 Tandas de 30 minutos</strong> (08:30 AM a 08:00 PM). Capacidad de hasta <strong>768 llamadas/día</strong> con el Gateway GSM de 32 canales.
+                  <strong>24 Tandas de 30 minutos</strong> (08:00 AM a 06:00 PM). Tope oficial configurado en <strong>{DAILY_CALL_CAPACITY} llamadas IA/día</strong> (50/h) con desborde automático a <strong>SMS Respaldo (R1-04)</strong> y priorización P1→P5.
                 </span>
               </div>
 
@@ -1350,10 +1401,9 @@ const CampaignsPage = () => {
                       onChange={(e) => setRelaunchLugar(e.target.value)}
                       className="w-full text-xs p-2.5 border border-slate-300 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                     >
-                      <option value="Sede Principal - Manizales (Caldas)">Sede Principal - Manizales (Caldas)</option>
-                      <option value="Sede Ambulatoria - Chinchiná">Sede Ambulatoria - Chinchiná</option>
-                      <option value="Sede Villamaría - Centro Materno">Sede Villamaría - Centro Materno</option>
-                      <option value="Sede La Dorada - Especialidades">Sede La Dorada - Especialidades</option>
+                      {CALI_IPS_SEDES.map((sede) => (
+                        <option key={sede} value={sede}>{sede}</option>
+                      ))}
                     </select>
                   </div>
                 </div>

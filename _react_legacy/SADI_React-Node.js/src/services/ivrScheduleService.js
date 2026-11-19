@@ -184,8 +184,8 @@ export const ivrScheduleService = {
           const todayStr = new Date().toISOString().split('T')[0];
           const hasTransversalMeta =
             Array.isArray(parsed.items) &&
-            (parsed.items.length === 0 || parsed.items.every(it => 'curso_vida_key' in it));
-          if (parsed.fecha === todayStr && hasTransversalMeta) {
+            (parsed.items.length === 0 || parsed.items.every(it => 'curso_vida_key' in it && 'grupos_riesgo' in it));
+          if (parsed.fecha === todayStr && parsed.dailyCap === 500 && hasTransversalMeta) {
             return parsed;
           }
         }
@@ -209,7 +209,7 @@ export const ivrScheduleService = {
       }
     }
 
-    const dailyMaxCapacity = IVR_TIME_SLOTS.length * MAX_PATIENTS_PER_BATCH; // 24 tandas × 32 = 768 pacientes/día
+    const dailyMaxCapacity = 500; // Tope operativo real: 500 llamadas IA/día (Tablero_SADI_Campanas)
     const workdayPos = Math.max(0, workdays.indexOf(todayStr));
     let totalUniversoBD = 0;
     let scheduledForToday = [];
@@ -297,12 +297,14 @@ export const ivrScheduleService = {
         nombre: p.name || p.nombre,
         documento: p.document || p.documento,
         telefono: p.phone || p.telefono || '3001234567',
-        direccion: p.address || p.direccion || 'Calle 15 #14-112',
-        ciudad: p.city || p.ciudad || 'Palmira',
+        direccion: p.address || p.direccion || 'Santiago de Cali',
+        ciudad: p.city || p.ciudad || 'Cali',
         email: p.email || '',
         cursoVida: resolvedCursoLabel,
         curso_vida_key: cursoKey,
         cursoVidaId: cursoCode,
+        grupo_riesgo: p.grupo_riesgo || null,
+        grupos_riesgo: Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo : [],
         program: p.program || p.programa || '',
         birthdate: p.birthdate || p.fecha_nacimiento || null,
         fecha_nacimiento: p.fecha_nacimiento || p.birthdate || null,
@@ -341,6 +343,7 @@ export const ivrScheduleService = {
 
     const scheduleData = {
       fecha: todayStr,
+      dailyCap: 500,
       hospitalId: hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
       totalUniversoBD: totalUniversoBD || scheduleItems.length,
       totalPacientes: scheduleItems.length,
@@ -434,8 +437,8 @@ export const ivrScheduleService = {
           const causaFallo = esPreAnswer183
             ? 'Corte SIP 183 Early Media previo a 200 OK ($0 carrier)'
             : esBuzon
-            ? 'Corte Vapi AMD al detectar buzón ($0 factura)'
-            : `Timeout previo a buzón (${cfg.preAnswerRingTimeoutSec || 19}s · SIP CANCEL)`;
+              ? 'Corte Vapi AMD al detectar buzón ($0 factura)'
+              : `Timeout previo a buzón (${cfg.preAnswerRingTimeoutSec || 19}s · SIP CANCEL)`;
 
           item.resultadoDTMF = 'buzon';
           item.deteccionBuzon = esBuzon;

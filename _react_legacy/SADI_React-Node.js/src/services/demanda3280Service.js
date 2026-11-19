@@ -6,13 +6,17 @@ import { IVR_TIME_SLOTS } from '@/services/ivrScheduleService';
 const DEFAULT_HOSPITAL_ID = 'hosp-001';
 
 export const GRUPOS_RIESGO_3280 = [
-  { id: 'materno_perinatal', label: '1. Población Materno-Perinatal', desc: 'Mujeres gestantes, parto, puerperio y recién nacidos.' },
-  { id: 'cardiovascular', label: '2. Riesgo Cardiovascular y Metabólico', desc: 'Hipertensión, diabetes, dislipidemias, obesidad y ERC.' },
-  { id: 'cancer', label: '3. Cáncer (Detección temprana)', desc: 'Tamizaje cuello uterino, mama, próstata y colon/recto.' },
-  { id: 'respiratorias', label: '4. Enfermedades Respiratorias Crónicas', desc: 'Pacientes con asma o EPOC.' },
-  { id: 'salud_mental', label: '5. Salud Mental y Consumo de Sustancias', desc: 'Violencias, trastornos mentales, SPA, alcohol y tabaco.' },
-  { id: 'infecciosas', label: '6. Enfermedades Infecciosas y Zoonóticas', desc: 'VIH/SIDA, tuberculosis, ITS, dengue, malaria, Chagas.' },
-  { id: 'nutricionales', label: '7. Alteraciones Nutricionales', desc: 'Desnutrición aguda/crónica y deficiencias de micronutrientes.' }
+  { id: 'materno_perinatal', numId: 1, label: '1. Población Materno-Perinatal', desc: 'Mujeres gestantes, parto, puerperio y recién nacidos (Prioridad P1).' },
+  { id: 'cardiovascular', numId: 2, label: '2. Riesgo Cardiovascular, Metabólico y Renal', desc: 'Hipertensión, diabetes, dislipidemias, obesidad y ERC.' },
+  { id: 'cancer', numId: 3, label: '3. Cáncer (Detección temprana y seguimiento)', desc: 'Tamizaje cuello uterino, mama, próstata y colon/recto (Prioridad P2).' },
+  { id: 'respiratorias', numId: 4, label: '4. Enfermedades Respiratorias Crónicas', desc: 'Pacientes con asma o EPOC.' },
+  { id: 'salud_mental', numId: 5, label: '5. Salud Mental y Sustancias Psicoactivas', desc: 'Violencias, trastornos mentales, SPA, alcohol y tabaco.' },
+  { id: 'infecciosas', numId: 6, label: '6. Enfermedades Infecciosas y Zoonóticas', desc: 'VIH/SIDA, tuberculosis, ITS, dengue, malaria, Chagas.' },
+  { id: 'nutricionales', numId: 7, label: '7. Alteraciones Nutricionales y del Crecimiento', desc: 'Desnutrición aguda/crónica, anemia y deficiencias de micronutrientes.' },
+  { id: 'huerfanas_neurologicas', numId: 8, label: '8. Enfermedades Huérfanas y Neurológicas', desc: 'Enfermedades huérfanas, raras y seguimiento neurológico.' },
+  { id: 'planificacion_familiar', numId: 9, label: '9. Planificación Familiar', desc: 'Asesoría y provisión de métodos anticonceptivos y consulta preconcepcional.' },
+  { id: 'vacunacion', numId: 10, label: '10. Vacunación (Esquema PAI)', desc: 'Esquema Nacional PAI infantil, VPH, Tdap e influenza/neumococo.' },
+  { id: 'salud_oral', numId: 11, label: '11. Salud Oral', desc: 'Valoración odontológica preventiva, flúor, sellantes y profilaxis.' }
 ];
 
 export const demanda3280Service = {
@@ -41,6 +45,8 @@ export const demanda3280Service = {
         centrosPoblados: Array.isArray(data.centros_poblados) ? data.centros_poblados : [],
         corregimientos: Array.isArray(data.corregimientos) ? data.corregimientos : [],
         veredas: Array.isArray(data.veredas) ? data.veredas : [],
+        veredasPorCorregimiento: data.veredas_por_corregimiento || {},
+        centrosPobladosPorCorregimiento: data.centros_poblados_por_corregimiento || {},
         gruposRiesgo: GRUPOS_RIESGO_3280.map((g) => g.label),
         tiposUsuario: ['Activo', 'Nuevo', 'Inactivo'],
         conteoPorTipo: {
@@ -169,6 +175,7 @@ export const demanda3280Service = {
           telefono: p.phone || '',
           edadFormato: milestone.edadFormato,
           cursoVida: p.curso_vida || milestone.cursoVida,
+          curso_vida: p.curso_vida || milestone.cursoVida,
           cursoVidaLabel: milestone.cursoVidaLabel,
           zona: p.zona || 'Urbana',
           comuna: p.comuna || '',
@@ -176,7 +183,11 @@ export const demanda3280Service = {
           centroPoblado: p.centro_poblado || null,
           corregimiento: p.corregimiento || null,
           vereda: p.vereda || null,
-          grupoRiesgo: p.grupo_riesgo || 'Atención Preventiva General Res. 3280',
+          grupoRiesgo: p.grupo_riesgo || null,
+          grupo_riesgo: p.grupo_riesgo || null,
+          gruposRiesgo: Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo : [],
+          grupos_riesgo: Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo : [],
+          prioridadLlamada: Number(p.prioridad_llamada || 5),
           tipoUsuario: p.tipo_usuario || 'Activo',
           totalVisitasHospital: Number(p.total_visitas_hospital || 0),
           fechaIngresoHospital: p.fecha_ingreso_hospital || '',
@@ -245,29 +256,33 @@ export const demanda3280Service = {
           tipoUsuario = 'Activo';
         }
 
-        const isRural = p.zona === 'Rural' || (index % 4 === 1);
+        const isRural = p.zona === 'Rural';
         const zona = isRural ? 'Rural' : 'Urbana';
 
         return {
           id: p.patient_id || p.id,
           nombre: p.name || p.nombre || `Paciente ${index + 1}`,
-          documento: p.document || p.documento || `1000000${index}`,
+          documento: p.document || p.documento || '',
           tipoDocumento: p.tipo_documento || 'CC',
-          telefono: p.phone || p.telefono || '+573000000000',
+          telefono: p.phone || p.telefono || '',
           email: p.email || '',
-          direccion: p.address || p.direccion || 'Calle 10 # 5-20',
-          ciudad: p.city || p.ciudad || 'Caldas, Antioquia',
+          direccion: p.address || p.direccion || '',
+          ciudad: p.city || p.ciudad || 'Cali',
           fechaNacimiento: birthdate,
-          cursoVida: milestone.cursoVida,
+          cursoVida: p.curso_vida || milestone.cursoVida,
+          curso_vida: p.curso_vida || milestone.cursoVida,
           cursoVidaLabel: milestone.cursoVidaLabel,
           edadFormato: milestone.edadFormato,
           zona: zona,
-          comuna: p.comuna || (isRural ? 'Corregimiento El Remanso' : 'Comuna Cumanday'),
-          barrio: p.barrio || (isRural ? 'Vereda El Rosario' : 'Centro'),
-          centroPoblado: isRural ? (p.centro_poblado || 'Centro Poblado Arauca') : null,
-          corregimiento: isRural ? (p.corregimiento || 'Corregimiento El Remanso') : null,
-          vereda: isRural ? (p.vereda || 'Vereda El Rosario') : null,
-          grupoRiesgo: p.grupo_riesgo || (GRUPOS_RIESGO_3280[(index * 2) % GRUPOS_RIESGO_3280.length].label),
+          comuna: p.comuna || '',
+          barrio: p.barrio || '',
+          centroPoblado: isRural ? (p.centro_poblado || null) : null,
+          corregimiento: isRural ? (p.corregimiento || null) : null,
+          vereda: isRural ? (p.vereda || null) : null,
+          grupoRiesgo: p.grupo_riesgo || null,
+          grupo_riesgo: p.grupo_riesgo || null,
+          gruposRiesgo: Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo : [],
+          grupos_riesgo: Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo : [],
           tipoUsuario: tipoUsuario,
           totalVisitasHospital: totalVisitas,
           fechaIngresoHospital: fechaIngreso.toISOString().split('T')[0],

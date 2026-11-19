@@ -524,6 +524,8 @@ export const staffService = {
           sexo: p.sex === 'Femenino' || p.sex === 'F' ? 'F' : 'M',
           curso_vida: p.curso_vida || 'adultez',
           grupo_vida: p.curso_vida || 'adultez',
+          grupo_riesgo: p.grupo_riesgo || null,
+          grupos_riesgo: Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo : [],
           dispositivos: Array.isArray(p.dispositivos_caseros) ? p.dispositivos_caseros : [],
           dispositivos_caseros: Array.isArray(p.dispositivos_caseros) ? p.dispositivos_caseros : [],
           conteo_canales: p.conteo_canales || { sms: 0, call: 0, email: 0, whatsapp: 0 },

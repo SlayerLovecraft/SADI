@@ -35,6 +35,7 @@ import {
 import { 
   CURSO_VIDA_CONFIG, 
   CURSOS_VIDA_LIST, 
+  ALL_7_CURSOS_IDS,
   getDoctorLifeCourseTheme, 
   formatCursosVidaLabel,
   canonicalizeCursoKey
@@ -46,20 +47,6 @@ const ROLES_PERSONAL = [
   { value: 'Enfermera Jefe', label: 'Enfermera Jefe (Coordinación de Ruta)' },
   { value: 'Médico General', label: 'Médico General (Consulta & Triage)' },
   { value: 'Especialista', label: 'Médico Especialista (Pediatría, Gineco, etc.)' }
-];
-
-// Lista oficial de IDs de los 10 Cursos de Vida de la Resolución 3280
-const ALL_10_CURSOS_IDS = [
-  'primera_infancia',
-  'infancia',
-  'adolescencia',
-  'juventud',
-  'adultez',
-  'vejez',
-  'preventivo_mujer',
-  'planificacion_familiar',
-  'vacunacion',
-  'salud_oral'
 ];
 
 export default function DoctorsPage() {
@@ -321,10 +308,10 @@ export default function DoctorsPage() {
   const openPermissionsModal = (staff) => {
     setSelectedStaff(staff);
     const raw = staff.cursos_vida_asignados;
-    let cursos = Array.isArray(raw) ? [...raw] : [];
-    // Si contiene 'todos' o los 10, expandir explícitamente a los 10 cursos para que se visualicen todos seleccionados
-    if (cursos.includes('todos') || cursos.length >= 10) {
-      cursos = ['todos', ...ALL_10_CURSOS_IDS];
+    let cursos = Array.isArray(raw) ? raw.filter((id) => id === 'todos' || ALL_7_CURSOS_IDS.includes(id)) : [];
+    // Si contiene 'todos' o los 7, expandir explícitamente a los 7 cursos oficiales (A - G)
+    if (cursos.includes('todos') || cursos.length >= ALL_7_CURSOS_IDS.length) {
+      cursos = ['todos', ...ALL_7_CURSOS_IDS];
     }
     setPermissionsForm({
       cursos_vida_asignados: cursos,
@@ -341,10 +328,10 @@ export default function DoctorsPage() {
     if (!selectedStaff) return;
     setSavingAction(true);
     try {
-      let toSave = [...permissionsForm.cursos_vida_asignados];
-      const hasAll = toSave.includes('todos') || (toSave.length >= 10 && ALL_10_CURSOS_IDS.every(id => toSave.includes(id)));
+      let toSave = [...permissionsForm.cursos_vida_asignados].filter((id) => id === 'todos' || ALL_7_CURSOS_IDS.includes(id));
+      const hasAll = toSave.includes('todos') || (toSave.length >= ALL_7_CURSOS_IDS.length && ALL_7_CURSOS_IDS.every(id => toSave.includes(id)));
       if (hasAll) {
-        toSave = ['todos', ...ALL_10_CURSOS_IDS];
+        toSave = ['todos', ...ALL_7_CURSOS_IDS];
       }
 
       const payload = {
@@ -404,24 +391,24 @@ export default function DoctorsPage() {
     }
   };
 
-  // Toggle de Cursos de Vida en el formulario de Permisos
+  // Toggle de Cursos de Vida en el formulario de Permisos (7 Cursos oficiales A - G)
   const toggleCursoVida = (cursoId) => {
     setPermissionsForm(prev => {
       const current = Array.isArray(prev.cursos_vida_asignados) ? [...prev.cursos_vida_asignados] : [];
-      const hasAll = current.includes('todos') || (current.length >= 10 && ALL_10_CURSOS_IDS.every(id => current.includes(id)));
+      const hasAll = current.includes('todos') || (current.length >= ALL_7_CURSOS_IDS.length && ALL_7_CURSOS_IDS.every(id => current.includes(id)));
 
       if (cursoId === 'todos') {
         return {
           ...prev,
-          cursos_vida_asignados: hasAll ? [] : ['todos', ...ALL_10_CURSOS_IDS]
+          cursos_vida_asignados: hasAll ? [] : ['todos', ...ALL_7_CURSOS_IDS]
         };
       }
 
       if (hasAll) {
-        // Si tenía todos, desmarcar el seleccionado y dejar los otros 9
+        // Si tenía todos, desmarcar el seleccionado y dejar los otros 6
         return {
           ...prev,
-          cursos_vida_asignados: ALL_10_CURSOS_IDS.filter(id => id !== cursoId)
+          cursos_vida_asignados: ALL_7_CURSOS_IDS.filter(id => id !== cursoId)
         };
       }
 
@@ -432,8 +419,8 @@ export default function DoctorsPage() {
         };
       } else {
         const next = [...current.filter(id => id !== 'todos'), cursoId];
-        if (ALL_10_CURSOS_IDS.every(id => next.includes(id))) {
-          return { ...prev, cursos_vida_asignados: ['todos', ...ALL_10_CURSOS_IDS] };
+        if (ALL_7_CURSOS_IDS.every(id => next.includes(id))) {
+          return { ...prev, cursos_vida_asignados: ['todos', ...ALL_7_CURSOS_IDS] };
         }
         return { ...prev, cursos_vida_asignados: next };
       }
@@ -445,7 +432,7 @@ export default function DoctorsPage() {
   };
 
   const setAllCursosVida = () => {
-    setPermissionsForm(prev => ({ ...prev, cursos_vida_asignados: ['todos', ...ALL_10_CURSOS_IDS] }));
+    setPermissionsForm(prev => ({ ...prev, cursos_vida_asignados: ['todos', ...ALL_7_CURSOS_IDS] }));
   };
 
   // Acciones y Toggles de Privilegios Asistenciales
@@ -727,7 +714,7 @@ export default function DoctorsPage() {
                           ) : isAllCursos ? (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-800/60 group-hover:border-blue-500 transition-colors">
                               <span>★</span>
-                              <span>Todos los Cursos de Vida (A - J)</span>
+                              <span>Todos los Cursos de Vida (A - G)</span>
                             </span>
                           ) : (
                             <div className="flex flex-wrap gap-1.5">
@@ -1144,7 +1131,7 @@ export default function DoctorsPage() {
                     onClick={setAllCursosVida}
                     className="h-7 text-[10px] font-bold px-2.5 bg-white dark:bg-slate-900 border-blue-300 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/60"
                   >
-                    ★ Acceso Total (A - J)
+                    ★ Acceso Total (A - G)
                   </Button>
                   <Button
                     type="button"
@@ -1164,7 +1151,7 @@ export default function DoctorsPage() {
                 <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] ${
                   permissionsForm.cursos_vida_asignados.length === 0
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
-                    : (permissionsForm.cursos_vida_asignados.includes('todos') || permissionsForm.cursos_vida_asignados.length >= 10)
+                    : (permissionsForm.cursos_vida_asignados.includes('todos') || permissionsForm.cursos_vida_asignados.length >= ALL_7_CURSOS_IDS.length)
                     ? 'bg-blue-100 dark:bg-blue-950/70 text-blue-900 dark:text-blue-300 border border-blue-300 dark:border-blue-800/60'
                     : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60'
                 }`}>
@@ -1177,7 +1164,7 @@ export default function DoctorsPage() {
                 {/* Opción 1: ★ Todos los Cursos de Vida (Acceso Total) */}
                 {(() => {
                   const isAllChecked = permissionsForm.cursos_vida_asignados.includes('todos') || 
-                    (permissionsForm.cursos_vida_asignados.length >= 10 && ALL_10_CURSOS_IDS.every(id => permissionsForm.cursos_vida_asignados.includes(id)));
+                    (permissionsForm.cursos_vida_asignados.length >= ALL_7_CURSOS_IDS.length && ALL_7_CURSOS_IDS.every(id => permissionsForm.cursos_vida_asignados.includes(id)));
                   return (
                     <button
                       type="button"
@@ -1194,7 +1181,7 @@ export default function DoctorsPage() {
                         </span>
                         <div className="min-w-0">
                           <span className="font-bold block text-xs text-slate-900 dark:text-white truncate">★. Todos los Cursos de Vida</span>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block truncate">Acceso Total a las 10 Rutas Integrales de Atención (A - J)</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium block truncate">Acceso Total a los 7 Cursos de Vida oficiales Res. 3280 (A - G)</span>
                         </div>
                       </div>
 
