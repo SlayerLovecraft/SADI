@@ -153,8 +153,6 @@ const Layout = ({ children }) => {
       await logout();
       if (userRole === 'doctor') {
         navigate('/doctor/login', { replace: true });
-      } else if (userRole === 'patient') {
-        navigate('/patient/login', { replace: true });
       } else {
         navigate('/login', { replace: true });
       }

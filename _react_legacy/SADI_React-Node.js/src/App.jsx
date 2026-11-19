@@ -11,8 +11,6 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 
 // Auth Pages (Lazy-loaded)
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
-const PatientLoginPage = lazy(() => import('@/pages/PatientLoginPage'));
-const DoctorLoginPage = lazy(() => import('@/pages/DoctorLoginPage'));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
 const AuthCallbackPage = lazy(() => import('@/pages/AuthCallbackPage'));
 
@@ -39,14 +37,6 @@ const DoctorClinicalRecordsPage = lazy(() => import('@/pages/doctor/DoctorClinic
 const DoctorSchedulePage = lazy(() => import('@/pages/doctor/DoctorSchedulePage'));
 const DoctorReportsPage = lazy(() => import('@/pages/doctor/DoctorReportsPage'));
 
-// Patient Portal Pages (Lazy-loaded)
-const PatientDashboard = lazy(() => import('@/pages/patient/PatientDashboard'));
-const PatientProgramsPage = lazy(() => import('@/pages/patient/PatientProgramsPage'));
-const PatientSchedulePage = lazy(() => import('@/pages/patient/PatientSchedulePage'));
-const PatientHistoryPage = lazy(() => import('@/pages/patient/PatientHistoryPage'));
-const PatientHealthPage = lazy(() => import('@/pages/patient/PatientHealthPage'));
-const PatientInteractionsPage = lazy(() => import('@/pages/patient/PatientInteractionsPage'));
-
 // Fallback ultraligero mientras se descarga el chunk solicitado
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-gray-50/80">
@@ -71,9 +61,10 @@ function App() {
                 {/* ============================================ */}
                 {/* AUTH ROUTES - Sin protección */}
                 {/* ============================================ */}
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/patient/login" element={<PatientLoginPage />} />
-                <Route path="/doctor/login" element={<DoctorLoginPage />} />
+                <Route path="/login" element={<LoginPage initialMode="hospital" />} />
+                <Route path="/doctor/login" element={<LoginPage initialMode="doctor" />} />
+                {/* Acceso de pacientes disponible únicamente en la aplicación móvil */}
+                <Route path="/patient/*" element={<Navigate to="/login" replace />} />
                 {/* Registro público deshabilitado: redirige a login */}
                 <Route path="/register-hospital" element={<Navigate to="/login" replace />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -287,63 +278,6 @@ function App() {
                       <SegmentationPage />
                     </ProtectedRoute>
                   }
-                />
-
-                {/* ============================================ */}
-                {/* PATIENT PORTAL ROUTES */}
-                {/* ============================================ */}
-                <Route 
-                  path="/patient/dashboard" 
-                  element={
-                    <ProtectedRoute roles={['patient']}>
-                      <PatientDashboard />
-                    </ProtectedRoute>
-                  } 
-                />
-                
-                <Route 
-                  path="/patient/programs" 
-                  element={
-                    <ProtectedRoute roles={['patient']}>
-                      <PatientProgramsPage />
-                    </ProtectedRoute>
-                  } 
-                />
-
-                <Route
-                  path="/patient/schedule"
-                  element={
-                    <ProtectedRoute roles={['patient']}>
-                      <PatientSchedulePage />
-                    </ProtectedRoute>
-                  }
-                />
-                
-                <Route 
-                  path="/patient/history" 
-                  element={
-                    <ProtectedRoute roles={['patient']}>
-                      <PatientHistoryPage />
-                    </ProtectedRoute>
-                  } 
-                />
-                
-                <Route 
-                  path="/patient/health" 
-                  element={
-                    <ProtectedRoute roles={['patient']}>
-                      <PatientHealthPage />
-                    </ProtectedRoute>
-                  } 
-                />
-                
-                <Route 
-                  path="/patient/interactions" 
-                  element={
-                    <ProtectedRoute roles={['patient']}>
-                      <PatientInteractionsPage />
-                    </ProtectedRoute>
-                  } 
                 />
 
                 {/* ============================================ */}

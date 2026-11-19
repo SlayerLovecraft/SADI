@@ -54,8 +54,8 @@ export const authService = {
       if (patientDoc) {
         return {
           success: false,
-          error: 'Esta cuenta pertenece al Portal de Pacientes. Por favor inicie sesión en el Portal Pacientes.',
-          portalRedirect: '/patient/login',
+          error: 'El acceso para pacientes está disponible únicamente en la aplicación móvil SADI.',
+          portalRedirect: null,
           portal: 'patient'
         };
       }
@@ -272,8 +272,8 @@ export const authService = {
       if (patientDoc) {
         return {
           success: false,
-          error: 'Esta cuenta pertenece al Portal de Pacientes. Por favor inicie sesión en el Portal Pacientes.',
-          portalRedirect: '/patient/login',
+          error: 'El acceso para pacientes está disponible únicamente en la aplicación móvil SADI.',
+          portalRedirect: null,
           portal: 'patient'
         };
       }

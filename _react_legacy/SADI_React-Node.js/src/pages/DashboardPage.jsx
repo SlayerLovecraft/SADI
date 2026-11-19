@@ -1,10 +1,21 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
-import { Users, Send, TrendingUp, MessageSquare, Loader2, Activity } from 'lucide-react';
+import {
+  Users,
+  Send,
+  TrendingUp,
+  Loader2,
+  Activity,
+  MessageCircle,
+  Smartphone,
+  Mail,
+  PhoneCall,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { withTimeout } from '@/lib/utils';
+import { reportsAnalysisService } from '@/services/reportsAnalysisService';
 
 const normalizeStatus = (status) => (status || '').toLowerCase().trim();
 
@@ -32,7 +43,13 @@ const DashboardPage = () => {
     totalPatients: 0,
     activeCampaigns: 0,
     deliveryRate: 0,
-    totalInteractions: 0
+  });
+
+  const [channelTotals, setChannelTotals] = useState({
+    whatsapp: 0,
+    sms: 0,
+    email: 0,
+    call: 0,
   });
 
   const [campaignStats, setCampaignStats] = useState({
@@ -42,10 +59,9 @@ const DashboardPage = () => {
     hombres: 0,
     mujeres: 0,
     ninos: 0,
-    ninas: 0
+    ninas: 0,
   });
 
-  const [recentActivity, setRecentActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hospitalId, setHospitalId] = useState(null);
@@ -86,7 +102,7 @@ const DashboardPage = () => {
 
       let query = supabase
         .from('patients')
-        .select('patient_id, name, sex, birthdate, program, zona, grupo_riesgo, created_at', { count: 'exact' });
+        .select('patient_id, sex, birthdate', { count: 'exact' });
 
       if (hospital_id) query = query.eq('hospital_id', hospital_id);
 
@@ -105,10 +121,7 @@ const DashboardPage = () => {
 
   const fetchCampaigns = useCallback(async (hospital_id) => {
     try {
-      let query = supabase
-        .from('campaigns')
-        .select('*');
-
+      let query = supabase.from('campaigns').select('*');
       if (hospital_id) query = query.eq('hospital_id', hospital_id);
 
       const { data, error } = await withTimeout(query, 12000);
@@ -119,106 +132,113 @@ const DashboardPage = () => {
     }
   }, []);
 
-  const fetchInteractionsSummary = useCallback(async (hospital_id, patientIds = []) => {
+  const fetchChannelSummary = useCallback(async (hospital_id) => {
     try {
-      let countQuery = supabase
-        .from('interactions')
-        .select('*', { count: 'exact', head: true });
+      const matrix = await withTimeout(
+        reportsAnalysisService.getChannelMatrixHeader(hospital_id),
+        15000
+      );
+      const totales = matrix?.totales || {};
+      return {
+        whatsapp: Number(totales.whatsapp || 0),
+        sms: Number(totales.sms || 0),
+        email: Number(totales.email || 0),
+        call: Number(totales.call || 0),
+      };
+    } catch {
+      return { whatsapp: 0, sms: 0, email: 0, call: 0 };
+    }
+  }, []);
 
-      let recentQuery = supabase
-        .from('interactions')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10);
-
+  const fetchDeliveryEffectiveness = useCallback(async (hospital_id) => {
+    try {
       let vapiQuery = supabase
         .from('vapi_agent_sessions')
-        .select('id, patient_id, estado_llamada, deteccion_buzon, duracion_segundos, facturable_ips, motivo_llamada, created_at')
-        .order('created_at', { ascending: false })
-        .limit(200);
-
+        .select('estado_llamada, deteccion_buzon, duracion_segundos')
+        .limit(500);
       let smsQuery = supabase
         .from('openvox_sms_dispatches')
-        .select('id, patient_id, status, winning_port, created_at')
-        .order('created_at', { ascending: false })
-        .limit(200);
-
-      let evidenceQuery = supabase
-        .from('ai_contact_evidence')
-        .select('id, patient_id, canal, motivo_contacto, resultado_contacto, deteccion_buzon, duracion_segundos, created_at')
-        .order('created_at', { ascending: false })
-        .limit(200);
+        .select('status')
+        .limit(500);
 
       if (hospital_id) {
-        countQuery = countQuery.eq('hospital_id', hospital_id);
-        recentQuery = recentQuery.eq('hospital_id', hospital_id);
         vapiQuery = vapiQuery.eq('hospital_id', hospital_id);
         smsQuery = smsQuery.eq('hospital_id', hospital_id);
       }
 
-      const [
-        { count, error: countError },
-        { data: recent, error: recentError },
-        vapiRes,
-        smsRes,
-        evidenceRes,
-      ] = await Promise.all([
-        withTimeout(countQuery, 12000),
-        withTimeout(recentQuery, 12000),
-        withTimeout(vapiQuery, 12000).catch(() => ({ data: [] })),
-        withTimeout(smsQuery, 12000).catch(() => ({ data: [] })),
-        withTimeout(evidenceQuery, 12000).catch(() => ({ data: [] })),
+      const [vapiRes, smsRes] = await Promise.all([
+        withTimeout(vapiQuery, 10000).catch(() => ({ data: [] })),
+        withTimeout(smsQuery, 10000).catch(() => ({ data: [] })),
       ]);
 
-      if (countError) throw countError;
-      if (recentError) throw recentError;
+      const vapiRows = vapiRes?.data || [];
+      const smsRows = smsRes?.data || [];
+      const attempts = vapiRows.length + smsRows.length;
+      const successes =
+        vapiRows.filter(
+          (s) => !s.deteccion_buzon && (s.estado_llamada === 'completada' || Number(s.duracion_segundos) > 0)
+        ).length +
+        smsRows.filter((s) => s.status === 'sent').length;
 
-      const allowedPatientIds = new Set((patientIds || []).map((id) => String(id)));
-      const vapiSessions = vapiRes?.data || [];
-      const smsDispatches = smsRes?.data || [];
-      const rawEvidence = evidenceRes?.data || [];
-      const hospitalEvidence = hospital_id && allowedPatientIds.size > 0
-        ? rawEvidence.filter((ev) => ev?.patient_id && allowedPatientIds.has(String(ev.patient_id)))
-        : rawEvidence;
-
-      // Evitar doble conteo cuando vapi-webhook inserta en ambas tablas para la misma llamada
-      const nonDuplicateEvidence = hospitalEvidence.filter((ev) => {
-        const canal = String(ev?.canal || '').toLowerCase();
-        if (!canal.includes('call') && !canal.includes('llamada')) return true;
-        const evTime = new Date(ev.created_at || 0).getTime();
-        return !vapiSessions.some((vs) => {
-          if (String(vs.patient_id) !== String(ev.patient_id)) return false;
-          const vsTime = new Date(vs.created_at || 0).getTime();
-          return Math.abs(vsTime - evTime) <= 120000;
-        });
-      });
-
-      const realDispatchesTotal = vapiSessions.length + smsDispatches.length + nonDuplicateEvidence.length;
-      const realDispatchesSuccess =
-        vapiSessions.filter((s) => !s.deteccion_buzon && (s.estado_llamada === 'completada' || Number(s.duracion_segundos) > 0)).length +
-        smsDispatches.filter((s) => s.status === 'sent').length +
-        nonDuplicateEvidence.filter((ev) => !ev.deteccion_buzon && ev.resultado_contacto === 'contactado_exitoso').length;
-
-      return {
-        count: (Number(count) || 0) + realDispatchesTotal,
-        recent: recent || [],
-        vapiSessions,
-        smsDispatches,
-        evidence: nonDuplicateEvidence,
-        dispatchesTotal: realDispatchesTotal,
-        dispatchesSuccess: realDispatchesSuccess,
-      };
+      return { attempts, successes };
     } catch {
-      return {
-        count: 0,
-        recent: [],
-        vapiSessions: [],
-        smsDispatches: [],
-        evidence: [],
-        dispatchesTotal: 0,
-        dispatchesSuccess: 0,
-      };
+      return { attempts: 0, successes: 0 };
     }
+  }, []);
+
+  const calculateAgeFromBirthdate = (birthdate) => {
+    if (!birthdate) return null;
+    const birth = new Date(birthdate);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const calculateCampaignStats = useCallback((campaigns = [], realPatients = [], serverDemography = null) => {
+    const statuses = campaigns.map(getEffectiveCampaignStatus);
+    const enProgreso = statuses.filter((s) => s === 'Activa').length;
+    const completadas = statuses.filter((s) => s === 'Completada').length;
+    const programadas = statuses.filter((s) => s === 'Programada' || s === 'No Enviada').length;
+
+    let hombres = 0;
+    let mujeres = 0;
+    let ninos = 0;
+    let ninas = 0;
+
+    if (serverDemography) {
+      hombres = Number(serverDemography.hombres || 0);
+      mujeres = Number(serverDemography.mujeres || 0);
+      ninos = Number(serverDemography.ninos || 0);
+      ninas = Number(serverDemography.ninas || 0);
+    } else {
+      (realPatients || []).forEach((p) => {
+        const sexNorm = String(p?.sex || p?.sexo || '').trim().toLowerCase();
+        const isFemale = sexNorm === 'f' || sexNorm === 'femenino' || sexNorm === 'mujer' || sexNorm === 'female';
+        const age = calculateAgeFromBirthdate(p?.birthdate || p?.fecha_nacimiento);
+        if (age !== null && age < 18) {
+          if (isFemale) ninas++;
+          else ninos++;
+        } else {
+          if (isFemale) mujeres++;
+          else hombres++;
+        }
+      });
+    }
+
+    setCampaignStats({
+      enProgreso,
+      completadas,
+      programadas,
+      hombres,
+      mujeres,
+      ninos,
+      ninas,
+    });
   }, []);
 
   const loadDashboardData = useCallback(async (hospital_id) => {
@@ -226,13 +246,12 @@ const DashboardPage = () => {
       setLoading(true);
       setError(null);
 
-      const [patientsSummary, campaignsData] = await Promise.all([
+      const [patientsSummary, campaignsData, channels, delivery] = await Promise.all([
         fetchPatientsSummary(hospital_id),
         fetchCampaigns(hospital_id),
+        fetchChannelSummary(hospital_id),
+        fetchDeliveryEffectiveness(hospital_id),
       ]);
-
-      const patientIds = (patientsSummary.patients || []).map((p) => p.patient_id).filter(Boolean);
-      const interactionsSummary = await fetchInteractionsSummary(hospital_id, patientIds);
 
       const statuses = campaignsData.map(getEffectiveCampaignStatus);
       const pendingCampaigns = statuses.filter((s) => s !== 'Completada').length;
@@ -240,28 +259,31 @@ const DashboardPage = () => {
       const totalDestinatarios = campaignsData.reduce((acc, curr) => acc + (Number(curr.destinatarios) || 0), 0);
       const totalEntregados = campaignsData.reduce((acc, curr) => acc + (Number(curr.entregados) || 0), 0);
 
-      const combinedAttempts = totalDestinatarios + (interactionsSummary.dispatchesTotal || 0);
-      const combinedSuccess = totalEntregados + (interactionsSummary.dispatchesSuccess || 0);
+      const combinedAttempts = totalDestinatarios + delivery.attempts;
+      const combinedSuccess = totalEntregados + delivery.successes;
+      const totalChannelsSent = channels.whatsapp + channels.sms + channels.email + channels.call;
 
-      const deliveryRate = combinedAttempts > 0
-        ? ((combinedSuccess / combinedAttempts) * 100).toFixed(1)
-        : 0;
+      const deliveryRate =
+        combinedAttempts > 0
+          ? ((combinedSuccess / combinedAttempts) * 100).toFixed(1)
+          : totalChannelsSent > 0
+          ? '100.0'
+          : '0';
 
       setStats({
         totalPatients: patientsSummary.count,
         activeCampaigns: pendingCampaigns,
-        deliveryRate: deliveryRate,
-        totalInteractions: interactionsSummary.count || 0,
+        deliveryRate,
       });
 
+      setChannelTotals(channels);
       calculateCampaignStats(campaignsData, patientsSummary.patients, patientsSummary.demography);
-      generateRecentActivity(campaignsData, interactionsSummary);
     } catch (err) {
       setError(err?.message || 'Error cargando dashboard');
     } finally {
       setLoading(false);
     }
-  }, [fetchCampaigns, fetchInteractionsSummary, fetchPatientsSummary]);
+  }, [calculateCampaignStats, fetchCampaigns, fetchChannelSummary, fetchDeliveryEffectiveness, fetchPatientsSummary]);
 
   useEffect(() => {
     if (!user) return;
@@ -299,160 +321,75 @@ const DashboardPage = () => {
     return () => clearInterval(intervalId);
   }, [hospitalIdForQueries, loadDashboardData, user]);
 
-  const calculateAgeFromBirthdate = (birthdate) => {
-    if (!birthdate) return null;
-    const birth = new Date(birthdate);
-    if (isNaN(birth.getTime())) return null;
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age;
-  };
-
-  const calculateCampaignStats = (campaigns = [], realPatients = [], serverDemography = null) => {
-    const statuses = campaigns.map(getEffectiveCampaignStatus);
-    const enProgreso = statuses.filter((s) => s === 'Activa').length;
-    const completadas = statuses.filter((s) => s === 'Completada').length;
-    const programadas = statuses.filter((s) => s === 'Programada' || s === 'No Enviada').length;
-
-    // Calcular demografía real a partir de RPC de BD (o pacientes cargados como respaldo)
-    let hombres = 0, mujeres = 0, ninos = 0, ninas = 0;
-    if (serverDemography) {
-      hombres = Number(serverDemography.hombres || 0);
-      mujeres = Number(serverDemography.mujeres || 0);
-      ninos = Number(serverDemography.ninos || 0);
-      ninas = Number(serverDemography.ninas || 0);
-    } else {
-      (realPatients || []).forEach((p) => {
-        const sexNorm = String(p?.sex || p?.sexo || '').trim().toLowerCase();
-        const isFemale = sexNorm === 'f' || sexNorm === 'femenino' || sexNorm === 'mujer' || sexNorm === 'female';
-        const age = calculateAgeFromBirthdate(p?.birthdate || p?.fecha_nacimiento);
-        if (age !== null && age < 18) {
-          if (isFemale) ninas++;
-          else ninos++;
-        } else {
-          if (isFemale) mujeres++;
-          else hombres++;
-        }
-      });
-    }
-
-    setCampaignStats({
-      enProgreso,
-      completadas,
-      programadas,
-      hombres,
-      mujeres,
-      ninos,
-      ninas
-    });
-  };
-
-  const generateRecentActivity = (campaigns = [], interactionsSummary = {}) => {
-    const events = [];
-
-    (campaigns || []).forEach((campaign) => {
-      const status = getEffectiveCampaignStatus(campaign);
-      const ts = campaign.created_at || campaign.fecha_creacion;
-      events.push({
-        type: 'campaign',
-        message: `Campaña "${campaign.nombre || campaign.name || 'Prevención 3280'}" ${status.toLowerCase()}`,
-        createdAt: ts ? new Date(ts).getTime() : 0,
-        time: ts ? getTimeAgo(new Date(ts)) : 'Reciente',
-        color: 'bg-blue-500'
-      });
-    });
-
-    (interactionsSummary.recent || []).forEach((inter) => {
-      events.push({
-        type: 'interaction',
-        message: `Interacción ${inter.tipo || inter.type || 'asistencial'} registrada`,
-        createdAt: inter.created_at ? new Date(inter.created_at).getTime() : 0,
-        time: inter.created_at ? getTimeAgo(new Date(inter.created_at)) : 'Reciente',
-        color: 'bg-emerald-500'
-      });
-    });
-
-    (interactionsSummary.vapiSessions || []).slice(0, 5).forEach((sess) => {
-      events.push({
-        type: 'call',
-        message: sess.deteccion_buzon
-          ? 'Llamada cortada por Anti-Buzón ($0 COP)'
-          : `Llamada IA ${sess.estado_llamada || 'registrada'} (${sess.duracion_segundos || 0}s)`,
-        createdAt: sess.created_at ? new Date(sess.created_at).getTime() : 0,
-        time: sess.created_at ? getTimeAgo(new Date(sess.created_at)) : 'Reciente',
-        color: sess.deteccion_buzon ? 'bg-amber-500' : 'bg-teal-500'
-      });
-    });
-
-    (interactionsSummary.smsDispatches || []).slice(0, 5).forEach((sms) => {
-      events.push({
-        type: 'sms',
-        message: sms.status === 'sent'
-          ? `SMS enviado por OpenVox (SIM Puerto ${sms.winning_port || '?'})`
-          : 'Intento SMS purgado (sin señal)',
-        createdAt: sms.created_at ? new Date(sms.created_at).getTime() : 0,
-        time: sms.created_at ? getTimeAgo(new Date(sms.created_at)) : 'Reciente',
-        color: 'bg-sky-500'
-      });
-    });
-
-    (interactionsSummary.evidence || []).slice(0, 5).forEach((ev) => {
-      events.push({
-        type: 'evidence',
-        message: `Contacto IA (${ev.canal || 'call_ia'}): ${ev.resultado_contacto || 'registrado'}`,
-        createdAt: ev.created_at ? new Date(ev.created_at).getTime() : 0,
-        time: ev.created_at ? getTimeAgo(new Date(ev.created_at)) : 'Reciente',
-        color: 'bg-purple-500'
-      });
-    });
-
-    events.sort((a, b) => b.createdAt - a.createdAt);
-    setRecentActivity(events.slice(0, 6));
-  };
-
-  const getTimeAgo = (date) => {
-    const seconds = Math.floor((new Date() - date) / 1000);
-    
-    if (seconds < 60) return 'Hace menos de 1 minuto';
-    if (seconds < 3600) return `Hace ${Math.floor(seconds / 60)} minuto(s)`;
-    if (seconds < 86400) return `Hace ${Math.floor(seconds / 3600)} hora(s)`;
-    return `Hace ${Math.floor(seconds / 86400)} día(s)`;
-  };
-
   const kpiCards = [
     {
       title: 'Total Pacientes',
       value: typeof stats.totalPatients === 'number' ? stats.totalPatients.toLocaleString('es-CO') : stats.totalPatients,
       icon: Users,
       color: 'bg-blue-500',
-      subtitle: 'Pacientes reales en Supabase'
+      subtitle: 'Pacientes reales en Supabase',
     },
     {
       title: 'Campañas Pendientes',
       value: stats.activeCampaigns,
       icon: Send,
       color: 'bg-green-500',
-      subtitle: 'Por enviar o en proceso'
+      subtitle: 'Por enviar o en proceso',
     },
     {
       title: 'Tasa de Entrega',
       value: `${stats.deliveryRate}%`,
       icon: TrendingUp,
       color: 'bg-purple-500',
-      subtitle: 'Contactos y envíos exitosos'
+      subtitle: 'Contactos y envíos exitosos',
+    },
+  ];
+
+  const channelCards = [
+    {
+      key: 'whatsapp',
+      label: 'WhatsApp',
+      value: channelTotals.whatsapp,
+      caption: 'Mensajes enviados',
+      icon: MessageCircle,
+      iconBg: 'bg-emerald-500',
+      cardBg: 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-200/80 dark:border-emerald-800/60',
+      valueColor: 'text-emerald-700 dark:text-emerald-300',
     },
     {
-      title: 'Interacciones',
-      value: stats.totalInteractions,
-      icon: MessageSquare,
-      color: 'bg-orange-500',
-      subtitle: 'Registros reales en Supabase'
-    }
+      key: 'sms',
+      label: 'SMS',
+      value: channelTotals.sms,
+      caption: 'Mensajes de texto enviados',
+      icon: Smartphone,
+      iconBg: 'bg-sky-500',
+      cardBg: 'bg-sky-50/70 dark:bg-sky-950/30 border-sky-200/80 dark:border-sky-800/60',
+      valueColor: 'text-sky-700 dark:text-sky-300',
+    },
+    {
+      key: 'email',
+      label: 'E-Mails',
+      value: channelTotals.email,
+      caption: 'Correos enviados',
+      icon: Mail,
+      iconBg: 'bg-indigo-500',
+      cardBg: 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200/80 dark:border-indigo-800/60',
+      valueColor: 'text-indigo-700 dark:text-indigo-300',
+    },
+    {
+      key: 'call',
+      label: 'Llamadas',
+      value: channelTotals.call,
+      caption: 'Llamadas realizadas',
+      icon: PhoneCall,
+      iconBg: 'bg-teal-600',
+      cardBg: 'bg-teal-50/70 dark:bg-teal-950/30 border-teal-200/80 dark:border-teal-800/60',
+      valueColor: 'text-teal-700 dark:text-teal-300',
+    },
   ];
+
+  const totalCommunications =
+    channelTotals.whatsapp + channelTotals.sms + channelTotals.email + channelTotals.call;
 
   if (loading) {
     return (
@@ -508,11 +445,13 @@ const DashboardPage = () => {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-          <p className="text-gray-500 dark:text-slate-400 mt-1">Vista general del sistema - Datos en tiempo real desde Supabase</p>
+          <p className="text-gray-500 dark:text-slate-400 mt-1">
+            Vista general del sistema - Datos en tiempo real desde Supabase
+          </p>
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {kpiCards.map((kpi, index) => {
             const Icon = kpi.icon;
             return (
@@ -537,44 +476,74 @@ const DashboardPage = () => {
 
         {/* Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Actividad Reciente */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 transition-colors">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Actividad Reciente</h2>
-            <div className="space-y-4">
-              {recentActivity.length > 0 ? (
-                recentActivity.map((item, index) => (
-                  <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 dark:bg-slate-800/70 border border-transparent dark:border-slate-700/60 rounded-lg">
-                    <div className={`w-2 h-2 ${item.color} rounded-full`}></div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{item.message}</p>
-                      <p className="text-xs text-gray-500 dark:text-slate-400">{item.time}</p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-gray-400 dark:text-slate-500">
-                  <Activity className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No hay actividad reciente</p>
+          {/* Recuadro de Comunicaciones del Hospital (4 cuadros: WhatsApp, SMS, E-Mails y Llamadas) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 transition-colors flex flex-col justify-between">
+            <div>
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    Comunicaciones Realizadas
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                    Acumulado hasta la fecha por este hospital
+                  </p>
                 </div>
-              )}
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                  Total: {totalCommunications.toLocaleString('es-CO')}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {channelCards.map((channel) => {
+                  const Icon = channel.icon;
+                  return (
+                    <div
+                      key={channel.key}
+                      className={`rounded-xl border p-5 transition-all hover:shadow-sm ${channel.cardBg}`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {channel.label}
+                        </span>
+                        <div className={`${channel.iconBg} p-2.5 rounded-lg shadow-xs`}>
+                          <Icon className="h-5 w-5 text-white" />
+                        </div>
+                      </div>
+                      <p className={`text-3xl font-bold tracking-tight ${channel.valueColor}`}>
+                        {channel.value.toLocaleString('es-CO')}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">
+                        {channel.caption}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
           {/* Estadísticas de Campañas */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 transition-colors">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Estadísticas de Campañas</h2>
-            
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Estadísticas de Campañas
+            </h2>
+
             <div className="space-y-4">
               {/* Estado de Campañas */}
               <div>
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">Estado de Campañas</h3>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">
+                  Estado de Campañas
+                </h3>
                 <div className="space-y-3">
                   {[
                     { label: 'En Progreso', value: campaignStats.enProgreso, textClass: 'text-blue-600 dark:text-blue-400', barClass: 'bg-blue-500' },
                     { label: 'Completadas', value: campaignStats.completadas, textClass: 'text-green-600 dark:text-green-400', barClass: 'bg-green-500' },
                     { label: 'Programadas', value: campaignStats.programadas, textClass: 'text-yellow-600 dark:text-yellow-400', barClass: 'bg-yellow-500' },
                   ].map((st) => {
-                    const total = Math.max(campaignStats.enProgreso + campaignStats.completadas + campaignStats.programadas, 1);
+                    const total = Math.max(
+                      campaignStats.enProgreso + campaignStats.completadas + campaignStats.programadas,
+                      1
+                    );
                     return (
                       <div key={st.label}>
                         <div className="flex items-center justify-between mb-1">
@@ -595,24 +564,38 @@ const DashboardPage = () => {
 
               {/* Demographics */}
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">Demografía de Pacientes en BD</h3>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">
+                  Demografía de Pacientes en BD
+                </h3>
                 <div className="space-y-3">
                   {[
                     { label: '👨 Hombres', value: campaignStats.hombres, color: 'bg-indigo-500' },
                     { label: '👩 Mujeres', value: campaignStats.mujeres, color: 'bg-pink-500' },
                     { label: '👦 Niños', value: campaignStats.ninos, color: 'bg-cyan-500' },
-                    { label: '👧 Niñas', value: campaignStats.ninas, color: 'bg-purple-500' }
+                    { label: '👧 Niñas', value: campaignStats.ninas, color: 'bg-purple-500' },
                   ].map((demo, idx) => (
                     <div key={idx}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm text-gray-600 dark:text-slate-300">{demo.label}</span>
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">{demo.value}</span>
+                        <span className="text-sm font-bold text-gray-900 dark:text-white">
+                          {demo.value.toLocaleString('es-CO')}
+                        </span>
                       </div>
                       <div className="w-full bg-gray-200 dark:bg-slate-800 rounded-full h-3">
-                        <div 
+                        <div
                           className={`${demo.color} h-3 rounded-full transition-all duration-500`}
-                          style={{ 
-                            width: `${(demo.value / Math.max(campaignStats.hombres + campaignStats.mujeres + campaignStats.ninos + campaignStats.ninas, 1)) * 100}%` 
+                          style={{
+                            width: `${
+                              (demo.value /
+                                Math.max(
+                                  campaignStats.hombres +
+                                    campaignStats.mujeres +
+                                    campaignStats.ninos +
+                                    campaignStats.ninas,
+                                  1
+                                )) *
+                              100
+                            }%`,
                           }}
                         />
                       </div>
