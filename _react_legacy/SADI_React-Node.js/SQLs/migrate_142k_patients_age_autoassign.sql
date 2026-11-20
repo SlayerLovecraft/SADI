@@ -1064,7 +1064,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_doctor_assigned_patients_paginated(UUID, TEXT[], UUID, TEXT, TEXT, INT, INT) TO anon, authenticated;
 
--- 11. RPC Matriz Consolidada de Reportes (7 Cursos A-G + 11 Grupos de Riesgo reales + Caché auto-invalidada)
+-- 11. RPC Matriz Consolidada de Reportes (7 Cursos A-G + 11 Grupos de Riesgo reales + Atribución 100% por Paciente + Efectividad + Trazabilidad + Caché auto-invalidada)
 CREATE OR REPLACE FUNCTION public.get_reports_demanda_summary(
   p_hospital_id UUID DEFAULT NULL,
   p_curso_vida TEXT DEFAULT 'todos',
@@ -1085,7 +1085,7 @@ DECLARE
   v_cached JSONB;
   v_res JSONB;
 BEGIN
-  v_cache_key := 'reports_v2:' || COALESCE(p_hospital_id::text, 'ALL') || ':' ||
+  v_cache_key := 'reports_v3:' || COALESCE(p_hospital_id::text, 'ALL') || ':' ||
     COALESCE(p_curso_vida, 'todos') || ':' || COALESCE(p_grupo_riesgo, 'todos') || ':' ||
     COALESCE(p_zona, 'todos') || ':' || COALESCE(p_comuna, 'todos') || ':' || COALESCE(p_barrio, 'todos');
 
@@ -1094,7 +1094,128 @@ BEGIN
     RETURN v_cached;
   END IF;
 
-  WITH grouped AS MATERIALIZED (
+  WITH vapi_events AS MATERIALIZED (
+    SELECT
+      v.id::text AS event_id,
+      'vapi_agent_sessions'::text AS source_table,
+      v.patient_id,
+      'call'::text AS canal,
+      COALESCE(v.motivo_llamada, 'Llamada IA Vapi')::text AS motivo,
+      COALESCE(v.estado_llamada, CASE WHEN COALESCE(v.deteccion_buzon, FALSE) THEN 'buzon' ELSE 'registrada' END)::text AS resultado,
+      (NOT COALESCE(v.deteccion_buzon, FALSE) AND (lower(COALESCE(v.estado_llamada, '')) IN ('completada', 'completed', 'exitosa', 'answered') OR COALESCE(v.duracion_segundos, 0) > 0)) AS efectiva,
+      COALESCE(v.duracion_segundos, 0)::INT AS duracion_segundos,
+      v.created_at
+    FROM public.vapi_agent_sessions v
+    JOIN public.patients p ON p.patient_id = v.patient_id
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id OR v.hospital_id = p_hospital_id)
+  ),
+  evidence_events AS MATERIALIZED (
+    SELECT
+      e.id::text AS event_id,
+      'ai_contact_evidence'::text AS source_table,
+      e.patient_id,
+      CASE
+        WHEN lower(COALESCE(e.canal, '')) ~ 'sms' THEN 'sms'
+        WHEN lower(COALESCE(e.canal, '')) ~ '(email|mail|correo)' THEN 'email'
+        WHEN lower(COALESCE(e.canal, '')) ~ '(what|wpp)' THEN 'whatsapp'
+        WHEN lower(COALESCE(e.canal, '')) ~ '(call|llamada|voz|vapi|tel)' THEN 'call'
+        ELSE NULL
+      END AS canal,
+      COALESCE(e.motivo_contacto, 'Contacto IA Res. 3280')::text AS motivo,
+      COALESCE(e.resultado_contacto, 'registrado')::text AS resultado,
+      (NOT COALESCE(e.deteccion_buzon, FALSE) AND lower(COALESCE(e.resultado_contacto, '')) IN ('contactado_exitoso', 'exitoso', 'completado', 'confirmada', 'entregado')) AS efectiva,
+      COALESCE(e.duracion_segundos, 0)::INT AS duracion_segundos,
+      e.created_at
+    FROM public.ai_contact_evidence e
+    JOIN public.patients p ON p.patient_id = e.patient_id
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+      AND NOT (
+        lower(COALESCE(e.canal, '')) ~ '(call|llamada|voz|vapi|tel)'
+        AND EXISTS (
+          SELECT 1 FROM vapi_events ve
+          WHERE ve.patient_id = e.patient_id
+            AND abs(EXTRACT(EPOCH FROM (ve.created_at - e.created_at))) <= 120
+        )
+      )
+  ),
+  sms_events AS MATERIALIZED (
+    SELECT
+      s.id::text AS event_id,
+      'openvox_sms_dispatches'::text AS source_table,
+      s.patient_id,
+      'sms'::text AS canal,
+      'SMS OpenVox'::text AS motivo,
+      COALESCE(s.status, 'pendiente')::text AS resultado,
+      (lower(COALESCE(s.status, '')) IN ('sent', 'delivered', 'enviado', 'entregado')) AS efectiva,
+      0::INT AS duracion_segundos,
+      s.created_at
+    FROM public.openvox_sms_dispatches s
+    JOIN public.patients p ON p.patient_id = s.patient_id
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id OR s.hospital_id = p_hospital_id)
+  ),
+  interaction_channel_events AS MATERIALIZED (
+    SELECT
+      i.id::text AS event_id,
+      'interactions'::text AS source_table,
+      i.patient_id,
+      CASE
+        WHEN lower(COALESCE(i.tipo, '')) ~ 'sms' THEN 'sms'
+        WHEN lower(COALESCE(i.tipo, '')) ~ '(email|mail|correo)' THEN 'email'
+        WHEN lower(COALESCE(i.tipo, '')) ~ '(what|wpp)' THEN 'whatsapp'
+        WHEN lower(COALESCE(i.tipo, '')) ~ '(call|llamada|voz|vapi|tel)' THEN 'call'
+        ELSE NULL
+      END AS canal,
+      COALESCE(i.asunto, i.tipo, 'Comunicación')::text AS motivo,
+      COALESCE(i.estado, 'registrado')::text AS resultado,
+      (lower(COALESCE(i.estado, '')) NOT IN ('fallido', 'failed', 'error', 'rechazado', 'no_contesta')) AS efectiva,
+      0::INT AS duracion_segundos,
+      i.created_at
+    FROM public.interactions i
+    JOIN public.patients p ON p.patient_id = i.patient_id
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+      AND lower(COALESCE(i.tipo, '')) ~ '(sms|email|mail|correo|what|wpp|call|llamada|voz|vapi|tel)'
+  ),
+  patient_events AS MATERIALIZED (
+    SELECT * FROM vapi_events WHERE canal IS NOT NULL
+    UNION ALL
+    SELECT * FROM evidence_events WHERE canal IS NOT NULL
+    UNION ALL
+    SELECT * FROM sms_events WHERE canal IS NOT NULL
+    UNION ALL
+    SELECT * FROM interaction_channel_events WHERE canal IS NOT NULL
+  ),
+  patient_events_agg AS MATERIALIZED (
+    SELECT
+      pe.patient_id,
+      count(*) FILTER (WHERE pe.canal = 'sms' AND (pe.source_table <> 'openvox_sms_dispatches' OR pe.efectiva))::BIGINT AS ev_sms,
+      count(*) FILTER (WHERE pe.canal = 'email')::BIGINT AS ev_email,
+      count(*) FILTER (WHERE pe.canal = 'call')::BIGINT AS ev_call,
+      count(*) FILTER (WHERE pe.canal = 'whatsapp')::BIGINT AS ev_whatsapp
+    FROM patient_events pe
+    GROUP BY pe.patient_id
+  ),
+  event_deltas AS MATERIALIZED (
+    SELECT
+      COALESCE(p.curso_vida, 'adultez') AS raw_curso,
+      COALESCE(p.grupos_riesgo, '{}'::text[]) AS raw_riesgos,
+      COALESCE(p.grupo_riesgo, '') AS raw_riesgo,
+      CASE
+        WHEN lower(COALESCE(p.zona, '')) LIKE 'rural%' THEN 'Rural'
+        WHEN lower(COALESCE(p.zona, '')) LIKE 'urban%' THEN 'Urbana'
+        ELSE ''
+      END AS zona_norm,
+      trim(COALESCE(NULLIF(p.comuna, ''), p.corregimiento, '')) AS comuna_lbl,
+      trim(COALESCE(NULLIF(p.barrio, ''), p.vereda, '')) AS barrio_lbl,
+      0::BIGINT AS cnt,
+      GREATEST(pea.ev_sms - COALESCE((p.conteo_canales->>'sms')::INT, 0), 0)::BIGINT AS stored_sms,
+      GREATEST(pea.ev_email - COALESCE((p.conteo_canales->>'email')::INT, 0), 0)::BIGINT AS stored_email,
+      GREATEST(pea.ev_call - COALESCE((p.conteo_canales->>'call')::INT, 0), 0)::BIGINT AS stored_call,
+      GREATEST(pea.ev_whatsapp - COALESCE((p.conteo_canales->>'whatsapp')::INT, 0), 0)::BIGINT AS stored_whatsapp
+    FROM patient_events_agg pea
+    JOIN public.patients p ON p.patient_id = pea.patient_id
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+  ),
+  grouped AS MATERIALIZED (
     SELECT
       COALESCE(p.curso_vida, 'adultez') AS raw_curso,
       COALESCE(p.grupos_riesgo, '{}'::text[]) AS raw_riesgos,
@@ -1115,6 +1236,12 @@ BEGIN
     WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
     GROUP BY 1, 2, 3, 4, 5, 6
   ),
+  combined_groups AS (
+    SELECT * FROM grouped
+    UNION ALL
+    SELECT * FROM event_deltas
+    WHERE stored_sms > 0 OR stored_email > 0 OR stored_call > 0 OR stored_whatsapp > 0
+  ),
   base_pts AS MATERIALIZED (
     SELECT
       public.curso_key_to_code_3280(g.raw_curso) AS curso_code,
@@ -1127,7 +1254,7 @@ BEGIN
       g.stored_email,
       g.stored_call,
       g.stored_whatsapp
-    FROM grouped g
+    FROM combined_groups g
   ),
   por_curso AS (
     SELECT
@@ -1170,34 +1297,51 @@ BEGIN
     SELECT COALESCE(jsonb_agg(barrio_lbl ORDER BY barrio_lbl), '[]'::jsonb) AS arr
     FROM (SELECT DISTINCT barrio_lbl FROM base_pts WHERE barrio_lbl <> '' LIMIT 500) s
   ),
-  interactions_totals AS (
+  campaign_eff AS (
     SELECT
-      count(*) FILTER (WHERE lower(COALESCE(tipo, '')) ~ 'sms')::BIGINT AS sms,
-      count(*) FILTER (WHERE lower(COALESCE(tipo, '')) ~ '(email|mail|correo)')::BIGINT AS email,
-      count(*) FILTER (WHERE lower(COALESCE(tipo, '')) ~ '(call|llamada|voz|vapi|tel)')::BIGINT AS call,
-      count(*) FILTER (WHERE lower(COALESCE(tipo, '')) ~ '(what|wpp)')::BIGINT AS whatsapp
-    FROM public.interactions
+      COALESCE(sum(COALESCE(entregados, 0)), 0)::BIGINT AS efectivas,
+      COALESCE(sum(COALESCE(fallidos, 0)), 0)::BIGINT AS fallidas
+    FROM public.campaigns
     WHERE (p_hospital_id IS NULL OR hospital_id = p_hospital_id)
   ),
-  vapi_totals AS (
-    SELECT count(*)::BIGINT AS call
-    FROM public.vapi_agent_sessions
-    WHERE (p_hospital_id IS NULL OR hospital_id = p_hospital_id)
-  ),
-  sms_totals AS (
-    SELECT count(*) FILTER (WHERE status = 'sent')::BIGINT AS sms
-    FROM public.openvox_sms_dispatches
-    WHERE (p_hospital_id IS NULL OR hospital_id = p_hospital_id)
-  ),
-  evidence_totals AS (
+  event_eff AS (
     SELECT
-      count(*) FILTER (WHERE lower(COALESCE(e.canal, '')) ~ 'sms')::BIGINT AS sms,
-      count(*) FILTER (WHERE lower(COALESCE(e.canal, '')) ~ '(email|mail|correo)')::BIGINT AS email,
-      count(*) FILTER (WHERE lower(COALESCE(e.canal, '')) ~ '(call|llamada|voz|vapi|tel)')::BIGINT AS call,
-      count(*) FILTER (WHERE lower(COALESCE(e.canal, '')) ~ '(what|wpp)')::BIGINT AS whatsapp
-    FROM public.ai_contact_evidence e
-    JOIN public.patients p ON p.patient_id = e.patient_id
-    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+      count(*) FILTER (WHERE efectiva)::BIGINT AS efectivas,
+      count(*) FILTER (WHERE NOT efectiva)::BIGINT AS fallidas
+    FROM patient_events
+  ),
+  total_eff AS (
+    SELECT
+      ((SELECT efectivas FROM campaign_eff) + (SELECT efectivas FROM event_eff))::BIGINT AS efectivas,
+      ((SELECT fallidas FROM campaign_eff) + (SELECT fallidas FROM event_eff))::BIGINT AS fallidas
+  ),
+  recent_comms AS (
+    SELECT COALESCE(jsonb_agg(row_to_json(rc)), '[]'::jsonb) AS arr
+    FROM (
+      SELECT
+        pe.event_id AS id,
+        pe.source_table,
+        pe.canal,
+        pe.patient_id,
+        p.name AS patient_name,
+        p.document AS patient_document,
+        COALESCE(p.tipo_documento, 'CC') AS tipo_documento,
+        public.curso_key_to_code_3280(COALESCE(p.curso_vida, 'adultez')) AS curso_code,
+        COALESCE(p.curso_vida, 'adultez') AS curso_vida,
+        COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
+        p.grupo_riesgo,
+        COALESCE(p.zona, '') AS zona,
+        trim(COALESCE(NULLIF(p.comuna, ''), p.corregimiento, p.city, '')) AS ubicacion,
+        pe.motivo,
+        pe.resultado,
+        pe.efectiva,
+        pe.duracion_segundos,
+        pe.created_at
+      FROM patient_events pe
+      JOIN public.patients p ON p.patient_id = pe.patient_id
+      ORDER BY pe.created_at DESC NULLS LAST
+      LIMIT 30
+    ) rc
   )
   SELECT jsonb_build_object(
     'total_patients', COALESCE((SELECT sum(cnt)::BIGINT FROM base_pts), 0),
@@ -1212,12 +1356,15 @@ BEGIN
       'call', COALESCE((SELECT sum(stored_call)::BIGINT FROM filtered), 0),
       'whatsapp', COALESCE((SELECT sum(stored_whatsapp)::BIGINT FROM filtered), 0)
     ),
-    'event_totals', jsonb_build_object(
-      'sms', (SELECT sms FROM interactions_totals) + (SELECT sms FROM sms_totals) + (SELECT sms FROM evidence_totals),
-      'email', (SELECT email FROM interactions_totals) + (SELECT email FROM evidence_totals),
-      'call', (SELECT call FROM interactions_totals) + (SELECT call FROM vapi_totals) + (SELECT call FROM evidence_totals),
-      'whatsapp', (SELECT whatsapp FROM interactions_totals) + (SELECT whatsapp FROM evidence_totals)
-    )
+    'event_totals', jsonb_build_object('sms', 0, 'email', 0, 'call', 0, 'whatsapp', 0),
+    'effectiveness', jsonb_build_object(
+      'total', (SELECT efectivas + fallidas FROM total_eff),
+      'efectivas', (SELECT efectivas FROM total_eff),
+      'fallidas', (SELECT fallidas FROM total_eff),
+      'pct_efectivas', (SELECT CASE WHEN (efectivas + fallidas) > 0 THEN round((efectivas::numeric * 100.0) / (efectivas + fallidas), 1) ELSE 0.0 END FROM total_eff),
+      'pct_fallidas', (SELECT CASE WHEN (efectivas + fallidas) > 0 THEN round((fallidas::numeric * 100.0) / (efectivas + fallidas), 1) ELSE 0.0 END FROM total_eff)
+    ),
+    'recent_communications', (SELECT arr FROM recent_comms)
   ) INTO v_res;
 
   INSERT INTO public.cronograma_summary_cache (cache_key, payload, updated_at)
@@ -1603,6 +1750,23 @@ CREATE TRIGGER trg_invalidate_cronograma_cache
   AFTER INSERT OR UPDATE OR DELETE ON public.patients
   FOR EACH STATEMENT
   EXECUTE FUNCTION public.invalidate_cronograma_summary_cache_fn();
+
+-- 11b. Invalidar caché de reportes/cronograma automáticamente ante cambios en tablas de comunicaciones o campañas
+DO $$
+DECLARE
+  v_tbl TEXT;
+BEGIN
+  FOREACH v_tbl IN ARRAY ARRAY['ai_contact_evidence', 'vapi_agent_sessions', 'openvox_sms_dispatches', 'interactions', 'campaigns', 'campaign_messages']
+  LOOP
+    IF to_regclass('public.' || v_tbl) IS NOT NULL THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS trg_invalidate_cache_%s ON public.%I;', v_tbl, v_tbl);
+      EXECUTE format(
+        'CREATE TRIGGER trg_invalidate_cache_%s AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION public.invalidate_cronograma_summary_cache_fn();',
+        v_tbl, v_tbl
+      );
+    END IF;
+  END LOOP;
+END $$;
 
 DROP FUNCTION IF EXISTS public.get_cronograma_res3280_summary(UUID, TEXT[]);
 DROP FUNCTION IF EXISTS public.get_cronograma_res3280_summary(UUID, TEXT[], INT);

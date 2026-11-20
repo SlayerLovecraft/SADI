@@ -3,7 +3,6 @@ import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
 import {
   Users,
-  Send,
   TrendingUp,
   Loader2,
   Activity,
@@ -11,11 +10,17 @@ import {
   Smartphone,
   Mail,
   PhoneCall,
+  CheckCircle2,
+  XCircle,
+  BarChart3,
+  Eye,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { withTimeout } from '@/lib/utils';
 import { reportsAnalysisService } from '@/services/reportsAnalysisService';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 
 const normalizeStatus = (status) => (status || '').toLowerCase().trim();
 
@@ -37,12 +42,38 @@ const getEffectiveCampaignStatus = (campaign) => {
   return 'Programada';
 };
 
+const CANAL_META = {
+  whatsapp: {
+    label: 'WhatsApp',
+    badge: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60',
+  },
+  sms: {
+    label: 'SMS',
+    badge: 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800/60',
+  },
+  email: {
+    label: 'E-Mail',
+    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800/60',
+  },
+  call: {
+    label: 'Llamada',
+    badge: 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-800/60',
+  },
+};
+
 const DashboardPage = () => {
   const { user, reload, loading: authLoading } = useAuth();
   const [stats, setStats] = useState({
     totalPatients: 0,
-    activeCampaigns: 0,
-    deliveryRate: 0,
+    deliveryRate: '0.0',
+  });
+
+  const [effectiveness, setEffectiveness] = useState({
+    total: 0,
+    efectivas: 0,
+    fallidas: 0,
+    pctEfectivas: '0.0',
+    pctFallidas: '0.0',
   });
 
   const [channelTotals, setChannelTotals] = useState({
@@ -51,6 +82,9 @@ const DashboardPage = () => {
     email: 0,
     call: 0,
   });
+
+  const [recentCommunications, setRecentCommunications] = useState([]);
+  const [traceChannelFilter, setTraceChannelFilter] = useState(null); // null = closed, 'all' | 'whatsapp' | 'sms' | 'email' | 'call'
 
   const [campaignStats, setCampaignStats] = useState({
     enProgreso: 0,
@@ -132,57 +166,44 @@ const DashboardPage = () => {
     }
   }, []);
 
-  const fetchChannelSummary = useCallback(async (hospital_id) => {
+  const fetchHospitalCommunications = useCallback(async (hospital_id) => {
     try {
       const matrix = await withTimeout(
         reportsAnalysisService.getChannelMatrixHeader(hospital_id),
         15000
       );
       const totales = matrix?.totales || {};
+      const eff = matrix?.effectiveness || {};
       return {
-        whatsapp: Number(totales.whatsapp || 0),
-        sms: Number(totales.sms || 0),
-        email: Number(totales.email || 0),
-        call: Number(totales.call || 0),
+        channels: {
+          whatsapp: Number(totales.whatsapp || 0),
+          sms: Number(totales.sms || 0),
+          email: Number(totales.email || 0),
+          call: Number(totales.call || 0),
+        },
+        effectiveness: {
+          total: Number(eff.total || 0),
+          efectivas: Number(eff.efectivas || 0),
+          fallidas: Number(eff.fallidas || 0),
+          pctEfectivas: Number(eff.pct_efectivas || 0).toFixed(1),
+          pctFallidas: Number(eff.pct_fallidas || 0).toFixed(1),
+        },
+        recentCommunications: Array.isArray(matrix?.recentCommunications)
+          ? matrix.recentCommunications
+          : [],
       };
     } catch {
-      return { whatsapp: 0, sms: 0, email: 0, call: 0 };
-    }
-  }, []);
-
-  const fetchDeliveryEffectiveness = useCallback(async (hospital_id) => {
-    try {
-      let vapiQuery = supabase
-        .from('vapi_agent_sessions')
-        .select('estado_llamada, deteccion_buzon, duracion_segundos')
-        .limit(500);
-      let smsQuery = supabase
-        .from('openvox_sms_dispatches')
-        .select('status')
-        .limit(500);
-
-      if (hospital_id) {
-        vapiQuery = vapiQuery.eq('hospital_id', hospital_id);
-        smsQuery = smsQuery.eq('hospital_id', hospital_id);
-      }
-
-      const [vapiRes, smsRes] = await Promise.all([
-        withTimeout(vapiQuery, 10000).catch(() => ({ data: [] })),
-        withTimeout(smsQuery, 10000).catch(() => ({ data: [] })),
-      ]);
-
-      const vapiRows = vapiRes?.data || [];
-      const smsRows = smsRes?.data || [];
-      const attempts = vapiRows.length + smsRows.length;
-      const successes =
-        vapiRows.filter(
-          (s) => !s.deteccion_buzon && (s.estado_llamada === 'completada' || Number(s.duracion_segundos) > 0)
-        ).length +
-        smsRows.filter((s) => s.status === 'sent').length;
-
-      return { attempts, successes };
-    } catch {
-      return { attempts: 0, successes: 0 };
+      return {
+        channels: { whatsapp: 0, sms: 0, email: 0, call: 0 },
+        effectiveness: {
+          total: 0,
+          efectivas: 0,
+          fallidas: 0,
+          pctEfectivas: '0.0',
+          pctFallidas: '0.0',
+        },
+        recentCommunications: [],
+      };
     }
   }, []);
 
@@ -246,44 +267,27 @@ const DashboardPage = () => {
       setLoading(true);
       setError(null);
 
-      const [patientsSummary, campaignsData, channels, delivery] = await Promise.all([
+      const [patientsSummary, campaignsData, commData] = await Promise.all([
         fetchPatientsSummary(hospital_id),
         fetchCampaigns(hospital_id),
-        fetchChannelSummary(hospital_id),
-        fetchDeliveryEffectiveness(hospital_id),
+        fetchHospitalCommunications(hospital_id),
       ]);
-
-      const statuses = campaignsData.map(getEffectiveCampaignStatus);
-      const pendingCampaigns = statuses.filter((s) => s !== 'Completada').length;
-
-      const totalDestinatarios = campaignsData.reduce((acc, curr) => acc + (Number(curr.destinatarios) || 0), 0);
-      const totalEntregados = campaignsData.reduce((acc, curr) => acc + (Number(curr.entregados) || 0), 0);
-
-      const combinedAttempts = totalDestinatarios + delivery.attempts;
-      const combinedSuccess = totalEntregados + delivery.successes;
-      const totalChannelsSent = channels.whatsapp + channels.sms + channels.email + channels.call;
-
-      const deliveryRate =
-        combinedAttempts > 0
-          ? ((combinedSuccess / combinedAttempts) * 100).toFixed(1)
-          : totalChannelsSent > 0
-          ? '100.0'
-          : '0';
 
       setStats({
         totalPatients: patientsSummary.count,
-        activeCampaigns: pendingCampaigns,
-        deliveryRate,
+        deliveryRate: commData.effectiveness.pctEfectivas,
       });
 
-      setChannelTotals(channels);
+      setEffectiveness(commData.effectiveness);
+      setChannelTotals(commData.channels);
+      setRecentCommunications(commData.recentCommunications);
       calculateCampaignStats(campaignsData, patientsSummary.patients, patientsSummary.demography);
     } catch (err) {
       setError(err?.message || 'Error cargando dashboard');
     } finally {
       setLoading(false);
     }
-  }, [calculateCampaignStats, fetchCampaigns, fetchChannelSummary, fetchDeliveryEffectiveness, fetchPatientsSummary]);
+  }, [calculateCampaignStats, fetchCampaigns, fetchHospitalCommunications, fetchPatientsSummary]);
 
   useEffect(() => {
     if (!user) return;
@@ -320,30 +324,6 @@ const DashboardPage = () => {
 
     return () => clearInterval(intervalId);
   }, [hospitalIdForQueries, loadDashboardData, user]);
-
-  const kpiCards = [
-    {
-      title: 'Total Pacientes',
-      value: typeof stats.totalPatients === 'number' ? stats.totalPatients.toLocaleString('es-CO') : stats.totalPatients,
-      icon: Users,
-      color: 'bg-blue-500',
-      subtitle: 'Pacientes reales en Supabase',
-    },
-    {
-      title: 'Campañas Pendientes',
-      value: stats.activeCampaigns,
-      icon: Send,
-      color: 'bg-green-500',
-      subtitle: 'Por enviar o en proceso',
-    },
-    {
-      title: 'Tasa de Entrega',
-      value: `${stats.deliveryRate}%`,
-      icon: TrendingUp,
-      color: 'bg-purple-500',
-      subtitle: 'Contactos y envíos exitosos',
-    },
-  ];
 
   const channelCards = [
     {
@@ -390,6 +370,11 @@ const DashboardPage = () => {
 
   const totalCommunications =
     channelTotals.whatsapp + channelTotals.sms + channelTotals.email + channelTotals.call;
+
+  const filteredTraceList = useMemo(() => {
+    if (!traceChannelFilter || traceChannelFilter === 'all') return recentCommunications;
+    return recentCommunications.filter((ev) => ev.canal === traceChannelFilter);
+  }, [recentCommunications, traceChannelFilter]);
 
   if (loading) {
     return (
@@ -452,26 +437,88 @@ const DashboardPage = () => {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {kpiCards.map((kpi, index) => {
-            const Icon = kpi.icon;
-            return (
-              <div
-                key={index}
-                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 hover:shadow-lg transition-all"
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">{kpi.title}</p>
-                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{kpi.value}</p>
-                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">{kpi.subtitle}</p>
-                  </div>
-                  <div className={`${kpi.color} p-4 rounded-lg`}>
-                    <Icon className="h-8 w-8 text-white" />
-                  </div>
-                </div>
+          {/* KPI 1: Total Pacientes */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 hover:shadow-lg transition-all">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">Total Pacientes</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                  {typeof stats.totalPatients === 'number'
+                    ? stats.totalPatients.toLocaleString('es-CO')
+                    : stats.totalPatients}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">
+                  Pacientes reales en Supabase
+                </p>
               </div>
-            );
-          })}
+              <div className="bg-blue-500 p-4 rounded-lg">
+                <Users className="h-8 w-8 text-white" />
+              </div>
+            </div>
+          </div>
+
+          {/* KPI 2: Efectividad de Campañas (% Intervenciones Efectivas y % Intervenciones Fallidas) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 hover:shadow-lg transition-all">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-slate-400">
+                  Efectividad de Campañas
+                </p>
+                <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-0.5">
+                  {effectiveness.total > 0
+                    ? `${effectiveness.total.toLocaleString('es-CO')} intervención(es) evaluada(s)`
+                    : 'Sin intervenciones evaluadas aún'}
+                </p>
+              </div>
+              <div className="bg-emerald-500 p-3 rounded-lg flex-shrink-0">
+                <BarChart3 className="h-6 w-6 text-white" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg px-3 py-2 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60">
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>Efectivas</span>
+                </div>
+                <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
+                  {effectiveness.pctEfectivas}%
+                </p>
+                <p className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
+                  Intervenciones Efectivas ({effectiveness.efectivas.toLocaleString('es-CO')})
+                </p>
+              </div>
+
+              <div className="rounded-lg px-3 py-2 bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800/60">
+                <div className="flex items-center gap-1 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                  <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>Fallidas</span>
+                </div>
+                <p className="text-xl font-bold text-rose-700 dark:text-rose-300 mt-0.5">
+                  {effectiveness.pctFallidas}%
+                </p>
+                <p className="text-[10px] text-rose-700/80 dark:text-rose-400/80">
+                  Intervenciones Fallidas ({effectiveness.fallidas.toLocaleString('es-CO')})
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI 3: Tasa de Entrega */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-md p-6 hover:shadow-lg transition-all">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">Tasa de Entrega</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.deliveryRate}%</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">
+                  Contactos y envíos exitosos
+                </p>
+              </div>
+              <div className="bg-purple-500 p-4 rounded-lg">
+                <TrendingUp className="h-8 w-8 text-white" />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Content Grid */}
@@ -485,21 +532,28 @@ const DashboardPage = () => {
                     Comunicaciones Realizadas
                   </h2>
                   <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                    Acumulado hasta la fecha por este hospital
+                    Acumulado hasta la fecha por este hospital · Haz clic en un canal para ver detalle
                   </p>
                 </div>
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setTraceChannelFilter('all')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition-colors"
+                >
+                  <Eye className="h-3.5 w-3.5" />
                   Total: {totalCommunications.toLocaleString('es-CO')}
-                </span>
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {channelCards.map((channel) => {
                   const Icon = channel.icon;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={channel.key}
-                      className={`rounded-xl border p-5 transition-all hover:shadow-sm ${channel.cardBg}`}
+                      onClick={() => setTraceChannelFilter(channel.key)}
+                      className={`text-left rounded-xl border p-5 transition-all hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${channel.cardBg}`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-semibold text-gray-800 dark:text-slate-100">
@@ -515,7 +569,7 @@ const DashboardPage = () => {
                       <p className="text-xs text-gray-600 dark:text-slate-400 mt-1">
                         {channel.caption}
                       </p>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -613,6 +667,133 @@ const DashboardPage = () => {
           <p className="mt-1">Hospital ID: {hospitalId || 'No identificado'} | Conectado a Supabase</p>
         </div>
       </div>
+
+      {/* Modal de Trazabilidad por Canal (Muestra exactamente a quién y de dónde salió cada comunicación) */}
+      {traceChannelFilter && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setTraceChannelFilter(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                  Detalle de Comunicaciones —{' '}
+                  {traceChannelFilter === 'all'
+                    ? 'Todos los Canales'
+                    : CANAL_META[traceChannelFilter]?.label || traceChannelFilter}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Trazabilidad verificada por paciente, curso de vida, grupo de riesgo y origen en Supabase
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTraceChannelFilter(null)}
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Cerrar detalle"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex flex-wrap gap-2">
+              {[
+                { key: 'all', label: `Todos (${totalCommunications})` },
+                { key: 'whatsapp', label: `WhatsApp (${channelTotals.whatsapp})` },
+                { key: 'sms', label: `SMS (${channelTotals.sms})` },
+                { key: 'email', label: `E-Mails (${channelTotals.email})` },
+                { key: 'call', label: `Llamadas (${channelTotals.call})` },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setTraceChannelFilter(tab.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    traceChannelFilter === tab.key
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {filteredTraceList.length > 0 ? (
+                <div className="space-y-3">
+                  {filteredTraceList.map((ev) => {
+                    const meta = CANAL_META[ev.canal] || CANAL_META.call;
+                    const fechaStr = ev.created_at
+                      ? new Date(ev.created_at).toLocaleString('es-CO', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—';
+                    return (
+                      <div
+                        key={`${ev.source_table}-${ev.id}`}
+                        className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 space-y-2"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white">
+                              {ev.patient_name || 'Sin nombre'}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {ev.tipo_documento || 'CC'}: {ev.patient_document || '—'}
+                              {ev.ubicacion ? ` · ${ev.ubicacion}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${meta.badge}`}>
+                              {meta.label}
+                            </span>
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                                ev.efectiva
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+                                  : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800/60'
+                              }`}
+                            >
+                              {ev.efectiva ? 'Efectiva' : 'Fallida'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <CursoVidaBadge patient={ev} />
+                          <GruposRiesgoBadges patient={ev} />
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-200/70 dark:border-slate-700/60">
+                          <span>
+                            Motivo: <strong className="text-slate-700 dark:text-slate-200">{ev.motivo || '—'}</strong> · Origen:{' '}
+                            <code className="font-mono text-[10px]">{ev.source_table}</code>
+                            {Number(ev.duracion_segundos) > 0 ? ` · ${ev.duracion_segundos}s` : ''}
+                          </span>
+                          <span>{fechaStr}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-10 text-sm text-slate-500 dark:text-slate-400">
+                  No hay registros para este canal todavía.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

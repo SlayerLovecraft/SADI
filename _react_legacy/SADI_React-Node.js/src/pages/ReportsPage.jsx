@@ -47,6 +47,7 @@ import { getCaliComunas, getCaliCorregimientos } from '@/services/caliDivipola';
 import { getPatientCursoVida, getPatientGruposRiesgo } from '@/services/callCapacityService';
 import MultichannelReportHeader from '@/components/MultichannelReportHeader';
 import InteractivePieChart from '@/components/InteractivePieChart';
+import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -493,6 +494,127 @@ const ReportsPage = () => {
               loading={loading}
             />
           </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* SECCIÓN 2B: TRAZABILIDAD EXACTA DE EMISIONES REALES (A QUIÉN Y ORIGEN)    */}
+        {/* ========================================================================= */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-sm p-5 space-y-4 transition-colors">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800/60">
+                <ShieldCheck className="w-4 h-4" />
+              </span>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white tracking-tight">
+                  Trazabilidad de Emisiones Reales (Detalle por Paciente)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Cada llamada, SMS, correo o WhatsApp contabilizado en la matriz está vinculado a su paciente, curso de vida, grupo de riesgo y origen en BD.
+                </p>
+              </div>
+            </div>
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+              {(matrixData?.recentCommunications || []).length} registro(s) recientes
+            </span>
+          </div>
+
+          {(matrixData?.recentCommunications || []).length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <th className="py-2.5 px-3 font-bold">Paciente / Documento</th>
+                    <th className="py-2.5 px-3 font-bold">Curso de Vida &amp; Grupos de Riesgo</th>
+                    <th className="py-2.5 px-3 font-bold">Canal</th>
+                    <th className="py-2.5 px-3 font-bold">Origen / Motivo</th>
+                    <th className="py-2.5 px-3 font-bold">Resultado</th>
+                    <th className="py-2.5 px-3 font-bold">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {(matrixData?.recentCommunications || []).map((ev) => {
+                    const canalLabel =
+                      ev.canal === 'call'
+                        ? 'Llamada (Puerto 22)'
+                        : ev.canal === 'whatsapp'
+                        ? 'WhatsApp'
+                        : ev.canal === 'email'
+                        ? 'E-Mail'
+                        : 'SMS';
+                    const canalTone =
+                      ev.canal === 'call'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+                        : ev.canal === 'whatsapp'
+                        ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/50 dark:text-green-300 dark:border-green-800/60'
+                        : ev.canal === 'email'
+                        ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800/60'
+                        : 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800/60';
+                    const fechaStr = ev.created_at
+                      ? new Date(ev.created_at).toLocaleString('es-CO', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—';
+                    return (
+                      <tr key={`${ev.source_table}-${ev.id}`} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                        <td className="py-3 px-3 align-top">
+                          <div className="font-bold text-slate-900 dark:text-white">{ev.patient_name || 'Sin nombre'}</div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {ev.tipo_documento || 'CC'}: {ev.patient_document || '—'}
+                            {ev.ubicacion ? ` · ${ev.ubicacion}` : ''}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 align-top">
+                          <div className="flex flex-col items-start gap-1.5">
+                            <CursoVidaBadge patient={ev} />
+                            <GruposRiesgoBadges patient={ev} />
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 align-top">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${canalTone}`}>
+                            {canalLabel}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 align-top">
+                          <div className="font-semibold text-slate-800 dark:text-slate-200">{ev.motivo || '—'}</div>
+                          <div className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                            BD: {ev.source_table}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 align-top">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                              ev.efectiva
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800/60'
+                                : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800/60'
+                            }`}
+                          >
+                            {ev.efectiva ? 'Efectiva' : 'Fallida'} ({ev.resultado || '—'})
+                          </span>
+                          {Number(ev.duracion_segundos) > 0 && (
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              Duración: {ev.duracion_segundos}s
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 align-top text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                          {fechaStr}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-6 text-xs text-slate-500 dark:text-slate-400">
+              No se han registrado emisiones todavía en este hospital.
+            </div>
+          )}
         </div>
 
         {/* ========================================================================= */}

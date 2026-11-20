@@ -209,6 +209,16 @@ export const reportsAnalysisService = {
           },
           realPatientsCount: Number(rpcSummary.total_patients || 0),
           realInteractionsCount: totales.general,
+          effectiveness: rpcSummary.effectiveness || {
+            total: 0,
+            efectivas: 0,
+            fallidas: 0,
+            pct_efectivas: 0,
+            pct_fallidas: 0,
+          },
+          recentCommunications: Array.isArray(rpcSummary.recent_communications)
+            ? rpcSummary.recent_communications
+            : [],
         };
       }
     } catch (rpcException) {
