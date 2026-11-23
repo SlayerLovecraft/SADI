@@ -68,11 +68,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 
-// Horarios de salida autorizados: 08:00 AM a 06:00 PM (10 Horas Operativas = 50/h = 500/día)
-const FRANJAS_HORARIAS_10H = [
-  '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
-  '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM',
-];
+// Hora fija oficial de lanzamiento para todas las campañas programadas por el personal
+const CAMPAIGN_LAUNCH_TIME = '08:30 AM';
 
 function ResolutionAnnualMatrix({
   selectedYear = 2026,
@@ -166,7 +163,6 @@ function ResolutionAnnualMatrix({
     sms: true,
     email: false,
   });
-  const [selectedFranjas, setSelectedFranjas] = useState(['08:00 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
   const [retryUntilAnswer, setRetryUntilAnswer] = useState(true);
   const [maxRetries, setMaxRetries] = useState(3);
   const [sedeLugar, setSedeLugar] = useState(CALI_IPS_SEDES[0]);
@@ -940,7 +936,8 @@ function ResolutionAnnualMatrix({
       ano: detectedYear,
       canal: Object.keys(selectedChannels).filter((k) => selectedChannels[k]).join(', '),
       canales_detalle: selectedChannels,
-      horarios: selectedFranjas,
+      horarios: [CAMPAIGN_LAUNCH_TIME],
+      hora_lanzamiento: CAMPAIGN_LAUNCH_TIME,
       reintentos: retryUntilAnswer ? maxRetries : 0,
       politica_inasistencia: NOSHOW_POLICY.resumenCorto,
       lugar: `${sedeLugar} · ${locationFilterSummary}`,
@@ -1694,7 +1691,7 @@ function ResolutionAnnualMatrix({
                   {[
                     { step: 1, label: '1. Calendario & Aforo' },
                     { step: 2, label: selectedContext?.type === 'curso_vida' ? '2. Grupos de Riesgo' : '2. Cursos de Vida' },
-                    { step: 3, label: '3. Canales & Horarios' },
+                    { step: 3, label: '3. Canales & Reintentos' },
                     { step: 4, label: '4. Filtro de Ubicación' },
                     { step: 5, label: '5. Resumen & Saldo' },
                   ].map((s) => (
@@ -2031,38 +2028,20 @@ function ResolutionAnnualMatrix({
                       )}
                     </div>
 
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <label className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                          Horarios Permitidos (10 Horas: 08:00 AM - 06:00 PM • {CALLS_PER_HOUR} llamadas/hora)
-                        </label>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {selectedFranjas.length} franjas seleccionadas
+                    <div
+                      data-testid="campaign-fixed-launch-time"
+                      className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span className="text-slate-700 dark:text-slate-200">
+                          <strong>Hora de lanzamiento de campañas:</strong> todas las campañas se lanzan automáticamente a las{' '}
+                          <strong>{CAMPAIGN_LAUNCH_TIME}</strong> en el día o los días dispuestos por el personal.
                         </span>
                       </div>
-                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 p-2 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
-                        {FRANJAS_HORARIAS_10H.map((franja) => {
-                          const isSel = selectedFranjas.includes(franja);
-                          return (
-                            <button
-                              key={franja}
-                              type="button"
-                              onClick={() => {
-                                setSelectedFranjas((prev) =>
-                                  isSel ? prev.filter((f) => f !== franja) : [...prev, franja]
-                                );
-                              }}
-                              className={`py-2 px-2 rounded-xl text-xs font-bold transition-all ${
-                                isSel
-                                  ? 'bg-blue-600 text-white shadow-sm'
-                                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                              }`}
-                            >
-                              {franja}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <span className="px-2.5 py-1 rounded-xl bg-blue-600 text-white font-black text-[11px] shrink-0">
+                        {CAMPAIGN_LAUNCH_TIME}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -2383,9 +2362,15 @@ function ResolutionAnnualMatrix({
                         <strong className="text-emerald-700 dark:text-emerald-300 text-right">{locationFilterSummary}</strong>
                       </div>
                       <div className="flex justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
-                        <span className="text-slate-500 dark:text-slate-400">Frecuencia & Fechas Hábiles:</span>
+                        <span className="text-slate-500 dark:text-slate-400">Frecuencia &amp; Fechas Hábiles:</span>
                         <strong className="text-slate-900 dark:text-white text-right">
                           {campaignSchedule.summary} ({effectiveScheduleDates.length} fecha(s))
+                        </strong>
+                      </div>
+                      <div className="flex justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400">Hora de Lanzamiento:</span>
+                        <strong className="text-blue-700 dark:text-blue-300 text-right">
+                          {CAMPAIGN_LAUNCH_TIME} (fija en los días dispuestos)
                         </strong>
                       </div>
                       <div className="flex justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
