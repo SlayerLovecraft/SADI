@@ -1,133 +1,197 @@
 // ==============================================================================
-// IVR SCHEDULE SERVICE - MOTOR AUTOMÁTICO DE TANDAS SADI 3280
-// Programación de llamadas salientes automáticas por tandas de 32 pacientes cada 30 minutos
-// Horario operativo: 08:30 AM a 08:00 PM (24 Intervalos de 30 minutos)
+// IVR SCHEDULE SERVICE - MOTOR AUTOMÁTICO DE TANDAS SADI 3280 (P1 -> P5)
+// Programación de llamadas salientes automáticas por tandas de 25 pacientes cada 30 minutos
+// Horario operativo oficial: 08:00 AM a 06:00 PM (20 Intervalos de 30 min = 500 llamadas/día)
 // Reglas:
-// 1. Asignación automática por programa de Resolución 3280 y hospital.
-// 2. Opción "Reintentar hasta que conteste": si no contesta, se reasigna a la tanda siguiente por tandas sucesivas.
-// 3. Si no contesta en ninguna tanda de la jornada, se envía a "Casos Aislados / Gestión Humana".
-// 4. Modo de emisión: Standby (seguro) o Automático Activo.
+// 1. Ordenamiento estricto por prioridad clínica: P1 -> P2 -> P3 -> P4 -> P5
+//    (los pacientes de mayor riesgo van en las primeras tandas; P5 sin riesgo al final del día).
+// 2. Excedente sobre el tope diario de 500 llamadas (P4/P5) pasa automáticamente a
+//    SMS y E-Mail de Respaldo (Reglas R1 / R2) para no dejar a ningún paciente por fuera.
+// 3. Activación continua de la Resolución (solo Hospital): arranca desde la siguiente
+//    tanda hábil según la hora de activación (ej. 10:20 -> arranca en 10:30) hasta apagarse.
 // ==============================================================================
 
 import { supabase } from '@/lib/supabase';
-import { telemonitoringService } from './telemonitoringService';
-import { getCursoVida3280, getRequiredRIASAppointments } from './rias3280Engine';
 import {
   classifyPatientCursoVidaKey,
   CURSO_KEY_TO_CODE,
   CURSO_VIDA_CONFIG,
 } from './cursoVidaConfig';
 import { DEFAULT_ANTI_VOICEMAIL_CONFIG } from './antiVoicemailConfig';
+import {
+  DAILY_CALL_CAPACITY,
+  getPriorityMeta,
+  getPatientGruposRiesgo,
+  isOperationalWorkday,
+} from './callCapacityService';
 
-// Slots oficiales de tandas: 24 intervalos de 30 min desde las 08:30 AM hasta las 08:00 PM
+// 20 Intervalos de 30 min: 08:00 AM a 05:30 PM (cubre 08:00 AM - 06:00 PM · 50 llam/h = 500/día)
 export const IVR_TIME_SLOTS = [
-  { id: 't1', hora: '08:30 AM', label: 'Tanda 1 (08:30 AM)', horaNum: 8.5 },
-  { id: 't2', hora: '09:00 AM', label: 'Tanda 2 (09:00 AM)', horaNum: 9.0 },
-  { id: 't3', hora: '09:30 AM', label: 'Tanda 3 (09:30 AM)', horaNum: 9.5 },
-  { id: 't4', hora: '10:00 AM', label: 'Tanda 4 (10:00 AM)', horaNum: 10.0 },
-  { id: 't5', hora: '10:30 AM', label: 'Tanda 5 (10:30 AM)', horaNum: 10.5 },
-  { id: 't6', hora: '11:00 AM', label: 'Tanda 6 (11:00 AM)', horaNum: 11.0 },
-  { id: 't7', hora: '11:30 AM', label: 'Tanda 7 (11:30 AM)', horaNum: 11.5 },
-  { id: 't8', hora: '12:00 M', label: 'Tanda 8 (12:00 M)', horaNum: 12.0 },
-  { id: 't9', hora: '12:30 PM', label: 'Tanda 9 (12:30 PM)', horaNum: 12.5 },
-  { id: 't10', hora: '01:00 PM', label: 'Tanda 10 (01:00 PM)', horaNum: 13.0 },
-  { id: 't11', hora: '01:30 PM', label: 'Tanda 11 (01:30 PM)', horaNum: 13.5 },
-  { id: 't12', hora: '02:00 PM', label: 'Tanda 12 (02:00 PM)', horaNum: 14.0 },
-  { id: 't13', hora: '02:30 PM', label: 'Tanda 13 (02:30 PM)', horaNum: 14.5 },
-  { id: 't14', hora: '03:00 PM', label: 'Tanda 14 (03:00 PM)', horaNum: 15.0 },
-  { id: 't15', hora: '03:30 PM', label: 'Tanda 15 (03:30 PM)', horaNum: 15.5 },
-  { id: 't16', hora: '04:00 PM', label: 'Tanda 16 (04:00 PM)', horaNum: 16.0 },
-  { id: 't17', hora: '04:30 PM', label: 'Tanda 17 (04:30 PM)', horaNum: 16.5 },
-  { id: 't18', hora: '05:00 PM', label: 'Tanda 18 (05:00 PM)', horaNum: 17.0 },
-  { id: 't19', hora: '05:30 PM', label: 'Tanda 19 (05:30 PM)', horaNum: 17.5 },
-  { id: 't20', hora: '06:00 PM', label: 'Tanda 20 (06:00 PM)', horaNum: 18.0 },
-  { id: 't21', hora: '06:30 PM', label: 'Tanda 21 (06:30 PM)', horaNum: 18.5 },
-  { id: 't22', hora: '07:00 PM', label: 'Tanda 22 (07:00 PM)', horaNum: 19.0 },
-  { id: 't23', hora: '07:30 PM', label: 'Tanda 23 (07:30 PM)', horaNum: 19.5 },
-  { id: 't24', hora: '08:00 PM', label: 'Tanda 24 (08:00 PM)', horaNum: 20.0 }
+  { id: 't1', hora: '08:00 AM', label: 'Tanda 1 (08:00 AM)', horaNum: 8.0, minutesFromMidnight: 480 },
+  { id: 't2', hora: '08:30 AM', label: 'Tanda 2 (08:30 AM)', horaNum: 8.5, minutesFromMidnight: 510 },
+  { id: 't3', hora: '09:00 AM', label: 'Tanda 3 (09:00 AM)', horaNum: 9.0, minutesFromMidnight: 540 },
+  { id: 't4', hora: '09:30 AM', label: 'Tanda 4 (09:30 AM)', horaNum: 9.5, minutesFromMidnight: 570 },
+  { id: 't5', hora: '10:00 AM', label: 'Tanda 5 (10:00 AM)', horaNum: 10.0, minutesFromMidnight: 600 },
+  { id: 't6', hora: '10:30 AM', label: 'Tanda 6 (10:30 AM)', horaNum: 10.5, minutesFromMidnight: 630 },
+  { id: 't7', hora: '11:00 AM', label: 'Tanda 7 (11:00 AM)', horaNum: 11.0, minutesFromMidnight: 660 },
+  { id: 't8', hora: '11:30 AM', label: 'Tanda 8 (11:30 AM)', horaNum: 11.5, minutesFromMidnight: 690 },
+  { id: 't9', hora: '12:00 M', label: 'Tanda 9 (12:00 M)', horaNum: 12.0, minutesFromMidnight: 720 },
+  { id: 't10', hora: '12:30 PM', label: 'Tanda 10 (12:30 PM)', horaNum: 12.5, minutesFromMidnight: 750 },
+  { id: 't11', hora: '01:00 PM', label: 'Tanda 11 (01:00 PM)', horaNum: 13.0, minutesFromMidnight: 780 },
+  { id: 't12', hora: '01:30 PM', label: 'Tanda 12 (01:30 PM)', horaNum: 13.5, minutesFromMidnight: 810 },
+  { id: 't13', hora: '02:00 PM', label: 'Tanda 13 (02:00 PM)', horaNum: 14.0, minutesFromMidnight: 840 },
+  { id: 't14', hora: '02:30 PM', label: 'Tanda 14 (02:30 PM)', horaNum: 14.5, minutesFromMidnight: 870 },
+  { id: 't15', hora: '03:00 PM', label: 'Tanda 15 (03:00 PM)', horaNum: 15.0, minutesFromMidnight: 900 },
+  { id: 't16', hora: '03:30 PM', label: 'Tanda 16 (03:30 PM)', horaNum: 15.5, minutesFromMidnight: 930 },
+  { id: 't17', hora: '04:00 PM', label: 'Tanda 17 (04:00 PM)', horaNum: 16.0, minutesFromMidnight: 960 },
+  { id: 't18', hora: '04:30 PM', label: 'Tanda 18 (04:30 PM)', horaNum: 16.5, minutesFromMidnight: 990 },
+  { id: 't19', hora: '05:00 PM', label: 'Tanda 19 (05:00 PM)', horaNum: 17.0, minutesFromMidnight: 1020 },
+  { id: 't20', hora: '05:30 PM', label: 'Tanda 20 (05:30 PM)', horaNum: 17.5, minutesFromMidnight: 1050 },
 ];
 
-export const MAX_PATIENTS_PER_BATCH = 32;
+export const MAX_PATIENTS_PER_BATCH = 25; // 20 tandas × 25 llamadas = 500 llamadas IA/día
 
 const STORAGE_KEY_SCHEDULE = 'sadi_ivr_daily_schedule';
 const STORAGE_KEY_CONFIG = 'sadi_ivr_config';
+const SCHEDULE_SCHEMA_VERSION = 'res3280_prio_v3';
 
 /**
- * Genera el guion personalizado para el agente de llamadas de la Resolución 3280
- * adaptado según el curso de vida y el hito clínico obligatorio.
+ * Calcula la siguiente tanda disponible a partir de una hora dada.
+ * Ejemplo: si son las 10:20 AM -> devuelve Tanda 6 (10:30 AM) y minutesUntil = 10.
+ * Si ya pasó la última tanda del día (17:30) -> devuelve Tanda 1 (08:00 AM) del siguiente día hábil.
+ */
+export function getNextTandaSlotForTime(nowDate = new Date()) {
+  const nowMinutes = nowDate.getHours() * 60 + nowDate.getMinutes();
+  const next = IVR_TIME_SLOTS.find((s) => s.minutesFromMidnight >= nowMinutes);
+  if (next) {
+    return {
+      slot: next,
+      isNextWorkday: false,
+      minutesUntil: Math.max(0, next.minutesFromMidnight - nowMinutes),
+    };
+  }
+  return {
+    slot: IVR_TIME_SLOTS[0],
+    isNextWorkday: true,
+    minutesUntil: 24 * 60 - nowMinutes + IVR_TIME_SLOTS[0].minutesFromMidnight,
+  };
+}
+
+/**
+ * Resuelve la fecha operativa (YYYY-MM-DD local). Si hoy es domingo o festivo,
+ * avanza al siguiente día hábil para mostrar la cola operativa real de la Res. 3280.
+ */
+export function resolveOperationalDateISO(baseDate = new Date()) {
+  const dt = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 12, 0, 0);
+  for (let i = 0; i < 10; i++) {
+    const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    if (isOperationalWorkday(iso)) return iso;
+    dt.setDate(dt.getDate() + 1);
+  }
+  return `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Genera el guion personalizado para el agente de llamadas de la Resolución 3280.
  */
 export const generateCallScript3280 = (patient) => {
   const cVida = (patient.cursoVida || '').toLowerCase();
   const firstName = (patient.nombre || patient.name || 'Paciente').split(' ')[0];
   const hito = patient.accion3280 || patient.programa3280 || 'valoración integral de salud';
-  const hospital = 'Hospital Central SADI';
+  const hospital = 'EPS SADI Salud';
 
   if (cVida.includes('primera') || cVida.includes('infancia')) {
     return {
       motivo: 'Control de Crecimiento, Desarrollo y Vacunación PAI',
-      saludo: `Hola, le hablamos del ${hospital}. Nos comunicamos con el acudiente de ${firstName}.`,
+      saludo: `Hola, le hablamos de ${hospital}. Nos comunicamos con el acudiente de ${firstName}.`,
       mensaje: `Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), le corresponde su cita de: ${hito}.`,
       instruccion: 'Para confirmar su asistencia a la cita programada presione 1. Para reagendar una nueva fecha presione 2.',
-      textoCompleto: `Hola, le hablamos del ${hospital}. Nos comunicamos con el acudiente de ${firstName}. Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), le corresponde su cita de: ${hito}. Para confirmar su asistencia presione 1, para reagendar presione 2.`
-    };
-  } else if (cVida.includes('adolescencia')) {
-    return {
-      motivo: 'Atención Integral del Adolescente y Salud Visual',
-      saludo: `Hola ${firstName}, te saludamos del ${hospital}.`,
-      mensaje: `Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}.`,
-      instruccion: 'Para confirmar tu asistencia presiona 1. Para reagendar presiona 2.',
-      textoCompleto: `Hola ${firstName}, te saludamos del ${hospital}. Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}. Para confirmar tu asistencia presiona 1, para reagendar presiona 2.`
-    };
-  } else if (cVida.includes('juventud')) {
-    return {
-      motivo: 'Salud Integral de la Juventud y Tamizaje Preventivo',
-      saludo: `Hola ${firstName}, te saludamos del ${hospital}.`,
-      mensaje: `Por la Ruta de Salud de la Juventud (Resolución 3280), te corresponde tu cita de: ${hito}.`,
-      instruccion: 'Para confirmar tu cita presiona 1. Para reagendar presiona 2.',
-      textoCompleto: `Hola ${firstName}, te saludamos del ${hospital}. Por la Ruta de Salud de la Juventud (Resolución 3280), te corresponde tu cita de: ${hito}. Para confirmar tu cita presiona 1, para reagendar presiona 2.`
-    };
-  } else if (cVida.includes('adultez')) {
-    return {
-      motivo: 'Tamizaje de Riesgo Cardiovascular y Prevención Oncológica',
-      saludo: `Estimado(a) ${firstName}, le saludamos del ${hospital}.`,
-      mensaje: `Nos comunicamos para su control preventivo obligatorio bajo Resolución 3280: ${hito}.`,
-      instruccion: 'Para confirmar su asistencia presione 1. Para solicitar reagendamiento presione 2.',
-      textoCompleto: `Estimado(a) ${firstName}, le saludamos del ${hospital}. Nos comunicamos para su control preventivo obligatorio bajo Resolución 3280: ${hito}. Para confirmar su asistencia presione 1, para solicitar reagendamiento presione 2.`
-    };
-  } else if (cVida.includes('vejez')) {
-    return {
-      motivo: 'Valoración Geriátrica Integral del Adulto Mayor',
-      saludo: `Apreciado(a) ${firstName}, le saludamos con especial atención del ${hospital}.`,
-      mensaje: `Le recordamos su control médico preventivo de la Ruta de la Vejez: ${hito}.`,
-      instruccion: 'Para confirmar su cita presione 1. Para reagendar presiona 2.',
-      textoCompleto: `Apreciado(a) ${firstName}, le saludamos con especial atención del ${hospital}. Le recordamos su control médico preventivo de la Ruta de la Vejez: ${hito}. Para confirmar su cita presione 1, para reagendar presione 2.`
-    };
-  } else {
-    return {
-      motivo: 'Ruta Materno-Perinatal y Control Prenatal',
-      saludo: `Hola ${firstName}, le saludamos del ${hospital}.`,
-      mensaje: `Nos comunicamos para confirmar su cita prioritaria de la Ruta Materno-Perinatal: ${hito}.`,
-      instruccion: 'Para confirmar su cita presione 1. Para reagendar presiona 2.',
-      textoCompleto: `Hola ${firstName}, le saludamos del ${hospital}. Nos comunicamos para confirmar su cita prioritaria de la Ruta Materno-Perinatal: ${hito}. Para confirmar su cita presione 1, para reagendar presione 2.`
+      textoCompleto: `Hola, le hablamos de ${hospital}. Nos comunicamos con el acudiente de ${firstName}. Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), le corresponde su cita de: ${hito}. Para confirmar su asistencia presione 1, para reagendar presione 2.`,
     };
   }
+  if (cVida.includes('adolescencia')) {
+    return {
+      motivo: 'Atención Integral del Adolescente y Salud Visual',
+      saludo: `Hola ${firstName}, te saludamos de ${hospital}.`,
+      mensaje: `Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}.`,
+      instruccion: 'Para confirmar tu asistencia presiona 1. Para reagendar presiona 2.',
+      textoCompleto: `Hola ${firstName}, te saludamos de ${hospital}. Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}. Para confirmar tu asistencia presiona 1, para reagendar presiona 2.`,
+    };
+  }
+  if (cVida.includes('juventud')) {
+    return {
+      motivo: 'Salud Integral de la Juventud y Tamizaje Preventivo',
+      saludo: `Hola ${firstName}, te saludamos de ${hospital}.`,
+      mensaje: `Por la Ruta de Salud de la Juventud (Resolución 3280), te corresponde tu cita de: ${hito}.`,
+      instruccion: 'Para confirmar tu cita presiona 1. Para reagendar presiona 2.',
+      textoCompleto: `Hola ${firstName}, te saludamos de ${hospital}. Por la Ruta de Salud de la Juventud (Resolución 3280), te corresponde tu cita de: ${hito}. Para confirmar tu cita presiona 1, para reagendar presiona 2.`,
+    };
+  }
+  if (cVida.includes('adultez')) {
+    return {
+      motivo: 'Tamizaje de Riesgo Cardiovascular y Prevención Oncológica',
+      saludo: `Estimado(a) ${firstName}, le saludamos de ${hospital}.`,
+      mensaje: `Nos comunicamos para su control preventivo obligatorio bajo Resolución 3280: ${hito}.`,
+      instruccion: 'Para confirmar su asistencia presione 1. Para solicitar reagendamiento presione 2.',
+      textoCompleto: `Estimado(a) ${firstName}, le saludamos de ${hospital}. Nos comunicamos para su control preventivo obligatorio bajo Resolución 3280: ${hito}. Para confirmar su asistencia presione 1, para solicitar reagendamiento presione 2.`,
+    };
+  }
+  if (cVida.includes('vejez')) {
+    return {
+      motivo: 'Valoración Geriátrica Integral del Adulto Mayor',
+      saludo: `Apreciado(a) ${firstName}, le saludamos con especial atención de ${hospital}.`,
+      mensaje: `Le recordamos su control médico preventivo de la Ruta de la Vejez: ${hito}.`,
+      instruccion: 'Para confirmar su cita presione 1. Para reagendar presione 2.',
+      textoCompleto: `Apreciado(a) ${firstName}, le saludamos con especial atención de ${hospital}. Le recordamos su control médico preventivo de la Ruta de la Vejez: ${hito}. Para confirmar su cita presione 1, para reagendar presione 2.`,
+    };
+  }
+  return {
+    motivo: 'Ruta Materno-Perinatal y Control Prenatal',
+    saludo: `Hola ${firstName}, le saludamos de ${hospital}.`,
+    mensaje: `Nos comunicamos para confirmar su cita prioritaria de la Ruta Materno-Perinatal: ${hito}.`,
+    instruccion: 'Para confirmar su cita presione 1. Para reagendar presione 2.',
+    textoCompleto: `Hola ${firstName}, le saludamos de ${hospital}. Nos comunicamos para confirmar su cita prioritaria de la Ruta Materno-Perinatal: ${hito}. Para confirmar su cita presione 1, para reagendar presione 2.`,
+  };
+};
+
+const computePatientPriorityLocal = (p) => {
+  if (Number(p.prioridad_llamada) >= 1 && Number(p.prioridad_llamada) <= 5) {
+    return Number(p.prioridad_llamada);
+  }
+  const cursoKey = classifyPatientCursoVidaKey(p);
+  const riesgos = getPatientGruposRiesgo(p);
+  const riesgoIds = new Set(riesgos.map((r) => Number(r.id)));
+  if (cursoKey === 'preventivo_mujer' || cursoKey === 'materno_perinatal' || riesgoIds.has(1)) return 1;
+  if (riesgoIds.has(3)) return 2;
+  if (cursoKey === 'primera_infancia' && riesgoIds.size > 0) return 3;
+  if (riesgoIds.size > 0) return 4;
+  return 5;
+};
+
+const hasValidEmail = (email) => {
+  const e = String(email || '').trim();
+  return e.includes('@') && e.includes('.') && !e.toLowerCase().startsWith('sin');
 };
 
 export const ivrScheduleService = {
   /**
-   * Obtiene la configuración del motor IVR
+   * Obtiene la configuración del motor IVR y estado de activación de la Resolución 3280
    */
   getConfig() {
     const defaultCfg = {
-      isLiveEnabled: false, // Por defecto en Standby seguro
-      batchSize: 32,
-      maxRetriesPerDay: 24, // Cubre las 24 tandas del día
-      retryUntilAnswered: true, // "Reintentar hasta que conteste": reintento automático por tandas sucesivas
-      startSlot: '08:30 AM',
-      endSlot: '08:00 PM',
+      isLiveEnabled: false,
+      resolutionActive: false,
+      resolutionActivatedAt: null,
+      resolutionStartSlotId: null,
+      resolutionDispatchedByDate: {},
+      batchSize: MAX_PATIENTS_PER_BATCH,
+      maxRetriesPerDay: IVR_TIME_SLOTS.length,
+      retryUntilAnswered: true,
+      startSlot: '08:00 AM',
+      endSlot: '06:00 PM',
       voiceId: 'pFZP5JQG7iQjIQuC4Bku',
       dtmfConfirmation: true,
-      ...DEFAULT_ANTI_VOICEMAIL_CONFIG
+      ...DEFAULT_ANTI_VOICEMAIL_CONFIG,
     };
     try {
       const stored = localStorage.getItem(STORAGE_KEY_CONFIG);
@@ -138,8 +202,7 @@ export const ivrScheduleService = {
   },
 
   /**
-   * Guarda la configuración del motor en localStorage y persiste parámetros
-   * anti-buzón en public.ivr_anti_voicemail_config cuando hay hospitalId disponible.
+   * Guarda la configuración del motor en localStorage y persiste parámetros anti-buzón en Supabase.
    */
   saveConfig(newConfig, hospitalId = null) {
     const merged = { ...this.getConfig(), ...newConfig };
@@ -162,7 +225,7 @@ export const ivrScheduleService = {
             voicemail_action: merged.voicemailAction || 'hangup_silent',
             auto_requeue_next_tanda: Boolean(merged.autoRequeueNextTanda),
             auto_sms_fallback_exhausted: Boolean(merged.autoSmsFallbackOnExhausted),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
           },
           { onConflict: 'hospital_id' }
         )
@@ -173,182 +236,298 @@ export const ivrScheduleService = {
   },
 
   /**
-   * Obtiene o genera el cronograma de llamadas del día actual
+   * Activa la ejecución automática continua de la Resolución 3280 desde la tanda indicada
+   * (o desde la próxima tanda disponible según la hora actual, ej. 10:20 -> 10:30).
    */
-  async getDailySchedule(hospitalId = null, forceRefresh = false) {
+  activateResolution(startSlotId = null, hospitalId = null) {
+    const now = new Date();
+    const nextInfo = getNextTandaSlotForTime(now);
+    const resolvedSlotId = startSlotId || nextInfo.slot.id;
+    return this.saveConfig(
+      {
+        resolutionActive: true,
+        isLiveEnabled: true,
+        resolutionActivatedAt: now.toISOString(),
+        resolutionStartSlotId: resolvedSlotId,
+      },
+      hospitalId
+    );
+  },
+
+  /**
+   * Detiene la ejecución continua de la Resolución 3280 hasta que vuelva a activarse.
+   */
+  deactivateResolution(hospitalId = null) {
+    return this.saveConfig(
+      {
+        resolutionActive: false,
+        isLiveEnabled: false,
+      },
+      hospitalId
+    );
+  },
+
+  /**
+   * Marca una tanda como despachada en una fecha específica para evitar duplicados.
+   */
+  markSlotDispatched(dateISO, slotId) {
+    const cfg = this.getConfig();
+    const byDate = { ...(cfg.resolutionDispatchedByDate || {}) };
+    const existing = Array.isArray(byDate[dateISO]) ? byDate[dateISO] : [];
+    if (!existing.includes(slotId)) {
+      byDate[dateISO] = [...existing, slotId];
+    }
+    return this.saveConfig({ resolutionDispatchedByDate: byDate });
+  },
+
+  /**
+   * Obtiene el cronograma diario REAL de la Resolución 3280 desde Postgres
+   * estrictamente ordenado por prioridad clínica (P1 -> P2 -> P3 -> P4 -> P5).
+   * - Top 500 -> Cola de voz en 20 tandas de 25 pacientes (08:00 AM - 05:30 PM).
+   * - Excedente > 500 (P4/P5) -> Derivación automática a SMS/E-Mail Respaldo (R1-04).
+   * - Candidatos R1/R2 -> Pacientes de baja prioridad (P5 sin riesgo y P4) listos para SMS/E-Mail.
+   */
+  async getDailySchedule(hospitalId = null, forceRefresh = false, requestedDateISO = null) {
+    const opDateISO = requestedDateISO || resolveOperationalDateISO(new Date());
+
     if (!forceRefresh) {
       try {
         const cached = localStorage.getItem(STORAGE_KEY_SCHEDULE);
         if (cached) {
           const parsed = JSON.parse(cached);
-          const todayStr = new Date().toISOString().split('T')[0];
-          const hasTransversalMeta =
+          if (
+            parsed.schemaVersion === SCHEDULE_SCHEMA_VERSION &&
+            parsed.fecha === opDateISO &&
+            parsed.dailyCap === DAILY_CALL_CAPACITY &&
             Array.isArray(parsed.items) &&
-            (parsed.items.length === 0 || parsed.items.every(it => 'curso_vida_key' in it && 'grupos_riesgo' in it));
-          if (parsed.fecha === todayStr && parsed.dailyCap === 500 && hasTransversalMeta) {
+            Array.isArray(parsed.alternateChannelItems)
+          ) {
             return parsed;
           }
         }
       } catch (e) {
-        console.warn('Error leyendo caché de cronograma:', e);
+        console.warn('Error leyendo caché de cronograma diario:', e);
       }
     }
 
-    // Distribución oficial de la Resolución 3280 a lo largo del mes sobre el 100% del censo BD
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth() + 1;
-    const todayStr = today.toISOString().split('T')[0];
-
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const workdays = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(year, month - 1, d);
-      if (date.getDay() !== 0) { // Lunes a sábado
-        workdays.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
-      }
-    }
-
-    const dailyMaxCapacity = 500; // Tope operativo real: 500 llamadas IA/día (Tablero_SADI_Campanas)
-    const workdayPos = Math.max(0, workdays.indexOf(todayStr));
+    const targetHospId = hospitalId || null;
     let totalUniversoBD = 0;
-    let scheduledForToday = [];
+    let allDayRows = [];
+    let dayTotalAll = 0;
+    let llamadasIaCount = 0;
+    let smsRespaldoCount = 0;
+    let priorityCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
     try {
-      const targetHospId = hospitalId || null;
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('get_patients_paginated', {
-        p_hospital_id: targetHospId,
-        p_search: null,
-        p_curso_vida: 'todos',
-        p_doctor_id: null,
-        p_page: 1,
-        p_page_size: dailyMaxCapacity,
-      });
+      // 1. Obtener censo real total + página 1 priorizada del día en paralelo
+      const [demoRes, firstPageRes] = await Promise.all([
+        supabase
+          .rpc('get_dashboard_patient_demography', { p_hospital_id: targetHospId })
+          .then((r) => r)
+          .catch(() => ({ data: null })),
+        supabase.rpc('get_cronograma_day_patients_paginated', {
+          p_hospital_id: targetHospId,
+          p_date: opDateISO,
+          p_filter_type: 'all',
+          p_item_key: null,
+          p_doctor_cursos: null,
+          p_search: null,
+          p_page: 1,
+          p_page_size: 200,
+        }),
+      ]);
 
-      const firstRows = Array.isArray(rpcRes) ? rpcRes : (Array.isArray(rpcRes?.rows) ? rpcRes.rows : []);
-      if (!rpcErr && firstRows.length > 0) {
-        totalUniversoBD = Number(firstRows[0]?.total_count || rpcRes?.total_count || firstRows.length);
-        const totalPages = Math.max(1, Math.ceil(totalUniversoBD / dailyMaxCapacity));
-        const targetPage = (workdayPos % totalPages) + 1;
-        if (targetPage === 1) {
-          scheduledForToday = firstRows;
-        } else {
-          const { data: pageRes } = await supabase.rpc('get_patients_paginated', {
-            p_hospital_id: targetHospId,
-            p_search: null,
-            p_curso_vida: 'todos',
-            p_doctor_id: null,
-            p_page: targetPage,
-            p_page_size: dailyMaxCapacity,
+      if (Array.isArray(demoRes?.data) && demoRes.data[0]?.total_patients) {
+        totalUniversoBD = Number(demoRes.data[0].total_patients);
+      }
+
+      const d1 = firstPageRes?.data;
+      if (!firstPageRes?.error && d1) {
+        dayTotalAll = Number(d1.day_total_all || d1.total_count || 0);
+        llamadasIaCount = Number(d1.llamadas_ia || Math.min(dayTotalAll, DAILY_CALL_CAPACITY));
+        smsRespaldoCount = Number(d1.sms_respaldo || Math.max(0, dayTotalAll - DAILY_CALL_CAPACITY));
+        if (d1.priority_counts) {
+          priorityCounts = {
+            1: Number(d1.priority_counts['1'] || 0),
+            2: Number(d1.priority_counts['2'] || 0),
+            3: Number(d1.priority_counts['3'] || 0),
+            4: Number(d1.priority_counts['4'] || 0),
+            5: Number(d1.priority_counts['5'] || 0),
+          };
+        }
+        allDayRows = Array.isArray(d1.rows) ? [...d1.rows] : [];
+
+        // Descargar páginas restantes del día (máx 4 páginas = 800 pacientes para cubrir cupo + desborde)
+        const totalPages = Math.min(4, Math.ceil(dayTotalAll / 200));
+        if (totalPages > 1) {
+          const restPromises = [];
+          for (let pg = 2; pg <= totalPages; pg++) {
+            restPromises.push(
+              supabase.rpc('get_cronograma_day_patients_paginated', {
+                p_hospital_id: targetHospId,
+                p_date: opDateISO,
+                p_filter_type: 'all',
+                p_item_key: null,
+                p_doctor_cursos: null,
+                p_search: null,
+                p_page: pg,
+                p_page_size: 200,
+              })
+            );
+          }
+          const restResults = await Promise.all(restPromises);
+          restResults.forEach((r) => {
+            if (!r?.error && Array.isArray(r?.data?.rows)) {
+              allDayRows.push(...r.data.rows);
+            }
           });
-          const pageRows = Array.isArray(pageRes) ? pageRes : (Array.isArray(pageRes?.rows) ? pageRes.rows : []);
-          scheduledForToday = pageRows.length > 0 ? pageRows : firstRows;
         }
       }
     } catch (e) {
-      console.error('Error cargando cohorte diaria de BD (RPC):', e);
+      console.error('Error cargando cohorte diaria priorizada Res. 3280:', e);
     }
 
-    if (scheduledForToday.length === 0) {
-      try {
-        const allPatients = await telemonitoringService.getPatients();
-        totalUniversoBD = allPatients.length;
-        const offset = (workdayPos * dailyMaxCapacity) % Math.max(1, allPatients.length);
-        scheduledForToday = allPatients.slice(offset, offset + dailyMaxCapacity);
-      } catch (e) {
-        console.error('Fallback telemonitoringService error:', e);
-      }
-    }
+    // Normalizar y garantizar orden ESTRICTO por prioridad: P1 -> P2 -> P3 -> P4 -> P5
+    const normalizedAll = allDayRows
+      .map((p, idx) => {
+        const cursoKey = classifyPatientCursoVidaKey(p);
+        const cursoCfg = CURSO_VIDA_CONFIG[cursoKey];
+        const cursoCode = p.curso_code || CURSO_KEY_TO_CODE[cursoKey] || 'E';
+        const resolvedCursoLabel = cursoCfg?.nombre || p.curso_vida || 'Adultez';
+        const prioridad = computePatientPriorityLocal(p);
+        const prioMeta = getPriorityMeta(prioridad);
+        const riesgosArr = Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo.filter(Boolean) : [];
+        const accion3280 = p.accion_3280 || 'Valoración Integral Res. 3280';
+        const cups3280 = p.cups_3280 || '890201';
+        const emailVal = String(p.email || '').trim();
+        const emailValid = hasValidEmail(emailVal);
 
-    const scheduleItems = [];
-    let currentSlotIndex = 0;
-    let slotCount = 0;
+        const callScript = generateCallScript3280({
+          nombre: p.name || p.nombre,
+          cursoVida: resolvedCursoLabel,
+          accion3280,
+          programa3280: accion3280,
+        });
 
-    scheduledForToday.forEach((p, idx) => {
-      const curso = getCursoVida3280(p.birthdate || p.fecha_nacimiento);
-      const cursoKey = classifyPatientCursoVidaKey(p);
-      const cursoCfg = CURSO_VIDA_CONFIG[cursoKey];
-      const cursoCode = CURSO_KEY_TO_CODE[cursoKey] || 'E';
-      const resolvedCursoLabel = cursoCfg?.nombre || curso.label;
-      const appts = getRequiredRIASAppointments(
-        p.birthdate || p.fecha_nacimiento,
-        p.sex || p.sexo,
-        p.program === 'Maternidad' || p.es_gestante,
-        p.semana_gestacional || 0
-      );
-
-      const targetAppt = appts[0] || {
-        nombre: 'Valoración Integral de Salud y Prevención 3280',
-        accion: 'Consulta médica preventiva anual'
-      };
-
-      const slot = IVR_TIME_SLOTS[currentSlotIndex] || IVR_TIME_SLOTS[0];
-      const callScript = generateCallScript3280({
-        nombre: p.name || p.nombre,
-        cursoVida: resolvedCursoLabel,
-        accion3280: targetAppt.accion,
-        programa3280: targetAppt.nombre
+        return {
+          id: `ivr-item-${p.patient_id || p.id || idx}`,
+          patientId: p.patient_id || p.id,
+          nombre: p.name || p.nombre || 'Paciente sin nombre',
+          documento: p.document || p.documento || 'N/A',
+          tipo_documento: p.tipo_documento || 'CC',
+          telefono: p.phone || p.telefono || 'Sin teléfono',
+          email: emailVal,
+          hasValidEmail: emailValid,
+          direccion: p.address || p.direccion || 'Santiago de Cali',
+          ciudad: p.city || p.ciudad || 'Santiago de Cali',
+          zona: p.zona || 'Urbana',
+          comuna: p.comuna || '',
+          barrio: p.barrio || '',
+          cursoVida: resolvedCursoLabel,
+          curso_vida_key: cursoKey,
+          cursoVidaId: cursoCode,
+          curso_vida: p.curso_vida || cursoKey,
+          grupo_riesgo: p.grupo_riesgo || null,
+          grupos_riesgo: riesgosArr,
+          program: p.program || p.programa || '',
+          birthdate: p.birthdate || null,
+          fecha_nacimiento: p.birthdate || null,
+          edad: Number(p.edad ?? 0),
+          programa3280: accion3280,
+          accion3280,
+          cups: cups3280,
+          prioridad,
+          prioridadLabel: prioMeta.shortLabel,
+          prioridadCode: prioMeta.code,
+          canalAsignado: p.canal_asignado || 'Llamada IA (Voz)',
+          globalRank: Number(p.global_rank || idx + 1),
+          script: callScript,
+          hospitalId: p.hospital_id || targetHospId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
+          estado: 'programada',
+          intentos: 0,
+          historialIntentos: [],
+          ultimaInteraccion: null,
+          resultadoDTMF: null,
+          gestionHumana: {
+            requerida: false,
+            atendido: false,
+            fechaGestion: null,
+            responsable: null,
+            notas: '',
+          },
+        };
+      })
+      .sort((a, b) => {
+        if (a.prioridad !== b.prioridad) return a.prioridad - b.prioridad;
+        if (a.globalRank !== b.globalRank) return a.globalRank - b.globalRank;
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es');
       });
 
-      // Estados posibles: 'programada', 'confirmada', 'reagendada', 'no_contesta', 'en_reintento', 'caso_aislado_humano'
-      scheduleItems.push({
-        id: `ivr-item-${p.patient_id || p.id || idx}`,
-        patientId: p.patient_id || p.id,
-        nombre: p.name || p.nombre,
-        documento: p.document || p.documento,
-        telefono: p.phone || p.telefono || '3001234567',
-        direccion: p.address || p.direccion || 'Santiago de Cali',
-        ciudad: p.city || p.ciudad || 'Cali',
-        email: p.email || '',
-        cursoVida: resolvedCursoLabel,
-        curso_vida_key: cursoKey,
-        cursoVidaId: cursoCode,
-        grupo_riesgo: p.grupo_riesgo || null,
-        grupos_riesgo: Array.isArray(p.grupos_riesgo) ? p.grupos_riesgo : [],
-        program: p.program || p.programa || '',
-        birthdate: p.birthdate || p.fecha_nacimiento || null,
-        fecha_nacimiento: p.fecha_nacimiento || p.birthdate || null,
-        es_gestante: Boolean(p.es_gestante),
-        curso_vida: p.curso_vida || '',
-        edad: curso.edad,
-        programa3280: targetAppt.nombre,
-        accion3280: targetAppt.accion,
-        script: callScript,
-        hospitalId: p.hospital_id || hospitalId,
+    // Top 500 entran a las 20 Tandas de Voz (25 por tanda, en orden estricto P1 -> P5)
+    const voiceQueue = normalizedAll.slice(0, DAILY_CALL_CAPACITY);
+    const overflowQueue = normalizedAll.slice(DAILY_CALL_CAPACITY);
+
+    const scheduleItems = voiceQueue.map((item, idx) => {
+      const slotIdx = Math.min(Math.floor(idx / MAX_PATIENTS_PER_BATCH), IVR_TIME_SLOTS.length - 1);
+      const slot = IVR_TIME_SLOTS[slotIdx] || IVR_TIME_SLOTS[0];
+      return {
+        ...item,
+        ordenCola: idx + 1,
+        canalAsignado: 'Llamada IA (Voz)',
         slotId: slot.id,
         slotHora: slot.hora,
-        slotIndex: currentSlotIndex,
-        estado: 'programada', // 'programada' | 'confirmada' | 'reagendada' | 'en_reintento' | 'caso_aislado_humano'
-        intentos: 0,
-        historialIntentos: [],
-        ultimaInteraccion: null,
-        resultadoDTMF: null, // '1_confirmo' | '2_reagendo' | 'no_contesto' | 'buzon'
-        gestionHumana: {
-          requerida: false,
-          atendido: false,
-          fechaGestion: null,
-          responsable: null,
-          notas: ''
-        }
-      });
-
-      slotCount++;
-      if (slotCount >= MAX_PATIENTS_PER_BATCH) {
-        slotCount = 0;
-        if (currentSlotIndex < IVR_TIME_SLOTS.length - 1) {
-          currentSlotIndex++;
-        }
-      }
+        slotIndex: slotIdx,
+      };
     });
 
+    // Lista R1 / R2: Desborde (>500) primero, luego todos los candidatos de baja prioridad (P5 primero, luego P4)
+    const buildAltRecord = (item, isOverflow) => {
+      const canalAlterno = item.hasValidEmail ? 'SMS (R1) + E-Mail (R2)' : 'SMS (R1)';
+      const regla = isOverflow
+        ? 'R1-04 · Desborde > 500 llamadas'
+        : item.prioridad === 5
+        ? 'R1 / R2 · Baja Prioridad (P5 Sin Riesgo)'
+        : 'R1 / R2 · Respaldo Secundario (P4 Crónicos)';
+      const estadoAlterno = isOverflow ? 'desborde_activo' : 'respaldo_disponible';
+      return {
+        ...item,
+        isOverflow,
+        canalAlterno,
+        reglaAlterna: regla,
+        estadoAlterno,
+      };
+    };
+
+    const overflowAlt = overflowQueue.map((it) => buildAltRecord(it, true));
+    const lowPrioInVoice = scheduleItems
+      .filter((it) => it.prioridad >= 4)
+      .sort((a, b) => b.prioridad - a.prioridad || b.ordenCola - a.ordenCola) // P5 primero (los últimos de la cola de voz son los primeros en pasar a SMS/E-Mail si falta cupo)
+      .map((it) => buildAltRecord(it, false));
+
+    const alternateChannelItems = [...overflowAlt, ...lowPrioInVoice];
+
+    // Recalcular priorityCounts si vino vacío
+    if (Object.values(priorityCounts).every((v) => v === 0) && normalizedAll.length > 0) {
+      normalizedAll.forEach((it) => {
+        priorityCounts[it.prioridad] = (priorityCounts[it.prioridad] || 0) + 1;
+      });
+    }
+
     const scheduleData = {
-      fecha: todayStr,
-      dailyCap: 500,
-      hospitalId: hospitalId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
-      totalUniversoBD: totalUniversoBD || scheduleItems.length,
+      schemaVersion: SCHEDULE_SCHEMA_VERSION,
+      fecha: opDateISO,
+      dailyCap: DAILY_CALL_CAPACITY,
+      hospitalId: targetHospId || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
+      totalUniversoBD: totalUniversoBD || normalizedAll.length,
+      dayTotalAll: dayTotalAll || normalizedAll.length,
+      llamadasIaCount: llamadasIaCount || scheduleItems.length,
+      smsRespaldoCount: smsRespaldoCount || overflowAlt.length,
       totalPacientes: scheduleItems.length,
+      priorityCounts,
       items: scheduleItems,
-      updatedAt: new Date().toISOString()
+      overflowItems: overflowAlt,
+      alternateChannelItems,
+      updatedAt: new Date().toISOString(),
     };
 
     try {
@@ -360,17 +539,13 @@ export const ivrScheduleService = {
   },
 
   /**
-   * Simula la ejecución de una tanda específica.
-   * Aplica las reglas:
-   * 1. 75% contesta (marca 1 para confirmar o 2 para reagendar).
-   * 2. 25% no contesta o da buzón:
-   *    - Si hay tanda siguiente en el día -> SE REASIGNA A LA TANDA SIGUIENTE.
-   *    - Si es la última tanda -> PASA A "CASOS AISLADOS / GESTIÓN HUMANA".
+   * Ejecuta una tanda específica en orden P1 -> P5 (invocado automáticamente por el
+   * motor continuo de la Resolución cuando llega la hora de la tanda).
    */
   async simulateBatchExecution(slotId, itemPredicate = null) {
     const currentSchedule = await this.getDailySchedule();
-    const slotIdx = IVR_TIME_SLOTS.findIndex(s => s.id === slotId);
-    if (slotIdx === -1) return currentSchedule;
+    const slotIdx = IVR_TIME_SLOTS.findIndex((s) => s.id === slotId);
+    if (slotIdx === -1) return { schedule: currentSchedule, stats: { processed: 0, reassigned: 0, sentToHuman: 0, voicemailCuts: 0, preAnswerSaved: 0 } };
 
     const currentSlot = IVR_TIME_SLOTS[slotIdx];
     const nextSlot = IVR_TIME_SLOTS[slotIdx + 1] || null;
@@ -382,7 +557,7 @@ export const ivrScheduleService = {
     let preAnswerSavedCount = 0;
     const cfg = this.getConfig();
 
-    currentSchedule.items = currentSchedule.items.map(item => {
+    currentSchedule.items = currentSchedule.items.map((item) => {
       if (
         item.slotId === slotId &&
         (item.estado === 'programada' || item.estado === 'en_reintento') &&
@@ -392,12 +567,10 @@ export const ivrScheduleService = {
         item.intentos = (item.intentos || 0) + 1;
         const nowStr = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
 
-        // Simulación determinista basada en el ID
         const hash = item.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) + item.intentos;
         const randomRoll = hash % 10;
 
         if (randomRoll <= 5) {
-          // 60% Confirma asistencia presionando tecla 1
           item.estado = 'confirmada';
           item.resultadoDTMF = '1_confirmo';
           item.cobroEvitado = false;
@@ -407,10 +580,9 @@ export const ivrScheduleService = {
           item.historialIntentos.push({
             tanda: currentSlot.hora,
             hora: nowStr,
-            resultado: 'Llamada exitosa: Marcó 1 (Confirma asistencia)'
+            resultado: 'Llamada exitosa: Marcó 1 (Confirma asistencia)',
           });
         } else if (randomRoll <= 7) {
-          // 20% Reagenda presionando tecla 2
           item.estado = 'reagendada';
           item.resultadoDTMF = '2_reagendo';
           item.cobroEvitado = false;
@@ -420,13 +592,16 @@ export const ivrScheduleService = {
           item.historialIntentos.push({
             tanda: currentSlot.hora,
             hora: nowStr,
-            resultado: 'Llamada exitosa: Marcó 2 (Reagenda)'
+            resultado: 'Llamada exitosa: Marcó 2 (Reagenda)',
           });
         } else {
-          // 20% Buzón o no contesta: corte anti-buzón dual con $0 COP en Facturación
           const esBuzon = randomRoll === 8;
           const esPreAnswer183 = esBuzon && Boolean(cfg.earlyMediaPreAnswer);
-          const capa = esPreAnswer183 ? 'pre_answer_sip_183' : (esBuzon ? 'vapi_amd_post_answer' : 'ring_timeout_pre_answer');
+          const capa = esPreAnswer183
+            ? 'pre_answer_sip_183'
+            : esBuzon
+            ? 'vapi_amd_post_answer'
+            : 'ring_timeout_pre_answer';
           if (esBuzon) {
             voicemailCutCount++;
             if (esPreAnswer183) preAnswerSavedCount++;
@@ -437,8 +612,8 @@ export const ivrScheduleService = {
           const causaFallo = esPreAnswer183
             ? 'Corte SIP 183 Early Media previo a 200 OK ($0 carrier)'
             : esBuzon
-              ? 'Corte Vapi AMD al detectar buzón ($0 factura)'
-              : `Timeout previo a buzón (${cfg.preAnswerRingTimeoutSec || 19}s · SIP CANCEL)`;
+            ? 'Corte Vapi AMD al detectar buzón ($0 factura)'
+            : `Timeout previo a buzón (${cfg.preAnswerRingTimeoutSec || 19}s · SIP CANCEL)`;
 
           item.resultadoDTMF = 'buzon';
           item.deteccionBuzon = esBuzon;
@@ -451,14 +626,15 @@ export const ivrScheduleService = {
             hora: nowStr,
             capa,
             costoCop: 0,
-            resultado: `Intento ${item.intentos}: ${causaFallo}`
+            resultado: `Intento ${item.intentos}: ${causaFallo}`,
           });
 
           const autoRetryEnabled = cfg.retryUntilAnswered || cfg.autoRequeueNextTanda;
-          const shouldRetry = autoRetryEnabled ? Boolean(nextSlot) : (Boolean(nextSlot) && item.intentos < (cfg.maxRetriesPerDay || 3));
+          const shouldRetry = autoRetryEnabled
+            ? Boolean(nextSlot)
+            : Boolean(nextSlot) && item.intentos < (cfg.maxRetriesPerDay || 3);
 
           if (shouldRetry) {
-            // REASIGNAR AUTOMÁTICAMENTE A LA TANDA SIGUIENTE ($0 COP)
             item.estado = 'en_reintento';
             item.slotId = nextSlot.id;
             item.slotHora = nextSlot.hora;
@@ -466,7 +642,6 @@ export const ivrScheduleService = {
             item.ultimaInteraccion = `${nowStr} - ${causaFallo}. Reasignado a tanda ${nextSlot.hora} ($0 COP)`;
             reassignedCount++;
           } else {
-            // AGOTÓ TODAS LAS TANDAS -> CASO AISLADO / GESTIÓN HUMANA + RESPALDO SMS/WA
             item.estado = 'caso_aislado_humano';
             item.gestionHumana.requerida = true;
             item.gestionHumana.atendido = false;
@@ -489,14 +664,13 @@ export const ivrScheduleService = {
         reassigned: reassignedCount,
         sentToHuman: failedToHumanCount,
         voicemailCuts: voicemailCutCount,
-        preAnswerSaved: preAnswerSavedCount
-      }
+        preAnswerSaved: preAnswerSavedCount,
+      },
     };
   },
 
   /**
    * Registra un evento en vivo de corte por buzón de voz (Pre-Answer SIP 183 o Vapi AMD)
-   * actualizando la tanda del paciente sin cobro ($0 COP) y moviéndolo al siguiente turno.
    */
   async applyVoicemailCutoffToSchedule(patientIdOrPhone, { capaDeteccion = 'pre_answer_sip_183', reason = 'voicemail-cutoff' } = {}) {
     const currentSchedule = await this.getDailySchedule();
@@ -505,12 +679,14 @@ export const ivrScheduleService = {
     const nowStr = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
     let matchedItem = null;
 
-    currentSchedule.items = currentSchedule.items.map(item => {
+    currentSchedule.items = currentSchedule.items.map((item) => {
       const itemPhone = String(item.telefono || '').replace(/\D/g, '').slice(-10);
-      const isMatch = String(item.patientId) === String(patientIdOrPhone) || (cleanPhone && itemPhone === cleanPhone);
+      const isMatch =
+        String(item.patientId) === String(patientIdOrPhone) ||
+        (cleanPhone && itemPhone === cleanPhone);
       if (!isMatch) return item;
 
-      const curSlotIdx = IVR_TIME_SLOTS.findIndex(s => s.id === item.slotId);
+      const curSlotIdx = IVR_TIME_SLOTS.findIndex((s) => s.id === item.slotId);
       const nextSlot = curSlotIdx >= 0 ? IVR_TIME_SLOTS[curSlotIdx + 1] || null : null;
       item.intentos = (item.intentos || 0) + 1;
       item.deteccionBuzon = true;
@@ -526,8 +702,8 @@ export const ivrScheduleService = {
           hora: nowStr,
           capa: capaDeteccion,
           costoCop: 0,
-          resultado: `Corte anti-buzón (${capaDeteccion}): ${reason} · $0 COP`
-        }
+          resultado: `Corte anti-buzón (${capaDeteccion}): ${reason} · $0 COP`,
+        },
       ];
 
       if (nextSlot && (cfg.retryUntilAnswered || cfg.autoRequeueNextTanda)) {
@@ -557,7 +733,7 @@ export const ivrScheduleService = {
    */
   async recordHumanIntervention(itemId, { responsable, notas, resultado }) {
     const currentSchedule = await this.getDailySchedule();
-    const item = currentSchedule.items.find(i => i.id === itemId);
+    const item = currentSchedule.items.find((i) => i.id === itemId);
 
     if (item) {
       item.gestionHumana.atendido = true;
@@ -575,10 +751,10 @@ export const ivrScheduleService = {
   },
 
   /**
-   * Resetea el cronograma de prueba
+   * Resetea el cronograma diario cacheado y recarga desde Postgres
    */
-  async resetSchedule() {
+  async resetSchedule(hospitalId = null) {
     localStorage.removeItem(STORAGE_KEY_SCHEDULE);
-    return await this.getDailySchedule(null, true);
-  }
+    return await this.getDailySchedule(hospitalId, true);
+  },
 };

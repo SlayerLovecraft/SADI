@@ -24,11 +24,11 @@ import {
 import { isPatientAssignedToDoctor } from '@/pages/doctor/doctorUtils';
 import { 
   Clock, PhoneCall, CheckCircle2, AlertTriangle, UserX, 
-  RotateCw, Play, ShieldAlert, Sparkles, Phone, MessageSquare, 
+  RotateCw, ShieldAlert, Sparkles, Phone, MessageSquare, 
   Calendar, Check, UserCheck, Search, Filter, Info, ChevronRight,
   Settings, ArrowRight, ShieldCheck, Download, FileSpreadsheet,
   Eye, CheckCircle, FileText, Layers, History, Users, RefreshCw,
-  Baby, Stethoscope, ChevronLeft
+  Baby, Stethoscope, ChevronLeft, Mail, Power, Smartphone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -36,14 +36,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ivrScheduleService, 
   IVR_TIME_SLOTS, 
-  MAX_PATIENTS_PER_BATCH 
+  MAX_PATIENTS_PER_BATCH,
+  getNextTandaSlotForTime,
 } from '@/services/ivrScheduleService';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 import { roadmapService, MESES_DEL_ANIO } from '@/services/roadmapService';
 import ResolutionAnnualMatrix from '@/components/ResolutionAnnualMatrix';
 import NoShowFollowupPanel from '@/components/NoShowFollowupPanel';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
-import { DAILY_CALL_CAPACITY } from '@/services/callCapacityService';
+import { DAILY_CALL_CAPACITY, getPriorityMeta } from '@/services/callCapacityService';
 import {
   Dialog,
   DialogContent,
@@ -57,8 +58,13 @@ export default function IvrSchedulePage() {
   const { user } = useAuth();
   const today = new Date();
   const doctorAccess = useMemo(() => getAllowedCursoKeysForUser(user), [user]);
+  // Solo usuarios de Hospital pueden activar/apagar la ejecución continua de la Resolución 3280
+  const isHospitalUser = useMemo(
+    () => ['hospital_admin', 'super_admin', 'operator'].includes(user?.role),
+    [user?.role]
+  );
 
-  // Pestaña principal: 'roadmap' | 'tandas' | 'casos_humanos' | 'config'
+  // Pestaña principal: 'roadmap' | 'tandas' | 'sms_email_r1_r2' | 'casos_humanos' | 'inasistentes' | 'config'
   const [activeTab, setActiveTab] = useState('roadmap');
 
   // Sub-sección del Roadmap: 'resolucion' | 'campanas' | 'individual'
@@ -81,8 +87,14 @@ export default function IvrSchedulePage() {
   const [selectedSlotId, setSelectedSlotId] = useState('t1');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [config, setConfig] = useState(ivrScheduleService.getConfig());
+  const [config, setConfig] = useState(() => ivrScheduleService.getConfig());
+  const [nowTick, setNowTick] = useState(() => new Date());
+  const [customStartSlotId, setCustomStartSlotId] = useState(null);
+
+  // Filtros de la pestaña SMS y E-Mail (R1 / R2)
+  const [altFilterMode, setAltFilterMode] = useState('todos'); // 'todos' | 'desborde' | 'p5' | 'p4' | 'con_email'
+  const [altSearch, setAltSearch] = useState('');
+  const [altPage, setAltPage] = useState(1);
 
   // Modal para registro de gestión humana
   const [selectedHumanCase, setSelectedHumanCase] = useState(null);
@@ -161,18 +173,8 @@ export default function IvrSchedulePage() {
   const loadDailySchedule = async (force = false) => {
     setLoadingDaily(true);
     try {
-      // Actualizar caché antigua que no incluía universo completo 100% BD
-      const cached = localStorage.getItem('sadi_ivr_daily_schedule');
-      let shouldForce = force;
-      if (!shouldForce && cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          shouldForce = !parsed?.totalUniversoBD;
-        } catch {
-          shouldForce = true;
-        }
-      }
-      const data = await ivrScheduleService.getDailySchedule(null, shouldForce);
+      const hospId = user?.hospitalId || user?.hospital_id || null;
+      const data = await ivrScheduleService.getDailySchedule(hospId, force);
       setScheduleData(data);
     } catch (e) {
       console.error('Error cargando cronograma diario:', e);
@@ -180,6 +182,74 @@ export default function IvrSchedulePage() {
       setLoadingDaily(false);
     }
   };
+
+  // Reloj en vivo + motor automático continuo de la Resolución 3280 (solo cuando está ACTIVA)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(new Date());
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const nextSlotInfo = useMemo(() => getNextTandaSlotForTime(nowTick), [nowTick]);
+  const selectedStartSlotId = config.resolutionActive
+    ? config.resolutionStartSlotId || nextSlotInfo.slot.id
+    : customStartSlotId || nextSlotInfo.slot.id;
+  const selectedStartSlot =
+    IVR_TIME_SLOTS.find((s) => s.id === selectedStartSlotId) || nextSlotInfo.slot;
+
+  // Ejecutar tandas automáticamente en orden cronológico a partir de la hora de inicio mientras esté activa
+  useEffect(() => {
+    if (!isHospitalUser || !config.resolutionActive || !scheduleData?.items?.length) return;
+    const todayIso = scheduleData.fecha;
+    const startIdx = Math.max(
+      0,
+      IVR_TIME_SLOTS.findIndex((s) => s.id === (config.resolutionStartSlotId || nextSlotInfo.slot.id))
+    );
+    const nowMin = nowTick.getHours() * 60 + nowTick.getMinutes();
+    const dispatchedToday = Array.isArray(config.resolutionDispatchedByDate?.[todayIso])
+      ? config.resolutionDispatchedByDate[todayIso]
+      : [];
+
+    const dueSlot = IVR_TIME_SLOTS.slice(startIdx).find((slot) => {
+      if (nowMin < slot.minutesFromMidnight) return false;
+      if (dispatchedToday.includes(slot.id)) return false;
+      return scheduleData.items.some(
+        (it) => it.slotId === slot.id && (it.estado === 'programada' || it.estado === 'en_reintento')
+      );
+    });
+
+    if (!dueSlot) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const updatedCfg = ivrScheduleService.markSlotDispatched(todayIso, dueSlot.id);
+        setConfig(updatedCfg);
+        const res = await ivrScheduleService.simulateBatchExecution(dueSlot.id);
+        if (!cancelled && res?.schedule) {
+          setScheduleData(res.schedule);
+          toast({
+            title: `Resolución 3280 · Tanda ${dueSlot.hora} ejecutada`,
+            description: `Procesados en orden P1→P5: ${res.stats.processed} | Reintento: ${res.stats.reassigned} | Gestión humana: ${res.stats.sentToHuman}`,
+          });
+        }
+      } catch (e) {
+        console.error('Error en motor continuo de Resolución 3280:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isHospitalUser,
+    config.resolutionActive,
+    config.resolutionStartSlotId,
+    config.resolutionDispatchedByDate,
+    nowTick,
+    scheduleData,
+  ]);
 
   const handleYearMonthChange = (newYear, newMonth) => {
     setSelectedYear(newYear);
@@ -268,36 +338,26 @@ export default function IvrSchedulePage() {
     }
   };
 
-  const handleSimulateBatch = async (slotId) => {
-    if (doctorAccess.restricted && doctorAccess.keys.length === 0) {
+  const handleToggleResolution = () => {
+    if (!isHospitalUser) return;
+    const hospId = user?.hospitalId || user?.hospital_id || null;
+    if (config.resolutionActive) {
+      const updated = ivrScheduleService.deactivateResolution(hospId);
+      setConfig(updated);
       toast({
-        title: 'Sin Asignación de Cursos de Vida',
-        description: 'No tienes Cursos de Vida asignados para ejecutar tandas de llamadas.',
-        variant: 'destructive'
+        title: 'Resolución 3280 apagada',
+        description: 'Se ha detenido la ejecución automática de tandas hasta que vuelva a activarse.',
       });
-      return;
-    }
-    setIsSimulating(true);
-    try {
-      const predicate = doctorAccess.restricted
-        ? (item) => isPatientAssignedToDoctor(item, user)
-        : null;
-      const res = await ivrScheduleService.simulateBatchExecution(slotId, predicate);
-      setScheduleData(res.schedule);
-      const slot = IVR_TIME_SLOTS.find(s => s.id === slotId);
-
+    } else {
+      const startId = customStartSlotId || getNextTandaSlotForTime(new Date()).slot.id;
+      const startObj = IVR_TIME_SLOTS.find((s) => s.id === startId) || IVR_TIME_SLOTS[0];
+      const updated = ivrScheduleService.activateResolution(startId, hospId);
+      setConfig(updated);
+      setSelectedSlotId(startObj.id);
       toast({
-        title: `⚡ Tanda ${slot?.hora} ejecutada`,
-        description: `Procesados: ${res.stats.processed} | Reasignados: ${res.stats.reassigned} | Buzones cortados ($0): ${res.stats.voicemailCuts || 0} | Gestión humana: ${res.stats.sentToHuman}`
+        title: 'Resolución 3280 ACTIVADA',
+        description: `Iniciará automáticamente desde la tanda de las ${startObj.hora} en orden P1 → P5 y seguirá hasta que se apague.`,
       });
-    } catch (e) {
-      toast({
-        title: "Error en simulación",
-        description: e.message,
-        variant: "destructive"
-      });
-    } finally {
-      setIsSimulating(false);
     }
   };
 
@@ -441,19 +501,74 @@ export default function IvrSchedulePage() {
   const casosHumanos = items.filter(i => i.estado === 'caso_aislado_humano' || i.gestionHumana?.requerida).length;
   const programados = items.filter(i => i.estado === 'programada').length;
 
-  const currentSlotPatients = items.filter(i => {
-    if (activeTab === 'casos_humanos') {
-      return i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano';
-    }
-    const matchSlot = i.slotId === selectedSlotId;
-    const matchSearch = searchTerm === '' || 
-      i.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      i.documento.includes(searchTerm) ||
-      i.telefono.includes(searchTerm);
-    const matchStatus = filterStatus === 'todos' || i.estado === filterStatus;
+  const currentSlotPatients = items
+    .filter((i) => {
+      if (activeTab === 'casos_humanos') {
+        return i.gestionHumana?.requerida || i.estado === 'caso_aislado_humano';
+      }
+      const matchSlot = i.slotId === selectedSlotId;
+      const matchSearch =
+        searchTerm === '' ||
+        i.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        i.documento.includes(searchTerm) ||
+        i.telefono.includes(searchTerm);
+      const matchStatus = filterStatus === 'todos' || i.estado === filterStatus;
 
-    return matchSlot && matchSearch && matchStatus;
-  });
+      return matchSlot && matchSearch && matchStatus;
+    })
+    .sort((a, b) => (a.prioridad || 5) - (b.prioridad || 5) || (a.ordenCola || 0) - (b.ordenCola || 0));
+
+  // Datos filtrados para el segmento SMS y E-Mail (R1 / R2)
+  const rawAlternateItems = scheduleData?.alternateChannelItems || [];
+  const visibleAlternateItems = useMemo(() => {
+    if (!doctorAccess.restricted) return rawAlternateItems;
+    if (doctorAccess.keys.length === 0) return [];
+    return rawAlternateItems.filter((it) => isPatientAssignedToDoctor(it, user));
+  }, [rawAlternateItems, doctorAccess, user]);
+
+  const filteredAlternateItems = useMemo(() => {
+    const q = altSearch.trim().toLowerCase();
+    return visibleAlternateItems.filter((it) => {
+      if (altFilterMode === 'desborde' && !it.isOverflow) return false;
+      if (altFilterMode === 'p5' && Number(it.prioridad) !== 5) return false;
+      if (altFilterMode === 'p4' && Number(it.prioridad) !== 4) return false;
+      if (altFilterMode === 'con_email' && !it.hasValidEmail) return false;
+      if (q) {
+        const hit =
+          String(it.nombre || '').toLowerCase().includes(q) ||
+          String(it.documento || '').toLowerCase().includes(q) ||
+          String(it.telefono || '').toLowerCase().includes(q) ||
+          String(it.email || '').toLowerCase().includes(q);
+        if (!hit) return false;
+      }
+      return true;
+    });
+  }, [visibleAlternateItems, altFilterMode, altSearch]);
+
+  const altStats = useMemo(() => {
+    const desborde = visibleAlternateItems.filter((i) => i.isOverflow).length;
+    const p5 = visibleAlternateItems.filter((i) => Number(i.prioridad) === 5).length;
+    const p4 = visibleAlternateItems.filter((i) => Number(i.prioridad) === 4).length;
+    const conEmail = visibleAlternateItems.filter((i) => i.hasValidEmail).length;
+    return { desborde, p5, p4, conEmail, total: visibleAlternateItems.length };
+  }, [visibleAlternateItems]);
+
+  const ALT_PAGE_SIZE = 25;
+  const altTotalPages = Math.max(1, Math.ceil(filteredAlternateItems.length / ALT_PAGE_SIZE));
+  const paginatedAlternateItems = useMemo(() => {
+    const safeP = Math.min(altPage, altTotalPages);
+    const start = (safeP - 1) * ALT_PAGE_SIZE;
+    return filteredAlternateItems.slice(start, start + ALT_PAGE_SIZE);
+  }, [filteredAlternateItems, altPage, altTotalPages]);
+
+  const dailyPriorityCounts = useMemo(() => {
+    const c = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    items.forEach((it) => {
+      const p = Number(it.prioridad || 5);
+      c[p] = (c[p] || 0) + 1;
+    });
+    return c;
+  }, [items]);
 
   const selectedSlot = IVR_TIME_SLOTS.find(s => s.id === selectedSlotId) || IVR_TIME_SLOTS[0];
   const nombreMesSeleccionado = MESES_DEL_ANIO.find(m => m.id === Number(selectedMonth))?.nombre || `Mes ${selectedMonth}`;
@@ -501,12 +616,12 @@ export default function IvrSchedulePage() {
 
             <div className="text-right hidden sm:block">
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-                config.isLiveEnabled 
+                config.resolutionActive || config.isLiveEnabled
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
                   : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
               }`}>
-                <span className={`w-2 h-2 rounded-full ${config.isLiveEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                {config.isLiveEnabled ? 'EN VIVO AUTOMÁTICO' : 'MODO STANDBY SEGURO'}
+                <span className={`w-2 h-2 rounded-full ${config.resolutionActive || config.isLiveEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                {config.resolutionActive ? `RESOLUCIÓN ACTIVA (DESDE ${selectedStartSlot.hora})` : config.isLiveEnabled ? 'EN VIVO AUTOMÁTICO' : 'MODO STANDBY SEGURO'}
               </span>
             </div>
           </div>
@@ -529,6 +644,7 @@ export default function IvrSchedulePage() {
           </button>
 
           <button
+            data-testid="tab-tandas"
             onClick={() => setActiveTab('tandas')}
             className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
               activeTab === 'tandas'
@@ -538,6 +654,31 @@ export default function IvrSchedulePage() {
           >
             <Clock className="w-4 h-4" />
             Monitor de Tandas Diarias (30 min)
+          </button>
+
+          <button
+            data-testid="tab-sms-email-r1-r2"
+            onClick={() => {
+              setAltPage(1);
+              setActiveTab('sms_email_r1_r2');
+            }}
+            className={`px-5 py-2.5 text-xs font-bold rounded-2xl transition-all flex items-center gap-2 ${
+              activeTab === 'sms_email_r1_r2'
+                ? 'bg-teal-600 text-white shadow-md'
+                : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-700'
+            }`}
+          >
+            <Mail className="w-4 h-4" />
+            SMS y E-Mail (R1 / R2)
+            {altStats.total > 0 && (
+              <span className={`px-2 py-0.5 text-[10px] rounded-full font-black ${
+                activeTab === 'sms_email_r1_r2'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-teal-100 dark:bg-teal-950/70 text-teal-800 dark:text-teal-300'
+              }`}>
+                {altStats.total.toLocaleString('es-CO')}
+              </span>
+            )}
           </button>
 
           <button
@@ -599,10 +740,102 @@ export default function IvrSchedulePage() {
         )}
 
         {/* ========================================================================= */}
-        {/* PESTAÑA 2: MONITOR DE TANDAS DIARIAS (10:00 AM - 06:00 PM) */}
+        {/* PESTAÑA 2: MONITOR DE TANDAS DIARIAS (08:00 AM - 06:00 PM · P1 -> P5)     */}
         {/* ========================================================================= */}
         {activeTab === 'tandas' && (
           <div className="space-y-6">
+            {/* CONTROL MAESTRO DE ACTIVACIÓN DE RESOLUCIÓN 3280 (SOLO USUARIOS DE HOSPITAL) */}
+            {isHospitalUser && (
+              <div
+                data-testid="resolution-activation-bar"
+                className={`p-5 rounded-3xl border shadow-sm transition-colors flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+                  config.resolutionActive
+                    ? 'bg-emerald-50/80 dark:bg-emerald-950/35 border-emerald-300 dark:border-emerald-700/70'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                <div className="flex items-start gap-3.5 min-w-0">
+                  <div
+                    className={`p-3 rounded-2xl shrink-0 ${
+                      config.resolutionActive
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'bg-blue-600/10 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60'
+                    }`}
+                  >
+                    <Power className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                        Ejecución Automática de la Resolución 3280
+                      </h3>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          config.resolutionActive
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {config.resolutionActive ? 'Activa en Curso' : 'Apagada'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {config.resolutionActive ? (
+                        <>
+                          Lanzando tandas automáticamente en orden estricto <strong>P1 → P2 → P3 → P4 → P5</strong> desde las{' '}
+                          <strong>{selectedStartSlot.hora}</strong> hasta que se apague. Próximo corte operativo:{' '}
+                          <strong>{nextSlotInfo.slot.hora}</strong>
+                          {nextSlotInfo.isNextWorkday ? ' (siguiente día hábil)' : ` (en ${nextSlotInfo.minutesUntil} min)`}.
+                        </>
+                      ) : (
+                        <>
+                          Al activar ahora (<strong>{nowTick.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</strong>), las llamadas arrancarán automáticamente desde la tanda de las{' '}
+                          <strong>{selectedStartSlot.hora}</strong> en orden <strong>P1 → P5</strong> y continuarán tanda por tanda hasta que se apague.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                  {!config.resolutionActive && (
+                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-1.5">
+                      <label htmlFor="res-start-slot" className="text-[11px] font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        Arrancar en:
+                      </label>
+                      <select
+                        id="res-start-slot"
+                        data-testid="resolution-start-slot-select"
+                        value={selectedStartSlotId}
+                        onChange={(e) => setCustomStartSlotId(e.target.value)}
+                        className="text-xs font-bold bg-transparent text-slate-900 dark:text-white focus:outline-none cursor-pointer"
+                      >
+                        {IVR_TIME_SLOTS.map((s) => (
+                          <option key={s.id} value={s.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
+                            {s.hora}{s.id === nextSlotInfo.slot.id ? ' (Siguiente)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    data-testid="btn-toggle-resolution"
+                    onClick={handleToggleResolution}
+                    className={`rounded-2xl font-black text-xs px-5 py-2.5 shadow-md gap-2 ${
+                      config.resolutionActive
+                        ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    <Power className="w-4 h-4" />
+                    {config.resolutionActive ? 'Apagar Resolución 3280' : 'Activar Resolución 3280'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* CARDS DE MÉTRICAS */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
@@ -612,7 +845,7 @@ export default function IvrSchedulePage() {
                 </div>
                 <p className="text-2xl font-black text-gray-900 dark:text-white mt-2">{totalPacientes.toLocaleString('es-CO')}</p>
                 <span className="text-[11px] text-gray-500 dark:text-slate-400">
-                  {programados} en cola hoy{scheduleData?.totalUniversoBD ? ` • Universo ${Number(scheduleData.totalUniversoBD).toLocaleString('es-CO')} (100% BD)` : ''}
+                  {programados} en cola ({scheduleData?.fecha || 'Hoy'}) • Censo {Number(scheduleData?.totalUniversoBD || 0).toLocaleString('es-CO')} BD
                 </span>
               </div>
 
@@ -658,12 +891,12 @@ export default function IvrSchedulePage() {
               </div>
             </div>
 
-            {/* CARRUSEL DE HORARIOS DE TANDAS (24 INTERVALOS DE 30 MIN) */}
-            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                <div className="flex items-center gap-2">
+            {/* CARRUSEL DE HORARIOS DE TANDAS (20 INTERVALOS DE 30 MIN · ORDEN P1 -> P5) */}
+            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-bold text-gray-800 dark:text-slate-100">
-                    Seleccionar Tanda Operativa (24 Intervalos de 30 min • 08:30 AM a 08:00 PM):
+                    Tandas Operativas por Prioridad ({IVR_TIME_SLOTS.length} Intervalos de 30 min • 08:00 AM a 06:00 PM • Tope {DAILY_CALL_CAPACITY}/día):
                   </span>
                   <span className="text-[11px] text-blue-600 dark:text-blue-300 font-semibold bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800/60">
                     Tanda seleccionada: {selectedSlot.hora}
@@ -686,10 +919,43 @@ export default function IvrSchedulePage() {
                 </button>
               </div>
 
+              {/* Resumen de orden estricto P1 -> P5 de la cola de hoy */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 rounded-xl px-3 py-2 text-[11px]">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-slate-600 dark:text-slate-300 mr-1">Orden estricto del día:</span>
+                  {[1, 2, 3, 4, 5].map((pNum) => {
+                    const pm = getPriorityMeta(pNum);
+                    return (
+                      <span key={pNum} className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${pm.badgeClass}`}>
+                        {pm.shortLabel}: {dailyPriorityCounts[pNum] || 0}
+                      </span>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('sms_email_r1_r2')}
+                  className="text-[11px] font-bold text-teal-700 dark:text-teal-300 hover:underline flex items-center gap-1"
+                >
+                  Ver respaldo SMS y E-Mail (R1/R2) <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
                 {IVR_TIME_SLOTS.map((slot) => {
-                  const slotItems = items.filter(i => i.slotId === slot.id);
+                  const slotItems = items.filter((i) => i.slotId === slot.id);
                   const isSelected = selectedSlotId === slot.id;
+                  const prios = slotItems.map((i) => Number(i.prioridad || 5));
+                  const minP = prios.length > 0 ? Math.min(...prios) : null;
+                  const maxP = prios.length > 0 ? Math.max(...prios) : null;
+                  const prioRange =
+                    minP === null ? 'Libre' : minP === maxP ? `P${minP}` : `P${minP}–P${maxP}`;
+                  const isStartMarker = config.resolutionActive && config.resolutionStartSlotId === slot.id;
+                  const isDispatched = Boolean(
+                    scheduleData?.fecha &&
+                      Array.isArray(config.resolutionDispatchedByDate?.[scheduleData.fecha]) &&
+                      config.resolutionDispatchedByDate[scheduleData.fecha].includes(slot.id)
+                  );
 
                   return (
                     <button
@@ -698,6 +964,8 @@ export default function IvrSchedulePage() {
                       className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl text-left border transition-all ${
                         isSelected
                           ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-600 ring-2 ring-blue-500/20'
+                          : isStartMarker
+                          ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-700'
                           : 'bg-gray-50 dark:bg-slate-800/80 border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-700 dark:text-slate-300'
                       }`}
                     >
@@ -715,16 +983,32 @@ export default function IvrSchedulePage() {
                           {slotItems.length}/{MAX_PATIENTS_PER_BATCH}
                         </span>
                       </div>
-                      <span className="text-[10px] text-gray-500 dark:text-slate-400 block mt-1">
-                        {slot.label.split(' ')[0]} {slot.label.split(' ')[1]}
-                      </span>
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <span className={`text-[10px] font-black ${
+                          minP === 1 ? 'text-rose-600 dark:text-rose-400'
+                          : minP === 2 ? 'text-purple-600 dark:text-purple-400'
+                          : minP === 3 ? 'text-orange-600 dark:text-orange-400'
+                          : minP === 4 ? 'text-blue-600 dark:text-blue-400'
+                          : minP === 5 ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-gray-400 dark:text-slate-500'
+                        }`}>
+                          {prioRange}
+                        </span>
+                        {isDispatched ? (
+                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">✓ Enviada</span>
+                        ) : isStartMarker ? (
+                          <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300">Inicio</span>
+                        ) : (
+                          <span className="text-[9px] text-gray-400 dark:text-slate-500">Tanda {slot.id.replace('t', '')}</span>
+                        )}
+                      </div>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* TABLA DE PACIENTES DE LA TANDA */}
+            {/* TABLA DE PACIENTES DE LA TANDA (ORDENADA ESTRICTAMENTE P1 -> P5, SIN BOTÓN LANZAR TANDA) */}
             <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50 dark:bg-slate-900">
                 <div>
@@ -732,20 +1016,21 @@ export default function IvrSchedulePage() {
                     Pacientes Asignados a la Tanda de las {selectedSlot.hora}
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-slate-400">
-                    {currentSlotPatients.length} paciente(s) en esta franja
+                    {currentSlotPatients.length} paciente(s) en esta franja · Ordenados por prioridad clínica (P1 → P5)
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => handleSimulateBatch(selectedSlot.id)}
-                    disabled={isSimulating || currentSlotPatients.length === 0}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm gap-1.5"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    {isSimulating ? 'Lanzando Tanda...' : `Lanzar Tanda (${selectedSlot.hora})`}
-                  </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar paciente o cédula..."
+                    className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                    {config.resolutionActive ? 'Ejecución automática activa' : 'En espera de activación'}
+                  </span>
                 </div>
               </div>
 
@@ -753,6 +1038,7 @@ export default function IvrSchedulePage() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50 dark:bg-slate-800/80 text-gray-600 dark:text-slate-300 font-semibold border-b border-gray-100 dark:border-slate-800">
                     <tr>
+                      <th className="p-3">Prioridad</th>
                       <th className="p-3">Paciente / Cédula</th>
                       <th className="p-3">Teléfono</th>
                       <th className="p-3">Curso de Vida &amp; Grupos de Riesgo</th>
@@ -763,77 +1049,314 @@ export default function IvrSchedulePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                    {currentSlotPatients.length === 0 ? (
+                    {loadingDaily ? (
                       <tr>
-                        <td colSpan={7} className="text-center p-8 text-gray-400 dark:text-slate-500">
+                        <td colSpan={8} className="text-center p-8 text-gray-500 dark:text-slate-400">
+                          Cargando cola priorizada (P1 → P5) desde Supabase...
+                        </td>
+                      </tr>
+                    ) : currentSlotPatients.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="text-center p-8 text-gray-400 dark:text-slate-500">
                           No hay pacientes programados en la tanda de las {selectedSlot.hora}.
                         </td>
                       </tr>
                     ) : (
-                      currentSlotPatients.map((patient) => (
-                        <tr key={patient.id} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/50 transition-colors">
-                          <td className="p-3">
-                            <div className="font-bold text-gray-900 dark:text-white">{patient.nombre}</div>
-                            <div className="text-[11px] text-gray-500 dark:text-slate-400">{patient.documento}</div>
-                          </td>
-                          <td className="p-3 font-mono text-gray-700 dark:text-slate-300">{patient.telefono}</td>
-                          <td className="p-3 max-w-[230px]">
-                            <div className="flex flex-col items-start gap-1">
-                              <CursoVidaBadge patient={{ curso_vida: patient.cursoVida || patient.curso_vida }} />
-                              <GruposRiesgoBadges patient={{ grupo_riesgo: patient.grupoRiesgo || patient.grupo_riesgo, grupos_riesgo: patient.gruposRiesgo || patient.grupos_riesgo }} maxVisible={2} />
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <div className="font-semibold text-gray-900 dark:text-slate-100">{patient.programa3280 || patient.programa}</div>
-                            <div className="text-[10px] text-blue-700 dark:text-blue-400 font-bold mt-0.5">{patient.accion3280 || patient.cursoVida}</div>
-                            {patient.script && (
-                              <div className="text-[10px] text-gray-600 dark:text-slate-300 mt-1 italic bg-blue-50/70 dark:bg-blue-950/40 p-1.5 rounded-lg border border-blue-100 dark:border-blue-800/50 max-w-md">
-                                <span className="font-bold text-blue-900 dark:text-blue-200 block not-italic">Motivo: {patient.script.motivo}</span>
-                                "{patient.script.mensaje}"
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              patient.resultadoDTMF === 'buzon'
-                                ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
-                                : patient.estado === 'confirmada'
-                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
-                                : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300'
-                            }`}>
-                              {patient.resultadoDTMF === 'buzon'
-                                ? `${patient.estado} · Buzón $0 COP`
-                                : patient.estado}
-                            </span>
-                            {patient.capaDeteccion && patient.resultadoDTMF === 'buzon' && (
-                              <span className="block text-[9px] text-amber-700 dark:text-amber-400 font-semibold mt-0.5">
-                                {patient.capaDeteccion === 'pre_answer_sip_183'
-                                  ? 'SIP 183 Pre-200 OK'
-                                  : patient.capaDeteccion === 'ring_timeout_pre_answer'
-                                  ? 'Timeout Pre-Buzón'
-                                  : 'Vapi AMD Silencioso'}
+                      currentSlotPatients.map((patient) => {
+                        const prio = getPriorityMeta(patient.prioridad || 5);
+                        return (
+                          <tr key={patient.id} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="p-3 whitespace-nowrap">
+                              <span
+                                data-testid="tanda-row-priority"
+                                data-priority={patient.prioridad || 5}
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black border ${prio.badgeClass}`}
+                              >
+                                {prio.shortLabel}
                               </span>
-                            )}
-                          </td>
-                          <td className="p-3 text-gray-700 dark:text-slate-300 font-semibold">{patient.intentos || 0}</td>
-                          <td className="p-3 text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleMakeLiveCall(patient)}
-                              disabled={callingId === patient.id}
-                              className="text-xs font-bold rounded-xl bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700"
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                              Llamar
-                            </Button>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td className="p-3">
+                              <div className="font-bold text-gray-900 dark:text-white">{patient.nombre}</div>
+                              <div className="text-[11px] text-gray-500 dark:text-slate-400">{patient.documento}</div>
+                            </td>
+                            <td className="p-3 font-mono text-gray-700 dark:text-slate-300">{patient.telefono}</td>
+                            <td className="p-3 max-w-[230px]">
+                              <div className="flex flex-col items-start gap-1">
+                                <CursoVidaBadge patient={{ curso_vida: patient.cursoVida || patient.curso_vida }} />
+                                <GruposRiesgoBadges patient={{ grupo_riesgo: patient.grupoRiesgo || patient.grupo_riesgo, grupos_riesgo: patient.gruposRiesgo || patient.grupos_riesgo }} maxVisible={2} />
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="font-semibold text-gray-900 dark:text-slate-100">{patient.programa3280 || patient.programa}</div>
+                              <div className="text-[10px] text-blue-700 dark:text-blue-400 font-bold mt-0.5">
+                                {patient.cups ? `CUPS ${patient.cups}` : patient.accion3280}
+                              </div>
+                              {patient.script && (
+                                <div className="text-[10px] text-gray-600 dark:text-slate-300 mt-1 italic bg-blue-50/70 dark:bg-blue-950/40 p-1.5 rounded-lg border border-blue-100 dark:border-blue-800/50 max-w-md">
+                                  <span className="font-bold text-blue-900 dark:text-blue-200 block not-italic">Motivo: {patient.script.motivo}</span>
+                                  "{patient.script.mensaje}"
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                patient.resultadoDTMF === 'buzon'
+                                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                                  : patient.estado === 'confirmada'
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                                  : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300'
+                              }`}>
+                                {patient.resultadoDTMF === 'buzon'
+                                  ? `${patient.estado} · Buzón $0 COP`
+                                  : patient.estado}
+                              </span>
+                            </td>
+                            <td className="p-3 text-gray-700 dark:text-slate-300 font-semibold">{patient.intentos || 0}</td>
+                            <td className="p-3 text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleMakeLiveCall(patient)}
+                                disabled={callingId === patient.id}
+                                className="text-xs font-bold rounded-xl bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                                Llamar
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* PESTAÑA 2B (NUEVA): SMS Y E-MAIL (REGLAS R1 / R2 · RESPALDO NO PRIORITARIOS) */}
+        {/* ========================================================================= */}
+        {activeTab === 'sms_email_r1_r2' && (
+          <div data-testid="panel-sms-email-r1-r2" className="space-y-5">
+            {/* Encabezado simple e intuitivo */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-teal-200/80 dark:border-teal-800/60 shadow-sm p-5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60 shrink-0">
+                    <Mail className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      Envíos Alternos por SMS y E-Mail (Reglas R1 y R2)
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 leading-relaxed">
+                      Pacientes de menor prioridad en la cola de llamadas (<strong>P5 sin grupo de riesgo</strong> y <strong>P4 crónicos estables</strong>) que se contactan por <strong>SMS (R1)</strong> y <strong>Correo Electrónico (R2)</strong> en caso de que el cupo diario de {DAILY_CALL_CAPACITY} llamadas se llene con pacientes de mayor riesgo (P1–P3), evitando dejar a nadie por fuera.
+                    </p>
+                  </div>
+                </div>
+                <span className="shrink-0 inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60">
+                  Fecha operativa: {scheduleData?.fecha || 'Hoy'}
+                </span>
+              </div>
+
+              {/* 3 Indicadores simples */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div className="p-4 rounded-2xl border border-amber-200/80 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/30">
+                  <div className="text-[11px] font-bold uppercase text-amber-800 dark:text-amber-300">
+                    En Desborde Hoy (&gt;{DAILY_CALL_CAPACITY} llam. · R1-04)
+                  </div>
+                  <div className="text-2xl font-black text-amber-900 dark:text-amber-200 mt-1">
+                    {altStats.desborde.toLocaleString('es-CO')}
+                  </div>
+                  <div className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                    {altStats.desborde > 0
+                      ? 'Derivados hoy automáticamente a SMS / E-Mail'
+                      : `Hoy la demanda (${totalPacientes}) cabe en el cupo de ${DAILY_CALL_CAPACITY} llamadas`}
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/30">
+                  <div className="text-[11px] font-bold uppercase text-emerald-800 dark:text-emerald-300">
+                    Prioridad P5 (Sin Riesgo · R1 / R2)
+                  </div>
+                  <div className="text-2xl font-black text-emerald-900 dark:text-emerald-200 mt-1">
+                    {altStats.p5.toLocaleString('es-CO')}
+                  </div>
+                  <div className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 mt-0.5">
+                    Primeros en pasar a SMS/E-Mail si falta cupo de voz
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 bg-indigo-50/60 dark:bg-indigo-950/30">
+                  <div className="text-[11px] font-bold uppercase text-indigo-800 dark:text-indigo-300">
+                    Prioridad P4 + Cobertura E-Mail (R2)
+                  </div>
+                  <div className="text-2xl font-black text-indigo-900 dark:text-indigo-200 mt-1">
+                    {altStats.p4.toLocaleString('es-CO')}{' '}
+                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                      ({altStats.conEmail.toLocaleString('es-CO')} con correo)
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80 mt-0.5">
+                    Respaldo secundario si P1–P3 saturan el canal de voz
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabla limpia de candidatos R1 / R2 */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { id: 'todos', label: `Todos (${altStats.total})` },
+                    { id: 'desborde', label: `Desborde >${DAILY_CALL_CAPACITY} (${altStats.desborde})` },
+                    { id: 'p5', label: `P5 Sin Riesgo (${altStats.p5})` },
+                    { id: 'p4', label: `P4 Crónicos (${altStats.p4})` },
+                    { id: 'con_email', label: `Con E-Mail R2 (${altStats.conEmail})` },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => {
+                        setAltFilterMode(f.id);
+                        setAltPage(1);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                        altFilterMode === f.id
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative w-full md:w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={altSearch}
+                    onChange={(e) => {
+                      setAltSearch(e.target.value);
+                      setAltPage(1);
+                    }}
+                    placeholder="Buscar nombre, CC, tel o correo..."
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-gray-50 dark:bg-slate-800/80 text-gray-600 dark:text-slate-300 font-semibold border-b border-gray-100 dark:border-slate-800">
+                    <tr>
+                      <th className="p-3">Prioridad</th>
+                      <th className="p-3">Paciente / Cédula</th>
+                      <th className="p-3">Teléfono (SMS) &amp; Correo (E-Mail)</th>
+                      <th className="p-3">Curso de Vida &amp; Grupos de Riesgo</th>
+                      <th className="p-3">Canal Alterno (R1 / R2)</th>
+                      <th className="p-3">Condición en Cupo de Voz</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                    {paginatedAlternateItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center p-8 text-gray-400 dark:text-slate-500">
+                          No hay pacientes en este filtro para la fecha operativa actual.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedAlternateItems.map((pat) => {
+                        const prio = getPriorityMeta(pat.prioridad || 5);
+                        return (
+                          <tr key={`alt-${pat.id}`} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="p-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black border ${prio.badgeClass}`}>
+                                {prio.shortLabel}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <div className="font-bold text-gray-900 dark:text-white">{pat.nombre}</div>
+                              <div className="text-[11px] text-gray-500 dark:text-slate-400">
+                                {pat.tipo_documento || 'CC'}: {pat.documento} · {pat.edad} años
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <div className="font-mono text-gray-800 dark:text-slate-200 flex items-center gap-1">
+                                <Smartphone className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                                <span>{pat.telefono}</span>
+                              </div>
+                              <div className="text-[11px] text-gray-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
+                                <Mail className="w-3 h-3 text-indigo-500 shrink-0" />
+                                <span>{pat.hasValidEmail ? pat.email : 'Sin correo registrado (solo SMS)'}</span>
+                              </div>
+                            </td>
+                            <td className="p-3 max-w-[230px]">
+                              <div className="flex flex-col items-start gap-1">
+                                <CursoVidaBadge patient={{ curso_vida: pat.cursoVida || pat.curso_vida }} />
+                                <GruposRiesgoBadges patient={{ grupo_riesgo: pat.grupo_riesgo, grupos_riesgo: pat.grupos_riesgo }} maxVisible={2} />
+                              </div>
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                pat.hasValidEmail
+                                  ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
+                                  : 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800/60'
+                              }`}>
+                                {pat.canalAlterno}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              {pat.isOverflow ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                  Desborde &gt;{DAILY_CALL_CAPACITY} → Envío automático R1/R2
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-slate-600 dark:text-slate-300">
+                                  Respaldo activo · Tanda {pat.slotHora || 'final'} (pasa a SMS/E-Mail si falta cupo)
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {filteredAlternateItems.length > ALT_PAGE_SIZE && (
+                <div className="p-4 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                  <span>
+                    Página <strong>{Math.min(altPage, altTotalPages)}</strong> de <strong>{altTotalPages}</strong> (
+                    {filteredAlternateItems.length.toLocaleString('es-CO')} pacientes)
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={altPage <= 1}
+                      onClick={() => setAltPage((p) => Math.max(1, p - 1))}
+                      className="h-7 text-xs rounded-lg"
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={altPage >= altTotalPages}
+                      onClick={() => setAltPage((p) => Math.min(altTotalPages, p + 1))}
+                      className="h-7 text-xs rounded-lg"
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -932,7 +1455,7 @@ export default function IvrSchedulePage() {
               <div className="p-4 bg-blue-50/50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-800/50">
                 <span className="font-bold text-blue-950 dark:text-blue-200 block mb-1">Capacidad Instalada Hospitalaria:</span>
                 <span className="text-blue-800 dark:text-blue-300 leading-relaxed block">
-                  <strong>24 Tandas de 30 minutos</strong> (08:00 AM a 06:00 PM). Tope diario oficial de <strong>{DAILY_CALL_CAPACITY} llamadas IA/día</strong> (50/h) con priorización P1→P5 y desborde a <strong>SMS Respaldo (R1-04)</strong>.
+                  <strong>{IVR_TIME_SLOTS.length} Tandas de 30 minutos</strong> (08:00 AM a 06:00 PM · {MAX_PATIENTS_PER_BATCH} llam/tanda). Tope diario oficial de <strong>{DAILY_CALL_CAPACITY} llamadas IA/día</strong> (50/h) con priorización P1→P5 y desborde a <strong>SMS/E-Mail (R1/R2)</strong>.
                 </span>
               </div>
 

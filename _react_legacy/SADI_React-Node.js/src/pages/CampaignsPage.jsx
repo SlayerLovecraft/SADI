@@ -700,7 +700,7 @@ const CampaignsPage = () => {
             <Clock className="w-4 h-4" />
             Monitor de Tandas Diarias (30 min)
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${activeTab === 'tandas' ? 'bg-blue-800 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300'}`}>
-              24 tandas
+              {IVR_TIME_SLOTS.length} tandas
             </span>
           </button>
 
@@ -1068,7 +1068,7 @@ const CampaignsPage = () => {
                 <span className="text-[11px] font-bold text-gray-500 dark:text-slate-400 uppercase block">Total en Cola</span>
                 <span className="text-2xl font-black text-gray-900 dark:text-white mt-1 block">{totalPacientes.toLocaleString('es-CO')}</span>
                 <span className="text-[10px] text-gray-400 dark:text-slate-500">
-                  Distribuidos en 24 tandas{scheduleData?.totalUniversoBD ? ` • Censo ${Number(scheduleData.totalUniversoBD).toLocaleString('es-CO')} BD` : ''}
+                  Distribuidos en {IVR_TIME_SLOTS.length} tandas (P1→P5){scheduleData?.totalUniversoBD ? ` • Censo ${Number(scheduleData.totalUniversoBD).toLocaleString('es-CO')} BD` : ''}
                 </span>
               </div>
               <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm">
@@ -1099,24 +1099,11 @@ const CampaignsPage = () => {
                 <div>
                   <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700 dark:text-slate-200 flex items-center gap-1.5">
                     <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                    Seleccionar Tanda Operativa (24 Intervalos de 30 min: 08:30 AM a 08:00 PM)
+                    Tandas Operativas por Prioridad ({IVR_TIME_SLOTS.length} Intervalos de 30 min: 08:00 AM a 06:00 PM)
                   </h3>
                   <p className="text-[11px] text-gray-500 dark:text-slate-400">
-                    Aforo del Gateway: 32 canales GSM simultáneos por intervalo.
+                    Orden estricto P1 → P5 · {MAX_PATIENTS_PER_BATCH} llamadas por tanda (500 llamadas IA/día). La activación continua se gestiona desde el Cronograma (solo Hospital).
                   </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleSimulateBatch(selectedSlotId)}
-                    disabled={isSimulating}
-                    className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold rounded-xl gap-1.5"
-                  >
-                    {isSimulating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                    Simular Ejecución Tanda
-                  </Button>
                 </div>
               </div>
 
