@@ -115,7 +115,7 @@ const Layout = ({ children }) => {
   const allNavigation = [
     { name: isStaffRole ? 'Dashboard Clínico' : 'Dashboard Hospital', path: isStaffRole ? '/doctor/dashboard' : '/dashboard', icon: LayoutDashboard },
     { name: 'Demanda Res. 3280', path: '/demanda-resolucion', icon: Shield },
-    { name: 'Cronograma IVR 3280', path: '/ivr-schedule', icon: Calendar },
+    { name: 'Cronograma Res. 3280', path: '/ivr-schedule', icon: Calendar },
     { name: 'Pacientes', path: isStaffRole ? '/doctor/patients' : '/patients', icon: Users },
     { name: 'Personal', path: '/staff', icon: UserCheck, hospitalOnly: true },
     { name: 'Campañas', path: '/campaigns', icon: Send },
