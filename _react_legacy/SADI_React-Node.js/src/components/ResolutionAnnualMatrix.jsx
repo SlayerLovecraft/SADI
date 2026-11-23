@@ -183,6 +183,8 @@ function ResolutionAnnualMatrix({
   // Modal de Detalle de Día (paginado con búsqueda real desde Postgres)
   const [selectedRoadmapDay, setSelectedRoadmapDay] = useState(null);
   const [isRoadmapDayOpen, setIsRoadmapDayOpen] = useState(false);
+  // PopUp informativo de las tarjetas del encabezado: null | 'riesgo' | 'prioridad' | 'inasistencias'
+  const [activeInfoPopup, setActiveInfoPopup] = useState(null);
   const [dayModalRows, setDayModalRows] = useState([]);
   const [dayModalMeta, setDayModalMeta] = useState({
     dayTotalAll: 0,
@@ -547,6 +549,29 @@ function ResolutionAnnualMatrix({
       totalSmsBackup,
     };
   }, [roadmap365, cronogramaSummary.totalEligibleYear]);
+
+  // Conteo anual real por cada prioridad (P1 a P5) desde Postgres
+  const priorityYearlyTotals = useMemo(() => {
+    const totals = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    const pMat = cronogramaSummary?.priorityMatrix || {};
+    let hasMatrixValues = false;
+    [1, 2, 3, 4, 5].forEach((pNum) => {
+      const arr = pMat[String(pNum)];
+      if (Array.isArray(arr)) {
+        const s = arr.reduce((acc, v) => acc + Number(v || 0), 0);
+        totals[pNum] = s;
+        if (s > 0) hasMatrixValues = true;
+      }
+    });
+    if (!hasMatrixValues) {
+      Object.values(roadmap365).forEach((d) => {
+        [1, 2, 3, 4, 5].forEach((pNum) => {
+          totals[pNum] += Number(d.priorityCounts?.[String(pNum)] || 0);
+        });
+      });
+    }
+    return totals;
+  }, [cronogramaSummary?.priorityMatrix, roadmap365]);
 
   // Matrices mensuales exactas desde Postgres
   const matrixCursosCounts = useMemo(() => {
@@ -1228,9 +1253,6 @@ function ResolutionAnnualMatrix({
               <Calendar className="w-8 h-8 text-blue-400 shrink-0" />
               Cronograma Unificado de Demanda Inducida (Res. 3280)
             </h2>
-            <p className="text-xs md:text-sm text-slate-300 mt-1 max-w-4xl">
-              Almanaque único consolidado con <strong>7 Cursos de Vida (A–G)</strong> y <strong>11 Grupos de Riesgo Priorizados reales</strong> (incluye Planificación Familiar, Vacunación PAI y Salud Oral), priorizados de <strong>P1 a P5</strong> con conciliación exacta 1:1 entre pacientes elegibles y llamadas programadas.
-            </p>
           </div>
 
           <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-2.5">
@@ -1304,41 +1326,64 @@ function ResolutionAnnualMatrix({
           </div>
         </div>
 
-        {/* Barra de Resumen Conciliado y Prioridades P1-P5 */}
+        {/* Barra de Resumen Conciliado y Accesos a Reglas / Prioridades */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 pt-3 border-t border-white/10 text-xs">
-          <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-2">
+          <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-2.5 flex flex-col justify-center">
             <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Censo Real en BD</div>
-            <div className="text-base font-black text-white">
-              {Number(cronogramaSummary.totalPatients || 0).toLocaleString('es-CO')} <span className="text-[11px] font-medium text-slate-300">pacientes</span>
+            <div className="text-base font-black text-white mt-0.5">
+              {Number(cronogramaSummary.totalPatients || 0).toLocaleString('es-CO')}{' '}
+              <span className="text-[11px] font-medium text-slate-300">pacientes</span>
             </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold">Elegibles Res. 3280 ({activeYear})</div>
-            <div className="text-base font-black text-emerald-300">
-              {yearlyStats.totalEligible.toLocaleString('es-CO')} <span className="text-[11px] font-medium text-emerald-200/80">pac. = {yearlyStats.totalVoice.toLocaleString('es-CO')} llam.</span>
+
+          <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-2.5 flex flex-col justify-center">
+            <div className="text-[10px] uppercase tracking-wider text-emerald-300 font-bold">
+              Elegibles Res. 3280 ({activeYear})
+            </div>
+            <div className="text-base font-black text-emerald-300 mt-0.5">
+              {yearlyStats.totalEligible.toLocaleString('es-CO')}
             </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-purple-300 font-bold">Con Riesgo Clínico Real</div>
-            <div className="text-base font-black text-purple-200">
-              {Math.max(0, Number(cronogramaSummary.totalPatients || 0) - Number(cronogramaSummary.noRiskCount || 0)).toLocaleString('es-CO')}{' '}
-              <span className="text-[11px] font-medium text-slate-300">({Number(cronogramaSummary.noRiskCount || 0).toLocaleString('es-CO')} sin riesgo)</span>
+
+          <button
+            type="button"
+            data-testid="kpi-riesgo-real"
+            onClick={() => setActiveInfoPopup('riesgo')}
+            className="text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-purple-400/50 rounded-2xl px-3.5 py-2.5 transition-all cursor-pointer group flex flex-col justify-center"
+          >
+            <div className="text-[10px] uppercase tracking-wider text-purple-300 font-bold flex items-center justify-between gap-1">
+              <span>Con Riesgo Clínico Real</span>
+              <Info className="w-3.5 h-3.5 text-purple-300/70 group-hover:text-purple-200 shrink-0" />
             </div>
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-2">
-            <div className="text-[10px] uppercase tracking-wider text-amber-300 font-bold">Prioridad Cola Voz (≤500/d)</div>
-            <div className="text-[11px] font-bold text-slate-200 mt-0.5 truncate" title="P1 Materno -> P2 Cáncer -> P3 Ped. Riesgo/Inasist. -> P4 Crónicos -> P5 Preventiva 3280">
-              P1 Materno → P2 Cáncer → P3–P5
+            <div className="text-base font-black text-purple-200 mt-0.5">
+              {Math.max(0, Number(cronogramaSummary.totalPatients || 0) - Number(cronogramaSummary.noRiskCount || 0)).toLocaleString('es-CO')}
             </div>
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-2xl px-3.5 py-2 col-span-2 lg:col-span-1">
-            <div className="text-[10px] uppercase tracking-wider text-cyan-300 font-bold flex items-center gap-1">
-              <BellRing className="w-3 h-3" /> Inasistencias
+          </button>
+
+          <button
+            type="button"
+            data-testid="kpi-prioridad-cola"
+            onClick={() => setActiveInfoPopup('prioridad')}
+            className="text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-400/50 rounded-2xl px-3.5 py-2.5 transition-all cursor-pointer group flex items-center justify-between gap-2"
+          >
+            <div className="text-xs uppercase tracking-wider text-amber-300 font-black">
+              Prioridad Cola Voz
             </div>
-            <div className="text-[11px] font-bold text-cyan-100 mt-0.5 truncate" title={NOSHOW_POLICY.descripcion}>
-              +3d SMS → +2d SMS + E-Mail
+            <Info className="w-4 h-4 text-amber-300/70 group-hover:text-amber-200 shrink-0" />
+          </button>
+
+          <button
+            type="button"
+            data-testid="kpi-inasistencias"
+            onClick={() => setActiveInfoPopup('inasistencias')}
+            className="text-left bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-400/50 rounded-2xl px-3.5 py-2.5 transition-all cursor-pointer group col-span-2 lg:col-span-1 flex items-center justify-between gap-2"
+          >
+            <div className="text-xs uppercase tracking-wider text-cyan-300 font-black flex items-center gap-1.5">
+              <BellRing className="w-3.5 h-3.5 shrink-0" />
+              <span>Inasistencias</span>
             </div>
-          </div>
+            <Info className="w-4 h-4 text-cyan-300/70 group-hover:text-cyan-200 shrink-0" />
+          </button>
         </div>
       </div>
 
@@ -1542,13 +1587,10 @@ function ResolutionAnnualMatrix({
                   <>
                     <tr data-testid="divider-cursos-vida" className="bg-blue-600/10 dark:bg-blue-950/60 border-y-2 border-blue-300 dark:border-blue-800">
                       <td colSpan={13} className="py-2.5 px-4 text-center">
-                        <div className="inline-flex items-center justify-center gap-2.5">
+                        <div className="inline-flex items-center justify-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-blue-600 dark:bg-blue-400" />
                           <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-blue-900 dark:text-blue-200">
                             Cursos de Vida
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-600 text-white">
-                            7 Rutas (A – G) • Res. 3280
                           </span>
                         </div>
                       </td>
@@ -1581,16 +1623,10 @@ function ResolutionAnnualMatrix({
                   <>
                     <tr data-testid="divider-grupos-riesgo" className="bg-purple-600/10 dark:bg-purple-950/60 border-y-2 border-purple-300 dark:border-purple-800">
                       <td colSpan={13} className="py-2.5 px-4 text-center">
-                        <div className="inline-flex items-center justify-center gap-2.5 flex-wrap">
+                        <div className="inline-flex items-center justify-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-purple-600 dark:bg-purple-400" />
                           <span className="text-xs sm:text-sm font-black uppercase tracking-widest text-purple-900 dark:text-purple-200">
                             Grupos de Riesgo
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-600 text-white">
-                            11 Cohortes Clínicas Reales (Incluye Planificación Familiar, Vacunación PAI y Salud Oral)
-                          </span>
-                          <span className="text-[10px] font-medium text-purple-700 dark:text-purple-300">
-                            • Solo pacientes con riesgo real en BD (sin datos inventados)
                           </span>
                         </div>
                       </td>
@@ -2474,22 +2510,29 @@ function ResolutionAnnualMatrix({
                   </DialogDescription>
                 </div>
 
-                {/* Aforo exacto sobre 500 llamadas/día */}
-                <div className="bg-slate-800/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-right shrink-0">
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Aforo Diario IA (Tope {DAILY_CALL_CAPACITY})</div>
-                  <div className="text-sm font-black text-emerald-400">
-                    {dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0} / {DAILY_CALL_CAPACITY} llamadas IA
+                {/* Aforo exacto sobre 500 llamadas/día: SOLO visible en la fila global Ruta Res. 3280 */}
+                {!selectedRoadmapDay.specificItem && (
+                  <div
+                    data-testid="day-modal-aforo-box"
+                    className="bg-slate-800/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-right shrink-0"
+                  >
+                    <div className="text-[10px] uppercase font-bold text-slate-400">
+                      Aforo Diario IA (Tope {DAILY_CALL_CAPACITY})
+                    </div>
+                    <div className="text-sm font-black text-emerald-400">
+                      {dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0} / {DAILY_CALL_CAPACITY} llamadas IA
+                    </div>
+                    <div className="text-[10px] text-slate-300">
+                      Saldo disponible:{' '}
+                      <strong>
+                        {Math.max(0, DAILY_CALL_CAPACITY - (dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0))}
+                      </strong>
+                      {dayModalMeta.smsRespaldo > 0 && (
+                        <span className="text-amber-300 font-bold"> • +{dayModalMeta.smsRespaldo} SMS respaldo</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-slate-300">
-                    Saldo disponible:{' '}
-                    <strong>
-                      {Math.max(0, DAILY_CALL_CAPACITY - (dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0))}
-                    </strong>
-                    {dayModalMeta.smsRespaldo > 0 && (
-                      <span className="text-amber-300 font-bold"> • +{dayModalMeta.smsRespaldo} SMS respaldo</span>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Cuerpo del Día */}
@@ -2557,7 +2600,9 @@ function ResolutionAnnualMatrix({
                       Llamadas Normativas Resolución 3280 ({dayModalMeta.totalCount.toLocaleString('es-CO')})
                     </h4>
                     <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold">
-                      Horario: 08:00 AM a 06:00 PM (10h · {CALLS_PER_HOUR} llam/h · Tope {DAILY_CALL_CAPACITY}/día)
+                      {selectedRoadmapDay.specificItem
+                        ? `Corte específico: ${selectedRoadmapDay.specificItem.nombre}`
+                        : `Horario: 08:00 AM a 06:00 PM (10h · ${CALLS_PER_HOUR} llam/h · Tope ${DAILY_CALL_CAPACITY}/día)`}
                     </span>
                   </div>
 
@@ -2724,6 +2769,171 @@ function ResolutionAnnualMatrix({
                     Cerrar Expediente
                   </Button>
                 </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ========================================================================= */}
+      {/* POPUPS INFORMATIVOS DEL ENCABEZADO (RIESGO REAL / PRIORIDAD / INASIST.)   */}
+      {/* ========================================================================= */}
+      <Dialog open={Boolean(activeInfoPopup)} onOpenChange={(open) => !open && setActiveInfoPopup(null)}>
+        <DialogContent className="w-[94%] max-w-xl p-0 rounded-3xl overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+          {activeInfoPopup === 'prioridad' && (
+            <div data-testid="popup-prioridad-cola">
+              <div className="bg-gradient-to-r from-slate-900 via-amber-950/90 to-slate-900 p-5 text-white">
+                <DialogTitle className="text-lg font-black flex items-center gap-2">
+                  <Gauge className="w-5 h-5 text-amber-400" />
+                  Prioridad de Cola de Voz (P1 – P5) • {activeYear}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-300 mt-1">
+                  Orden en el que se asignan las llamadas diarias (tope {DAILY_CALL_CAPACITY}/día; excedente pasa a SMS respaldo) y pacientes elegibles por cada nivel.
+                </DialogDescription>
+              </div>
+              <div className="p-5 space-y-2.5 text-xs">
+                {[
+                  {
+                    id: 1,
+                    desc: 'Gestantes, puerperio y cohorte Materno-Perinatal (RIAMP). Máxima urgencia clínica.',
+                  },
+                  {
+                    id: 2,
+                    desc: 'Pacientes con detección temprana o seguimiento oncológico (cáncer).',
+                  },
+                  {
+                    id: 3,
+                    desc: 'Primera Infancia (0–5 años) con riesgo clínico registrado y seguimiento prioritario.',
+                  },
+                  {
+                    id: 4,
+                    desc: 'Grupos de Riesgo Crónicos y Priorizados (cardiovascular, respiratorio, salud mental, infecciosas, nutricional, huérfanas, planificación, PAI y salud oral).',
+                  },
+                  {
+                    id: 5,
+                    desc: 'Valoración preventiva general Res. 3280 según periodicidad por edad (población sin grupo de riesgo clínico).',
+                  },
+                ].map((item) => {
+                  const pm = getPriorityMeta(item.id);
+                  const cnt = Number(priorityYearlyTotals[item.id] || 0);
+                  const pct =
+                    yearlyStats.totalEligible > 0
+                      ? ((cnt / yearlyStats.totalEligible) * 100).toFixed(1)
+                      : '0.0';
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 flex items-start justify-between gap-3"
+                    >
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${pm.badgeClass}`}>
+                            {pm.code}
+                          </span>
+                          <span className="font-bold text-slate-900 dark:text-white">{pm.label}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                          {item.desc}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
+                          {cnt.toLocaleString('es-CO')}
+                        </div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                          pac. ({pct}%)
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-200">
+                  <span>Total elegibles {activeYear}</span>
+                  <span className="font-mono text-sm text-emerald-700 dark:text-emerald-400">
+                    {yearlyStats.totalEligible.toLocaleString('es-CO')} pacientes
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeInfoPopup === 'inasistencias' && (
+            <div data-testid="popup-inasistencias">
+              <div className="bg-gradient-to-r from-slate-900 via-cyan-950/90 to-slate-900 p-5 text-white">
+                <DialogTitle className="text-lg font-black flex items-center gap-2">
+                  <BellRing className="w-5 h-5 text-cyan-400" />
+                  Reglas de Seguimiento por Inasistencia
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-300 mt-1">
+                  Protocolo automático que ejecuta SADI cuando un paciente falta a su cita programada.
+                </DialogDescription>
+              </div>
+              <div className="p-5 space-y-3 text-xs">
+                <div className="p-3.5 rounded-2xl border border-cyan-200 dark:border-cyan-800/60 bg-cyan-50/70 dark:bg-cyan-950/35 space-y-1">
+                  <div className="font-black text-cyan-950 dark:text-cyan-200 flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-cyan-600 text-white">Paso 1 · Día +3</span>
+                    <span>Primer SMS de recordatorio</span>
+                  </div>
+                  <p className="text-cyan-900 dark:text-cyan-300/90 leading-relaxed">
+                    Si un paciente falta a su cita, a los <strong>{NOSHOW_POLICY.sms1DelayDays} días</strong> después de la fecha originalmente programada se le envía automáticamente un <strong>SMS</strong> para invitarlo a reagendar.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/70 dark:bg-indigo-950/35 space-y-1">
+                  <div className="font-black text-indigo-950 dark:text-indigo-200 flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-600 text-white">Paso 2 · +2 días (Día +5)</span>
+                    <span>Insistencia con SMS + E-Mail</span>
+                  </div>
+                  <p className="text-indigo-900 dark:text-indigo-300/90 leading-relaxed">
+                    Si el paciente <strong>no responde</strong> al primer SMS, SADI insiste automáticamente <strong>{NOSHOW_POLICY.insistenciaDelayAfterSms1Days} días después</strong> (día +{NOSHOW_POLICY.totalInsistenciaDelayDays} desde la cita original) enviando un <strong>segundo SMS y un correo electrónico (E-Mail)</strong>.
+                  </p>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed pt-1">
+                  Cuando el paciente responde o reagenda en cualquiera de las etapas, el seguimiento se cierra automáticamente y no se envían insistencias adicionales.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeInfoPopup === 'riesgo' && (
+            <div data-testid="popup-riesgo-real">
+              <div className="bg-gradient-to-r from-slate-900 via-purple-950/90 to-slate-900 p-5 text-white">
+                <DialogTitle className="text-lg font-black flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-purple-400" />
+                  Pacientes con Riesgo Clínico Real
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-300 mt-1">
+                  Clasificación estricta basada únicamente en la información clínica real registrada en Supabase.
+                </DialogDescription>
+              </div>
+              <div className="p-5 space-y-3.5 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3.5 rounded-2xl border border-purple-200 dark:border-purple-800/60 bg-purple-50/70 dark:bg-purple-950/35">
+                    <div className="text-[10px] font-bold uppercase text-purple-700 dark:text-purple-300">
+                      Con Riesgo Clínico
+                    </div>
+                    <div className="text-xl font-black text-purple-900 dark:text-purple-100 mt-0.5 font-mono">
+                      {Math.max(0, Number(cronogramaSummary.totalPatients || 0) - Number(cronogramaSummary.noRiskCount || 0)).toLocaleString('es-CO')}
+                    </div>
+                  </div>
+                  <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+                    <div className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
+                      Sin Grupo de Riesgo
+                    </div>
+                    <div className="text-xl font-black text-slate-800 dark:text-slate-100 mt-0.5 font-mono">
+                      {Number(cronogramaSummary.noRiskCount || 0).toLocaleString('es-CO')}
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                  Corresponde a las personas del censo que tienen <strong>al menos un Grupo de Riesgo clínico comprobado</strong> en la base de datos (como materno-perinatal, riesgo cardiovascular, cáncer, enfermedades respiratorias crónicas, salud mental, infecciosas, nutricionales o huérfanas).
+                </p>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Los demás pacientes no tienen ningún grupo de riesgo inventado ni asignado por defecto; continúan su atención únicamente por la ruta preventiva normal de su Curso de Vida (Res. 3280).
+                </p>
               </div>
             </div>
           )}
