@@ -70,6 +70,11 @@ import {
 
 // Hora fija oficial de lanzamiento para todas las campañas programadas por el personal
 const CAMPAIGN_LAUNCH_TIME = '08:30 AM';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const safeHospitalUuid = (userObj) => {
+  const raw = String(userObj?.hospitalId || userObj?.hospital_id || '').trim();
+  return UUID_REGEX.test(raw) ? raw : null;
+};
 
 function ResolutionAnnualMatrix({
   selectedYear = 2026,
@@ -206,7 +211,7 @@ function ResolutionAnnualMatrix({
     async function loadInitialData() {
       setLoadingPatients(true);
       try {
-        const hospId = user?.hospitalId || user?.hospital_id || null;
+        const hospId = safeHospitalUuid(user);
         const [sumRes, geoOpts] = await Promise.all([
           supabase.rpc('get_cronograma_res3280_summary', {
             p_hospital_id: hospId,
@@ -292,7 +297,7 @@ function ResolutionAnnualMatrix({
     async function loadCohort() {
       setLoadingCohort(true);
       try {
-        const hospId = user?.hospitalId || user?.hospital_id || null;
+        const hospId = safeHospitalUuid(user);
         const { data, error } = await supabase.rpc('get_cronograma_cohort_paginated', {
           p_hospital_id: hospId,
           p_type: selectedContext.type,
@@ -365,7 +370,7 @@ function ResolutionAnnualMatrix({
     async function loadDayPatients() {
       setLoadingDayModal(true);
       try {
-        const hospId = user?.hospitalId || user?.hospital_id || null;
+        const hospId = safeHospitalUuid(user);
         const filterType =
           selectedRoadmapDay.specificType === 'curso_vida'
             ? 'curso_vida'

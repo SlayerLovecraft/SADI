@@ -12,6 +12,7 @@
 // ==============================================================================
 
 import { supabase } from '@/lib/supabase';
+import { runWithSupabaseAuthRecovery } from '@/lib/utils';
 import {
   classifyPatientCursoVidaKey,
   CURSO_KEY_TO_CODE,
@@ -53,7 +54,14 @@ export const MAX_PATIENTS_PER_BATCH = 25; // 20 tandas × 25 llamadas = 500 llam
 
 const STORAGE_KEY_SCHEDULE = 'sadi_ivr_daily_schedule';
 const STORAGE_KEY_CONFIG = 'sadi_ivr_config';
-const SCHEDULE_SCHEMA_VERSION = 'res3280_prio_v3';
+const SCHEDULE_SCHEMA_VERSION = 'res3280_prio_v4';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const sanitizeHospitalUuid = (rawId) => {
+  const s = String(rawId || '').trim();
+  if (!s || s === 'hosp-001' || !UUID_REGEX.test(s)) return null;
+  return s;
+};
 
 /**
  * Calcula la siguiente tanda disponible a partir de una hora dada.
@@ -295,11 +303,14 @@ export const ivrScheduleService = {
         const cached = localStorage.getItem(STORAGE_KEY_SCHEDULE);
         if (cached) {
           const parsed = JSON.parse(cached);
+          // NUNCA devolver caché vacía (0 pacientes) para evitar cache poisoning ante fallos transitorios o JWT expirado
           if (
             parsed.schemaVersion === SCHEDULE_SCHEMA_VERSION &&
             parsed.fecha === opDateISO &&
             parsed.dailyCap === DAILY_CALL_CAPACITY &&
             Array.isArray(parsed.items) &&
+            parsed.items.length > 0 &&
+            Number(parsed.totalUniversoBD || 0) > 0 &&
             Array.isArray(parsed.alternateChannelItems)
           ) {
             return parsed;
@@ -310,7 +321,7 @@ export const ivrScheduleService = {
       }
     }
 
-    const targetHospId = hospitalId || null;
+    let targetHospId = sanitizeHospitalUuid(hospitalId);
     let totalUniversoBD = 0;
     let allDayRows = [];
     let dayTotalAll = 0;
@@ -318,36 +329,54 @@ export const ivrScheduleService = {
     let smsRespaldoCount = 0;
     let priorityCounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
-    try {
-      // 1. Obtener censo real total + página 1 priorizada del día en paralelo
+    const fetchDayFromPostgres = async (hospUuid) => {
       const [demoRes, firstPageRes] = await Promise.all([
-        supabase
-          .rpc('get_dashboard_patient_demography', { p_hospital_id: targetHospId })
-          .then((r) => r)
-          .catch(() => ({ data: null })),
-        supabase.rpc('get_cronograma_day_patients_paginated', {
-          p_hospital_id: targetHospId,
-          p_date: opDateISO,
-          p_filter_type: 'all',
-          p_item_key: null,
-          p_doctor_cursos: null,
-          p_search: null,
-          p_page: 1,
-          p_page_size: 200,
-        }),
+        runWithSupabaseAuthRecovery(
+          supabase,
+          () => supabase.rpc('get_dashboard_patient_demography', { p_hospital_id: hospUuid }),
+          20000,
+          'Timeout consultando censo BD'
+        ).catch((err) => ({ data: null, error: err })),
+        runWithSupabaseAuthRecovery(
+          supabase,
+          () =>
+            supabase.rpc('get_cronograma_day_patients_paginated', {
+              p_hospital_id: hospUuid,
+              p_date: opDateISO,
+              p_filter_type: 'all',
+              p_item_key: null,
+              p_doctor_cursos: null,
+              p_search: null,
+              p_page: 1,
+              p_page_size: 200,
+            }),
+          25000,
+          'Timeout consultando cola diaria Res. 3280'
+        ),
       ]);
 
+      let universo = 0;
       if (Array.isArray(demoRes?.data) && demoRes.data[0]?.total_patients) {
-        totalUniversoBD = Number(demoRes.data[0].total_patients);
+        universo = Number(demoRes.data[0].total_patients);
       }
 
       const d1 = firstPageRes?.data;
+      if (firstPageRes?.error) {
+        console.warn('Error RPC get_cronograma_day_patients_paginated:', firstPageRes.error);
+      }
+
+      let rows = [];
+      let totalDay = 0;
+      let llamIa = 0;
+      let smsResp = 0;
+      let prioMap = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
       if (!firstPageRes?.error && d1) {
-        dayTotalAll = Number(d1.day_total_all || d1.total_count || 0);
-        llamadasIaCount = Number(d1.llamadas_ia || Math.min(dayTotalAll, DAILY_CALL_CAPACITY));
-        smsRespaldoCount = Number(d1.sms_respaldo || Math.max(0, dayTotalAll - DAILY_CALL_CAPACITY));
+        totalDay = Number(d1.day_total_all || d1.total_count || 0);
+        llamIa = Number(d1.llamadas_ia || Math.min(totalDay, DAILY_CALL_CAPACITY));
+        smsResp = Number(d1.sms_respaldo || Math.max(0, totalDay - DAILY_CALL_CAPACITY));
         if (d1.priority_counts) {
-          priorityCounts = {
+          prioMap = {
             1: Number(d1.priority_counts['1'] || 0),
             2: Number(d1.priority_counts['2'] || 0),
             3: Number(d1.priority_counts['3'] || 0),
@@ -355,34 +384,66 @@ export const ivrScheduleService = {
             5: Number(d1.priority_counts['5'] || 0),
           };
         }
-        allDayRows = Array.isArray(d1.rows) ? [...d1.rows] : [];
+        rows = Array.isArray(d1.rows) ? [...d1.rows] : [];
 
-        // Descargar páginas restantes del día (máx 4 páginas = 800 pacientes para cubrir cupo + desborde)
-        const totalPages = Math.min(4, Math.ceil(dayTotalAll / 200));
+        const totalPages = Math.min(4, Math.ceil(totalDay / 200));
         if (totalPages > 1) {
           const restPromises = [];
           for (let pg = 2; pg <= totalPages; pg++) {
             restPromises.push(
-              supabase.rpc('get_cronograma_day_patients_paginated', {
-                p_hospital_id: targetHospId,
-                p_date: opDateISO,
-                p_filter_type: 'all',
-                p_item_key: null,
-                p_doctor_cursos: null,
-                p_search: null,
-                p_page: pg,
-                p_page_size: 200,
-              })
+              runWithSupabaseAuthRecovery(
+                supabase,
+                () =>
+                  supabase.rpc('get_cronograma_day_patients_paginated', {
+                    p_hospital_id: hospUuid,
+                    p_date: opDateISO,
+                    p_filter_type: 'all',
+                    p_item_key: null,
+                    p_doctor_cursos: null,
+                    p_search: null,
+                    p_page: pg,
+                    p_page_size: 200,
+                  }),
+                25000,
+                `Timeout página ${pg} cola diaria`
+              )
             );
           }
           const restResults = await Promise.all(restPromises);
           restResults.forEach((r) => {
             if (!r?.error && Array.isArray(r?.data?.rows)) {
-              allDayRows.push(...r.data.rows);
+              rows.push(...r.data.rows);
             }
           });
         }
       }
+
+      return { universo, rows, totalDay, llamIa, smsResp, prioMap };
+    };
+
+    try {
+      let fetched = await fetchDayFromPostgres(targetHospId);
+      // Si el hospital_id de sesión vino sin pacientes (ej. alias de hospital de prueba) o falló el primer intento, reintentar con censo global (NULL)
+      if (fetched.rows.length === 0 && targetHospId !== null) {
+        const globalRetry = await fetchDayFromPostgres(null);
+        if (globalRetry.rows.length > 0) {
+          fetched = globalRetry;
+          targetHospId = null;
+        }
+      } else if (fetched.rows.length === 0) {
+        // Reintento limpio por si hubo fallo transitorio de red/JWT en arranque
+        const cleanRetry = await fetchDayFromPostgres(null);
+        if (cleanRetry.rows.length > 0) {
+          fetched = cleanRetry;
+        }
+      }
+
+      totalUniversoBD = fetched.universo;
+      allDayRows = fetched.rows;
+      dayTotalAll = fetched.totalDay;
+      llamadasIaCount = fetched.llamIa;
+      smsRespaldoCount = fetched.smsResp;
+      priorityCounts = fetched.prioMap;
     } catch (e) {
       console.error('Error cargando cohorte diaria priorizada Res. 3280:', e);
     }
@@ -530,10 +591,17 @@ export const ivrScheduleService = {
       updatedAt: new Date().toISOString(),
     };
 
-    try {
-      localStorage.setItem(STORAGE_KEY_SCHEDULE, JSON.stringify(scheduleData));
-    } catch (e) {
-      console.warn('No se pudo cachear agenda diaria en localStorage:', e);
+    // Solo cachear en localStorage cuando hay datos reales válidos (evita envenenamiento de caché con 0 pacientes)
+    if (scheduleItems.length > 0 && totalUniversoBD > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY_SCHEDULE, JSON.stringify(scheduleData));
+      } catch (e) {
+        console.warn('No se pudo cachear agenda diaria en localStorage:', e);
+      }
+    } else {
+      try {
+        localStorage.removeItem(STORAGE_KEY_SCHEDULE);
+      } catch {}
     }
     return scheduleData;
   },

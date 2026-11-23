@@ -89,7 +89,6 @@ export default function IvrSchedulePage() {
   const [filterStatus, setFilterStatus] = useState('todos');
   const [config, setConfig] = useState(() => ivrScheduleService.getConfig());
   const [nowTick, setNowTick] = useState(() => new Date());
-  const [customStartSlotId, setCustomStartSlotId] = useState(null);
 
   // Filtros de la pestaña SMS y E-Mail (R1 / R2)
   const [altFilterMode, setAltFilterMode] = useState('todos'); // 'todos' | 'desborde' | 'p5' | 'p4' | 'con_email'
@@ -149,6 +148,15 @@ export default function IvrSchedulePage() {
     };
   }, []);
 
+  // Auto-recuperación si el usuario entra a Tandas o SMS/E-Mail y la cola aún no se había cargado (o vino vacía)
+  useEffect(() => {
+    if ((activeTab === 'tandas' || activeTab === 'sms_email_r1_r2') && !loadingDaily) {
+      if (!scheduleData || !Array.isArray(scheduleData.items) || scheduleData.items.length === 0) {
+        loadDailySchedule(true);
+      }
+    }
+  }, [activeTab, user?.id, user?.hospitalId]);
+
   const loadRoadmapData = async (year = selectedYear, month = selectedMonth) => {
     setLoadingRoadmap(true);
     try {
@@ -192,9 +200,10 @@ export default function IvrSchedulePage() {
   }, []);
 
   const nextSlotInfo = useMemo(() => getNextTandaSlotForTime(nowTick), [nowTick]);
+  // El inicio es siempre inamovible: automáticamente la siguiente tanda hábil
   const selectedStartSlotId = config.resolutionActive
     ? config.resolutionStartSlotId || nextSlotInfo.slot.id
-    : customStartSlotId || nextSlotInfo.slot.id;
+    : nextSlotInfo.slot.id;
   const selectedStartSlot =
     IVR_TIME_SLOTS.find((s) => s.id === selectedStartSlotId) || nextSlotInfo.slot;
 
@@ -349,14 +358,13 @@ export default function IvrSchedulePage() {
         description: 'Se ha detenido la ejecución automática de tandas hasta que vuelva a activarse.',
       });
     } else {
-      const startId = customStartSlotId || getNextTandaSlotForTime(new Date()).slot.id;
-      const startObj = IVR_TIME_SLOTS.find((s) => s.id === startId) || IVR_TIME_SLOTS[0];
-      const updated = ivrScheduleService.activateResolution(startId, hospId);
+      const startObj = getNextTandaSlotForTime(new Date()).slot;
+      const updated = ivrScheduleService.activateResolution(startObj.id, hospId);
       setConfig(updated);
       setSelectedSlotId(startObj.id);
       toast({
         title: 'Resolución 3280 ACTIVADA',
-        description: `Iniciará automáticamente desde la tanda de las ${startObj.hora} en orden P1 → P5 y seguirá hasta que se apague.`,
+        description: `Iniciará automáticamente desde la siguiente tanda (${startObj.hora}) en orden P1 → P5 y seguirá hasta que se apague.`,
       });
     }
   };
@@ -798,26 +806,19 @@ export default function IvrSchedulePage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 shrink-0">
-                  {!config.resolutionActive && (
-                    <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl px-3 py-1.5">
-                      <label htmlFor="res-start-slot" className="text-[11px] font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                        Arrancar en:
-                      </label>
-                      <select
-                        id="res-start-slot"
-                        data-testid="resolution-start-slot-select"
-                        value={selectedStartSlotId}
-                        onChange={(e) => setCustomStartSlotId(e.target.value)}
-                        className="text-xs font-bold bg-transparent text-slate-900 dark:text-white focus:outline-none cursor-pointer"
-                      >
-                        {IVR_TIME_SLOTS.map((s) => (
-                          <option key={s.id} value={s.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
-                            {s.hora}{s.id === nextSlotInfo.slot.id ? ' (Siguiente)' : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  <div
+                    data-testid="resolution-fixed-start-indicator"
+                    className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-2xl px-3.5 py-2 select-none"
+                    title="El inicio siempre se fija automáticamente en la siguiente tanda disponible"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                      Inicio automático:
+                    </span>
+                    <span className="text-xs font-black text-slate-900 dark:text-white whitespace-nowrap">
+                      {selectedStartSlot.hora} (Siguiente)
+                    </span>
+                  </div>
 
                   <Button
                     type="button"

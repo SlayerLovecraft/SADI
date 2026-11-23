@@ -1,9 +1,24 @@
 import { supabase } from '@/lib/supabase';
+import { runWithSupabaseAuthRecovery } from '@/lib/utils';
 import { roadmapService } from '@/services/roadmapService';
 import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from '@/services/rias3280Catalog';
 import { IVR_TIME_SLOTS } from '@/services/ivrScheduleService';
 
 const DEFAULT_HOSPITAL_ID = 'hosp-001';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveSafeHospitalUuid(hospitalId) {
+  const direct = String(hospitalId || '').trim();
+  if (UUID_REGEX.test(direct)) return direct;
+  if (direct && direct !== 'hosp-001') return null;
+  try {
+    const stored = JSON.parse(localStorage.getItem('sadi_user') || '{}');
+    const candidate = String(stored?.hospitalId || stored?.hospital_id || '').trim();
+    return UUID_REGEX.test(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
+}
 
 export const GRUPOS_RIESGO_3280 = [
   { id: 'materno_perinatal', numId: 1, label: '1. Población Materno-Perinatal', desc: 'Mujeres gestantes, parto, puerperio y recién nacidos (Prioridad P1).' },
@@ -25,18 +40,13 @@ export const demanda3280Service = {
    */
   async getFilterOptions(hospitalId = null, cursos = null) {
     try {
-      const targetHospId = hospitalId || (() => {
-        try {
-          const stored = JSON.parse(localStorage.getItem('sadi_user') || '{}');
-          return stored?.hospitalId || stored?.hospital_id || null;
-        } catch {
-          return null;
-        }
-      })();
-      const { data, error } = await supabase.rpc('get_demanda_filter_options', {
-        p_hospital_id: targetHospId,
-        p_cursos: Array.isArray(cursos) ? cursos : null,
-      });
+      const targetHospId = resolveSafeHospitalUuid(hospitalId);
+      const { data, error } = await runWithSupabaseAuthRecovery(supabase, () =>
+        supabase.rpc('get_demanda_filter_options', {
+          p_hospital_id: targetHospId,
+          p_cursos: Array.isArray(cursos) ? cursos : null,
+        })
+      );
       if (error || !data) throw error || new Error('Sin respuesta de opciones Demanda 3280');
       return {
         totalCohort: Number(data.total_cohort || 0),
@@ -92,29 +102,24 @@ export const demanda3280Service = {
     pageSize = 25,
   } = {}) {
     try {
-      const targetHospId = hospitalId || (() => {
-        try {
-          const stored = JSON.parse(localStorage.getItem('sadi_user') || '{}');
-          return stored?.hospitalId || stored?.hospital_id || null;
-        } catch {
-          return null;
-        }
-      })();
-      const { data, error } = await supabase.rpc('get_demanda_monthly_page', {
-        p_hospital_id: targetHospId,
-        p_cursos: Array.isArray(cursos) ? cursos : null,
-        p_zona: zona || 'todas',
-        p_comuna: comuna || 'todas',
-        p_barrio: barrio || 'todos',
-        p_centro_poblado: centroPoblado || 'todos',
-        p_corregimiento: corregimiento || 'todos',
-        p_vereda: vereda || 'todos',
-        p_grupo_riesgo: grupoRiesgo || 'todos',
-        p_tipo_usuario: tipoUsuario || 'todos',
-        p_search: search?.trim() || null,
-        p_page: Math.max(1, Number(page) || 1),
-        p_page_size: Math.max(1, Math.min(500, Number(pageSize) || 25)),
-      });
+      const targetHospId = resolveSafeHospitalUuid(hospitalId);
+      const { data, error } = await runWithSupabaseAuthRecovery(supabase, () =>
+        supabase.rpc('get_demanda_monthly_page', {
+          p_hospital_id: targetHospId,
+          p_cursos: Array.isArray(cursos) ? cursos : null,
+          p_zona: zona || 'todas',
+          p_comuna: comuna || 'todas',
+          p_barrio: barrio || 'todos',
+          p_centro_poblado: centroPoblado || 'todos',
+          p_corregimiento: corregimiento || 'todos',
+          p_vereda: vereda || 'todos',
+          p_grupo_riesgo: grupoRiesgo || 'todos',
+          p_tipo_usuario: tipoUsuario || 'todos',
+          p_search: search?.trim() || null,
+          p_page: Math.max(1, Number(page) || 1),
+          p_page_size: Math.max(1, Math.min(500, Number(pageSize) || 25)),
+        })
+      );
       if (error || !data) throw error || new Error('Sin respuesta paginada Demanda 3280');
 
       const daysInMonth = new Date(year, month, 0).getDate();
@@ -209,16 +214,18 @@ export const demanda3280Service = {
    */
   async getEnrichedPatients(hospitalId = DEFAULT_HOSPITAL_ID) {
     try {
-      const targetHospId = hospitalId === 'hosp-001' ? 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8' : hospitalId;
+      const targetHospId = resolveSafeHospitalUuid(hospitalId);
       let cursor = null;
       let hasMore = true;
       const list = [];
       while (hasMore) {
-        const { data: batchRes, error } = await supabase.rpc('get_patients_compact_batch', {
-          p_hospital_id: targetHospId || null,
-          p_last_id: cursor,
-          p_batch_size: 5000,
-        });
+        const { data: batchRes, error } = await runWithSupabaseAuthRecovery(supabase, () =>
+          supabase.rpc('get_patients_compact_batch', {
+            p_hospital_id: targetHospId || null,
+            p_last_id: cursor,
+            p_batch_size: 5000,
+          })
+        );
         if (error || !batchRes) break;
         const rows = Array.isArray(batchRes.rows) ? batchRes.rows : [];
         for (let i = 0; i < rows.length; i++) list.push(rows[i]);
