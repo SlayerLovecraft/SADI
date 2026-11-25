@@ -556,7 +556,11 @@ const CampaignsPage = () => {
         motivoLlamada: item.campana || 'Demanda Inducida Res. 3280',
         accion3280: item.accion3280 || 'Control Preventivo de Salud',
         hitoClinico: item.accion3280 || 'Jornada Preventiva',
-        cursoVida: item.cursoVida,
+        cursoVida: item.cursoVida || item.curso_vida,
+        curso_vida: item.curso_vida || item.cursoVida,
+        cursoVidaId: item.cursoVidaId || item.curso_vida_key,
+        birthdate: item.birthdate || item.fecha_nacimiento || null,
+        edad: item.edad ?? null,
         direccion: item.direccion || 'Santiago de Cali',
         antiVoicemailConfig: config
       });
@@ -730,7 +734,7 @@ const CampaignsPage = () => {
               }`}
           >
             <UserX className="w-4 h-4" />
-            Inasistentes (+3d SMS → +2d SMS+Mail)
+            Inasistentes
           </button>
 
           {/* PASO 5: PARÁMETROS DE AUTOMATIZACIÓN */}

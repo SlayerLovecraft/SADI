@@ -318,7 +318,11 @@ export default function IvrSchedulePage() {
         cedula: item.documento,
         programa3280: item.programa3280 || item.programaPrincipal,
         hitoClinico: item.accion3280,
-        cursoVida: item.cursoVida,
+        cursoVida: item.cursoVida || item.curso_vida,
+        curso_vida: item.curso_vida || item.cursoVida,
+        cursoVidaId: item.cursoVidaId || item.curso_vida_key,
+        birthdate: item.birthdate || item.fecha_nacimiento || null,
+        edad: item.edad ?? null,
         direccion: item.direccion || 'Santiago de Cali'
       }, config);
       if (res.ok) {
@@ -715,7 +719,7 @@ export default function IvrSchedulePage() {
             }`}
           >
             <UserX className="w-4 h-4" />
-            Inasistentes (+3d SMS → +2d SMS+Mail)
+            Inasistentes
           </button>
 
           <button
@@ -1095,7 +1099,7 @@ export default function IvrSchedulePage() {
                               {patient.script && (
                                 <div className="text-[10px] text-gray-600 dark:text-slate-300 mt-1 italic bg-blue-50/70 dark:bg-blue-950/40 p-1.5 rounded-lg border border-blue-100 dark:border-blue-800/50 max-w-md">
                                   <span className="font-bold text-blue-900 dark:text-blue-200 block not-italic">Motivo: {patient.script.motivo}</span>
-                                  "{patient.script.mensaje}"
+                                  "{patient.script.saludo ? `${patient.script.saludo} ` : ''}{patient.script.mensaje}"
                                 </div>
                               )}
                             </td>

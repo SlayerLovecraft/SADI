@@ -1244,7 +1244,7 @@ function ResolutionAnnualMatrix({
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-200 border border-blue-400/30">
-                Resolución 3280 de 2018 • Santiago de Cali (DIVIPOLA 76001)
+                Resolución 3280 de 2018 • Santiago de Cali
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5">
                 <Gauge className="w-3.5 h-3.5 text-emerald-400" />
@@ -1281,7 +1281,7 @@ function ResolutionAnnualMatrix({
                     : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
                 }`}
               >
-                2026 (Actual)
+                2026
               </button>
               <button
                 type="button"
@@ -1301,8 +1301,8 @@ function ResolutionAnnualMatrix({
             <div className="bg-slate-800/80 p-1 rounded-2xl border border-slate-700 flex items-center text-xs font-bold">
               {[
                 { id: 'ambos', label: 'Almanaque Unificado' },
-                { id: 'cursos_vida', label: 'Cursos de Vida (7)' },
-                { id: 'grupos_riesgo', label: 'Grupos de Riesgo (11)' },
+                { id: 'cursos_vida', label: 'Cursos de Vida' },
+                { id: 'grupos_riesgo', label: 'Grupos de Riesgo' },
               ].map((t) => (
                 <button
                   key={t.id}
@@ -1847,13 +1847,13 @@ function ResolutionAnnualMatrix({
                     <div className="bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 rounded-2xl p-4 text-xs text-purple-950 dark:text-purple-100">
                       <strong>
                         {selectedContext?.type === 'curso_vida'
-                          ? 'Paso 2: Cruce opcional con Grupos de Riesgo Priorizados (11 reales)'
-                          : 'Paso 2: Cruce opcional con Cursos de Vida (7 rutas A–G)'}
+                          ? 'Paso 2: Cruce opcional con Grupos de Riesgo'
+                          : 'Paso 2: Cruce opcional con Cursos de Vida'}
                       </strong>
                       <p className="mt-0.5 text-purple-800 dark:text-purple-200">
                         {selectedContext?.type === 'curso_vida'
                           ? `Selecciona uno o varios Grupos de Riesgo para cruzar sobre "${selectedContext.item.nombre}", o déjalo sin marcar para incluir toda la cohorte.`
-                          : `Selecciona uno o varios Cursos de Vida (A–G) para focalizar "${selectedContext.item.nombre}", o déjalo sin marcar para incluir todos.`}
+                          : `Selecciona uno o varios Cursos de Vida para focalizar "${selectedContext.item.nombre}", o déjalo sin marcar para incluir todos.`}
                       </p>
                     </div>
 
@@ -2062,7 +2062,7 @@ function ResolutionAnnualMatrix({
                       <div className="flex items-start gap-2.5">
                         <MapPin className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                         <div>
-                          <strong className="text-sm">Paso 4: Filtro de Ubicación — Santiago de Cali (DIVIPOLA 76001)</strong>
+                          <strong className="text-sm">Paso 4: Filtro de Ubicación — Santiago de Cali</strong>
                           <p className="mt-0.5 text-emerald-800 dark:text-emerald-200/90">
                             Selecciona el nivel territorial (<strong>Rural</strong> o <strong>Urbano</strong>) para desplegar dinámicamente corregimientos/veredas/centros poblados o comunas/barrios de Cali.
                           </p>

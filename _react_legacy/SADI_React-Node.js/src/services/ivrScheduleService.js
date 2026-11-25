@@ -17,6 +17,8 @@ import {
   classifyPatientCursoVidaKey,
   CURSO_KEY_TO_CODE,
   CURSO_VIDA_CONFIG,
+  isMinorCursoVidaABC,
+  buildMinorAcudienteOpening,
 } from './cursoVidaConfig';
 import { DEFAULT_ANTI_VOICEMAIL_CONFIG } from './antiVoicemailConfig';
 import {
@@ -54,7 +56,7 @@ export const MAX_PATIENTS_PER_BATCH = 25; // 20 tandas × 25 llamadas = 500 llam
 
 const STORAGE_KEY_SCHEDULE = 'sadi_ivr_daily_schedule';
 const STORAGE_KEY_CONFIG = 'sadi_ivr_config';
-const SCHEDULE_SCHEMA_VERSION = 'res3280_prio_v4';
+const SCHEDULE_SCHEMA_VERSION = 'res3280_prio_v5';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const sanitizeHospitalUuid = (rawId) => {
@@ -103,27 +105,28 @@ export function resolveOperationalDateISO(baseDate = new Date()) {
  * Genera el guion personalizado para el agente de llamadas de la Resolución 3280.
  */
 export const generateCallScript3280 = (patient) => {
-  const cVida = (patient.cursoVida || '').toLowerCase();
-  const firstName = (patient.nombre || patient.name || 'Paciente').split(' ')[0];
+  const cVida = (patient.cursoVida || patient.curso_vida || '').toLowerCase();
+  const fullName = String(patient.nombre || patient.name || 'Paciente').trim() || 'Paciente';
+  const firstName = fullName.split(' ')[0];
   const hito = patient.accion3280 || patient.programa3280 || 'valoración integral de salud';
   const hospital = 'EPS SADI Salud';
 
-  if (cVida.includes('primera') || cVida.includes('infancia')) {
+  // Regla obligatoria Cursos de Vida A (Primera Infancia), B (Infancia) y C (Adolescencia):
+  // SIEMPRE comenzar con: "Hola! <tiempo>, me comunico con la persona o acudiente responsable de <nombre_paciente>."
+  if (isMinorCursoVidaABC(patient)) {
+    const saludoAcudiente = buildMinorAcudienteOpening(fullName);
+    const isAdolescencia = cVida.includes('adolesc') || String(patient.cursoVidaId || '').toUpperCase() === 'C' || patient.curso_vida_key === 'adolescencia';
+    const motivo = isAdolescencia
+      ? 'Atención Integral del Adolescente y Salud Visual'
+      : 'Control de Crecimiento, Desarrollo y Vacunación PAI';
+    const mensaje = `Le hablamos de ${hospital}. Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), a ${fullName} le corresponde su cita de: ${hito}.`;
+    const instruccion = 'Para confirmar su asistencia a la cita programada presione 1. Para reagendar una nueva fecha presione 2.';
     return {
-      motivo: 'Control de Crecimiento, Desarrollo y Vacunación PAI',
-      saludo: `Hola, le hablamos de ${hospital}. Nos comunicamos con el acudiente de ${firstName}.`,
-      mensaje: `Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), le corresponde su cita de: ${hito}.`,
-      instruccion: 'Para confirmar su asistencia a la cita programada presione 1. Para reagendar una nueva fecha presione 2.',
-      textoCompleto: `Hola, le hablamos de ${hospital}. Nos comunicamos con el acudiente de ${firstName}. Le recordamos que según la Ruta de Promoción y Mantenimiento de la Salud (Resolución 3280), le corresponde su cita de: ${hito}. Para confirmar su asistencia presione 1, para reagendar presione 2.`,
-    };
-  }
-  if (cVida.includes('adolescencia')) {
-    return {
-      motivo: 'Atención Integral del Adolescente y Salud Visual',
-      saludo: `Hola ${firstName}, te saludamos de ${hospital}.`,
-      mensaje: `Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}.`,
-      instruccion: 'Para confirmar tu asistencia presiona 1. Para reagendar presiona 2.',
-      textoCompleto: `Hola ${firstName}, te saludamos de ${hospital}. Te contactamos para coordinar tu cita de valoración integral de la adolescencia: ${hito}. Para confirmar tu asistencia presiona 1, para reagendar presiona 2.`,
+      motivo,
+      saludo: saludoAcudiente,
+      mensaje,
+      instruccion,
+      textoCompleto: `${saludoAcudiente} ${mensaje} ${instruccion}`,
     };
   }
   if (cVida.includes('juventud')) {
@@ -466,6 +469,11 @@ export const ivrScheduleService = {
         const callScript = generateCallScript3280({
           nombre: p.name || p.nombre,
           cursoVida: resolvedCursoLabel,
+          curso_vida: p.curso_vida || cursoKey,
+          curso_vida_key: cursoKey,
+          cursoVidaId: cursoCode,
+          birthdate: p.birthdate || null,
+          edad: p.edad ?? null,
           accion3280,
           programa3280: accion3280,
         });

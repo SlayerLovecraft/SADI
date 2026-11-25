@@ -267,9 +267,13 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
     try {
       await vapiIntegrationService.triggerLiveCall(item.telefono, {
+        patientId: item.pacienteId || null,
         nombre: item.pacienteNombre,
         cedula: item.pacienteDoc,
         programa: item.protocoloNombre,
+        cursoVida: item.cursoVida || item.curso_vida,
+        curso_vida: item.curso_vida || item.cursoVida,
+        birthdate: item.birthdate || item.fechaNacimiento || null,
         direccion: item.barrio ? `${item.barrio}, ${item.zona}` : 'Santiago de Cali, Valle del Cauca'
       });
 

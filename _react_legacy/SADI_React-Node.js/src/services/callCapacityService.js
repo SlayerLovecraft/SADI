@@ -15,7 +15,13 @@ import {
   getGrupoRiesgoPalette,
 } from './clinicalPalettes';
 import { GRUPOS_RIESGO_CATALOG } from './gruposRiesgoCatalog';
-import { classifyPatientCursoVidaKey, CURSO_KEY_TO_CODE } from './cursoVidaConfig';
+import {
+  classifyPatientCursoVidaKey,
+  CURSO_KEY_TO_CODE,
+  isMinorCursoVidaABC,
+  getTimeOfDayGreeting,
+  buildMinorAcudienteOpening,
+} from './cursoVidaConfig';
 import { CALI_IPS_SEDES } from './caliDivipola';
 import { NOSHOW_POLICY } from './noShowFollowupService';
 
@@ -366,6 +372,12 @@ export function generateIndividualClinicalPrompt(patient, contextItem, contextTy
     customDirective ||
     `Confirmar asistencia a ${hito} (CUPS ${cups}) en ${sede}, validando signos de alarma y continuidad clínica.`;
 
+  const isMinorABC = ['A', 'B', 'C'].includes(String(cv?.id || '').toUpperCase()) || isMinorCursoVidaABC(patient);
+  const tiempoSaludo = getTimeOfDayGreeting();
+  const saludoConversacional = isMinorABC
+    ? `${buildMinorAcudienteOpening(nombre)} Le habla SADI, el asistente clínico de su IPS en Santiago de Cali.`
+    : `Hola! ${tiempoSaludo}, ¿me comunico con ${nombre}? Le habla SADI, el asistente clínico de su IPS en Santiago de Cali.`;
+
   return {
     asunto: `Guion Clínico IA · ${prio.shortLabel} · ${cv.nombre}`,
     sede,
@@ -383,7 +395,7 @@ export function generateIndividualClinicalPrompt(patient, contextItem, contextTy
 ${directrizFinal}
 
 --- GUION CONVERSACIONAL SUGERIDO ---
-1. SALUDO: "Buenos días/tardes, ¿me comunico con ${nombre}? Le habla SADI, el asistente clínico de su IPS en Santiago de Cali."
+1. SALUDO: "${saludoConversacional}"
 2. MOTIVO: "Le llamamos en el marco de la Resolución 3280 (${cv.nombre}) para agendar su ${hito} (CUPS ${cups}) en ${sede}."
 3. CIERRE: "¿Desea confirmar su cita para esta semana? Presione 1 para confirmar o 2 para reprogramar."`,
   };

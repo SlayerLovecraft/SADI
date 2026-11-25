@@ -5,7 +5,7 @@ import {
   Download, Copy, Check, Headphones, Sparkles, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { CURSO_VIDA_CONFIG } from '@/services/cursoVidaConfig';
+import { CURSO_VIDA_CONFIG, isMinorCursoVidaABC, buildMinorAcudienteOpening } from '@/services/cursoVidaConfig';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import {
   Dialog,
@@ -22,7 +22,8 @@ const generateTranscriptForPatient = (patient, staffName) => {
   const phone = patient.telefono || '+57 300 000 0000';
   const dateStr = '2026-11-08 10:15 AM';
 
-  if (cVida.toLowerCase().includes('infancia') || cVida.toLowerCase().includes('primera')) {
+  if (isMinorCursoVidaABC(patient)) {
+    const saludoAcudiente = buildMinorAcudienteOpening(pName);
     return {
       duracion: '2m 14s',
       duracionSegundos: 134,
@@ -31,7 +32,7 @@ const generateTranscriptForPatient = (patient, staffName) => {
       resultado: 'Llamada Exitosa · Cita Confirmada',
       resumen: `Llamada preventiva de Demanda Inducida (Res. 3280). Se verificó estado de salud del menor, esquema PAI y se concertó cita presencial con pediatría.`,
       dialogo: [
-        { emisor: 'Agente IA SADI', tiempo: '00:03', texto: `Buenos días. Me comunico del Hospital Central con el acudiente de ${pName}.` },
+        { emisor: 'Agente IA SADI', tiempo: '00:03', texto: `${saludoAcudiente} Le hablamos del Hospital Central.` },
         { emisor: 'Acudiente', tiempo: '00:08', texto: `Buenos días, sí señorita, habla la mamá. ¿En qué le puedo servir?` },
         { emisor: 'Agente IA SADI', tiempo: '00:13', texto: `Le habla el Asistente Clínico de Demanda Inducida coordinado por la ${staffName || 'Enfermera a cargo'}. En el marco de la Ruta de Primera Infancia de la Resolución 3280, verificamos que ${pName} tiene programado su control de crecimiento y desarrollo. ¿Ha presentado algún malestar en estos días?` },
         { emisor: 'Acudiente', tiempo: '00:26', texto: `Tuvo un poco de congestión nasal el fin de semana pero ya está mucho mejor comiendo bien y activo.` },

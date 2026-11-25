@@ -8,6 +8,11 @@ import { telemonitoringService } from './telemonitoringService';
 import { clinicalRecordsService, sanitizePatientFolder } from './clinicalRecordsService';
 import { getRequiredRIASAppointments, getCursoVida3280 } from './rias3280Engine';
 import {
+  isMinorCursoVidaABC,
+  getTimeOfDayGreeting,
+  buildMinorAcudienteOpening,
+} from './cursoVidaConfig';
+import {
   buildVapiVoicemailDetectionConfig,
   DEFAULT_ANTI_VOICEMAIL_CONFIG,
   isVoicemailOutcome,
@@ -130,6 +135,17 @@ export const vapiIntegrationService = {
 - INSTRUCCIÓN PRIORITARIA DE VOZ: Pregunta de inmediato por síntomas de alarma (dolor de cabeza pulsátil, lucecitas, zumbidos, mareo, dolor epigástrico en barra si es gestante; o temblor/palidez si es hipoglucemia). No alarmes innecesariamente pero mantén firme la instrucción médica de reposo o ingesta de glucosa según corresponda.`;
     }
 
+    const isMinorABC = isMinorCursoVidaABC({
+      ...patient,
+      curso_vida_key: curso?.key,
+      curso_vida: patient.curso_vida || curso?.label,
+    });
+    const tiempoSaludo = getTimeOfDayGreeting();
+    const minorOpening = isMinorABC ? buildMinorAcudienteOpening(patient) : null;
+    const saludoProtocolo = isMinorABC
+      ? `"${minorOpening} Te habla Camila, tu asistente de salud del ${patient.hospital_name || 'Hospital Central SADI'} en convenio con tu EPS ${patient.eps}."\n   - REGLA OBLIGATORIA CURSOS DE VIDA A, B y C: SIEMPRE debes comenzar la llamada exactamente con la frase: "${minorOpening}" (usando 'Buenos Días', 'Buenas Tardes' o 'Buena Noche' según la hora actual) y dirigir la conversación a la persona o acudiente responsable del menor.`
+      : `"Hola! ${tiempoSaludo}, ${patient.nombre.split(' ')[0]}, te habla Camila, tu asistente de salud del ${patient.hospital_name || 'Hospital Central SADI'} en convenio con tu EPS ${patient.eps}."`;
+
     return `Eres la Asistente Médica de Voz de SADI (Sistema de Apoyo para Demanda Inducida) y de la IPS asignada. Tu objetivo es brindar acompañamiento telefónico humanizado, cálido, empático y clínicamente riguroso basado en la Resolución 3280 de 2018 de Colombia.
 
 === DATOS EN TIEMPO REAL DEL PACIENTE ===
@@ -161,7 +177,7 @@ ${atencionesSummary}
    - Capa 2 (Motor nativo Vapi voicemailDetection): Activo en el payload de llamada con corte silencioso inmediato (voicemailMessage vacío); evita interactuar si responde un contestador automático.
 
 2. SALUDO E IDENTIFICACIÓN INSTITUCIONAL:
-   "Hola ${patient.nombre.split(' ')[0]}, te habla Camila, tu asistente de salud del ${patient.hospital_name || 'Hospital Central SADI'} en convenio con tu EPS ${patient.eps}."
+   ${saludoProtocolo}
 
 3. CONFIRMACIÓN Y NAVEGACIÓN POR TECLADO NUMÉRICO (DTMF):
    Para todas las decisiones y confirmaciones clave, solicita SIEMPRE pulsar teclas del teléfono para garantizar 100% de precisión y evitar malinterpretaciones por ruido:
@@ -186,7 +202,14 @@ ${atencionesSummary}
     if (!vapiContext) return null;
 
     const dynamicPrompt = this.generateVapiDynamicPrompt(vapiContext);
-    const { patient, activeAlert } = vapiContext;
+    const { patient, curso, activeAlert } = vapiContext;
+    const isMinorABC = isMinorCursoVidaABC({
+      ...patient,
+      curso_vida_key: curso?.key,
+      curso_vida: patient.curso_vida || curso?.label,
+    });
+    const tiempoSaludo = getTimeOfDayGreeting();
+    const minorOpening = isMinorABC ? buildMinorAcudienteOpening(patient) : null;
     const antiVoicemailCfg = customAntiVoicemailCfg || readStoredAntiVoicemailConfig();
     const { voicemailDetection, voicemailMessage } = buildVapiVoicemailDetectionConfig(antiVoicemailCfg);
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -291,7 +314,9 @@ ${atencionesSummary}
       voicemailDetection,
       voicemailMessage,
       silenceTimeoutSeconds: 18,
-      firstMessage: `Hola ${patient.nombre.split(' ')[0]}, te habla Camila del ${patient.hospital_name || 'Hospital Central SADI'}. ${activeAlert ? 'Te contacto de urgencia por la medición alterada que registraste en tu equipo domiciliario.' : 'Te llamamos para coordinar tu cita preventiva de la Resolución 3280. Por favor marca 1 en tu teléfono si confirmas tu asistencia, o marca 2 si deseas reagendar.'}`,
+      firstMessage: isMinorABC
+        ? `${minorOpening} Te habla Camila del ${patient.hospital_name || 'Hospital Central SADI'}. ${activeAlert ? 'Me comunico de urgencia por la medición alterada registrada en su equipo domiciliario.' : 'Nos comunicamos para coordinar la cita preventiva de la Resolución 3280. Por favor marca 1 en tu teléfono si confirmas la asistencia, o marca 2 si deseas reagendar.'}`
+        : `Hola ${patient.nombre.split(' ')[0]}, te habla Camila del ${patient.hospital_name || 'Hospital Central SADI'}. ${activeAlert ? 'Te contacto de urgencia por la medición alterada que registraste en tu equipo domiciliario.' : 'Te llamamos para coordinar tu cita preventiva de la Resolución 3280. Por favor marca 1 en tu teléfono si confirmas tu asistencia, o marca 2 si deseas reagendar.'}`,
       server: {
         url: webhookUrl
       },
@@ -300,7 +325,10 @@ ${atencionesSummary}
         patient_id: patient.id,
         patient_name: patient.nombre,
         documento: patient.documento,
-        curso_vida: patient.curso_vida,
+        curso_vida: patient.curso_vida || curso?.label || '',
+        es_menor_abc: isMinorABC ? 'true' : 'false',
+        saludo_hora: tiempoSaludo,
+        saludo_inicial: minorOpening || `Hola! ${tiempoSaludo}, me comunico con ${patient.nombre}.`,
         es_gestante: patient.es_gestante ? 'true' : 'false',
         semana_gestacional: patient.semana_gestacional || 0,
         doctor_asignado: patient.doctor_nombre || 'Especialista SADI',
@@ -398,16 +426,33 @@ ${atencionesSummary}
       formattedPhone = formattedPhone.startsWith('57') ? `+${formattedPhone}` : `+57${formattedPhone}`;
     }
 
+    const tiempoSaludo = getTimeOfDayGreeting();
+    const nombreCompleto = String(patientData.nombre || patientData.name || 'Paciente').trim() || 'Paciente';
+    const isMinorABC = isMinorCursoVidaABC(patientData);
+    const minorOpening = isMinorABC ? buildMinorAcudienteOpening(nombreCompleto) : null;
+    const hospitalNombre = patientData.hospital_nombre || patientData.hospitalName || 'Hospital Central SADI';
+    const programaVoz = (patientData.programa3280 || patientData.programa || patientData.program || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho');
+
     const variableValues = {
-      name: (patientData.nombre || patientData.name || 'Paciente').split(' ')[0],
+      name: nombreCompleto.split(' ')[0],
+      nombre_completo: nombreCompleto,
       documento: String(patientData.documento || patientData.document || patientData.cedula || '1006010518'),
       cedula_ultimos_3: formatLast3DigitsInWords(patientData.documento || patientData.document || patientData.cedula || '518'),
-      programa_3280: (patientData.programa3280 || patientData.programa || patientData.program || 'Valoración Preventiva').replace(/3280|Resolución 3280/gi, 'resolución treintaidos ochenta, del dos mil dieciocho'),
-      hospital_nombre: patientData.hospital_nombre || patientData.hospitalName || 'Hospital Central SADI',
+      programa_3280: programaVoz,
+      hospital_nombre: hospitalNombre,
       direccion: patientData.direccion || patientData.address || 'Calle 15 #14-112',
-      saludo_hora: new Date().getHours() < 12 ? 'Buenos días' : (new Date().getHours() < 18 ? 'Buenas tardes' : 'Buenas noches'),
+      curso_vida: patientData.cursoVida || patientData.curso_vida || '',
+      es_menor_abc: isMinorABC ? 'true' : 'false',
+      saludo_hora: tiempoSaludo,
+      saludo_inicial: minorOpening || `Hola! ${tiempoSaludo}, me comunico con ${nombreCompleto}.`,
       anti_voicemail: antiVoicemailCfg.antiVoicemail ? 'true' : 'false'
     };
+
+    const minorFirstMessageOverride = isMinorABC
+      ? {
+          firstMessage: `${minorOpening} Le habla el asistente clínico del ${hospitalNombre} para coordinar la atención preventiva de ${nombreCompleto} bajo la ${programaVoz}. Por favor marque 1 si confirma la asistencia o 2 si desea reagendar.`
+        }
+      : {};
 
     // Camino principal seguro: Edge Function `vapi-outbound-call` (con SIP 183 ARI si aplica + Vapi AMD)
     try {
@@ -419,9 +464,15 @@ ${atencionesSummary}
           doctorId: patientData.doctorId || patientData.doctor_id || null,
           slotTanda: patientData.slotTanda || patientData.slotId || null,
           motivoLlamada: patientData.motivoLlamada || patientData.programa3280 || 'Demanda Inducida Res. 3280',
-          patientData,
+          patientData: {
+            ...patientData,
+            nombre: nombreCompleto,
+            es_menor_abc: isMinorABC,
+            saludo_hora: tiempoSaludo,
+          },
           antiVoicemailConfig: antiVoicemailCfg,
           assistantOverrides: {
+            ...minorFirstMessageOverride,
             voicemailDetection,
             voicemailMessage,
             silenceTimeoutSeconds: 18,
@@ -466,6 +517,7 @@ ${atencionesSummary}
         name: patientData.nombre || patientData.name || 'Paciente SADI'
       },
       assistantOverrides: {
+        ...minorFirstMessageOverride,
         voicemailDetection,
         voicemailMessage,
         silenceTimeoutSeconds: 18,
@@ -508,7 +560,11 @@ ${atencionesSummary}
         doctorId: options.doctorId || null,
         motivoLlamada: options.motivoLlamada,
         programa3280: options.accion3280 || options.hitoClinico || options.motivoLlamada,
-        cursoVida: options.cursoVida,
+        cursoVida: options.cursoVida || options.curso_vida,
+        curso_vida: options.curso_vida || options.cursoVida,
+        cursoVidaId: options.cursoVidaId || options.curso_vida_key,
+        birthdate: options.birthdate || options.fecha_nacimiento || null,
+        edad: options.edad ?? null,
         direccion: options.direccion
       },
       options.antiVoicemailConfig || null

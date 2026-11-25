@@ -475,3 +475,78 @@ export function classifyPatientCursoVidaKey(patient) {
 
   return 'adultez';
 }
+
+export const MINOR_CURSO_KEYS = new Set(['primera_infancia', 'infancia', 'adolescencia']);
+
+/**
+ * Devuelve el saludo horario exacto en hora Colombia (America/Bogota):
+ * 'Buenos Días', 'Buenas Tardes' o 'Buena Noche'.
+ */
+export function getTimeOfDayGreeting(nowDate = new Date()) {
+  let hour = nowDate.getHours();
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      hour: 'numeric',
+      hour12: false,
+    }).formatToParts(nowDate);
+    const hourPart = parts.find((p) => p.type === 'hour')?.value;
+    const parsed = Number(hourPart);
+    if (Number.isFinite(parsed)) {
+      hour = parsed === 24 ? 0 : parsed;
+    }
+  } catch {
+    // Fallback al reloj local si Intl no soporta timeZone
+  }
+  if (hour < 12) return 'Buenos Días';
+  if (hour < 18) return 'Buenas Tardes';
+  return 'Buena Noche';
+}
+
+/**
+ * Determina si un paciente o clave de curso de vida pertenece a los Cursos A, B o C
+ * (Primera Infancia, Infancia o Adolescencia).
+ */
+export function isMinorCursoVidaABC(patientOrCurso) {
+  if (!patientOrCurso) return false;
+  if (typeof patientOrCurso === 'string') {
+    const k = canonicalizeCursoKey(patientOrCurso);
+    return Boolean(k && MINOR_CURSO_KEYS.has(k));
+  }
+  const explicitKey = canonicalizeCursoKey(
+    patientOrCurso.curso_vida_key || patientOrCurso.cursoVidaId || patientOrCurso.curso_code
+  );
+  if (explicitKey) {
+    if (explicitKey === 'preventivo_mujer') return false;
+    if (MINOR_CURSO_KEYS.has(explicitKey)) return true;
+  }
+  const resolved = classifyPatientCursoVidaKey(patientOrCurso);
+  return MINOR_CURSO_KEYS.has(resolved);
+}
+
+/**
+ * Saludo inicial obligatorio del Agente IA para pacientes de Cursos de Vida A, B y C:
+ * "Hola! <tiempo>, me comunico con la persona o acudiente responsable de <nombre_paciente>."
+ */
+export function buildMinorAcudienteOpening(patientOrName, nowDate = new Date()) {
+  const rawName =
+    typeof patientOrName === 'string'
+      ? patientOrName
+      : patientOrName?.nombre || patientOrName?.name || patientOrName?.pacienteNombre || 'el paciente';
+  const nombrePaciente = String(rawName || 'el paciente').trim() || 'el paciente';
+  const tiempo = getTimeOfDayGreeting(nowDate);
+  return `Hola! ${tiempo}, me comunico con la persona o acudiente responsable de ${nombrePaciente}.`;
+}
+
+/**
+ * Devuelve la apertura obligatoria para A/B/C o el saludo fallback para otros cursos.
+ */
+export function getAgentCallOpening(patient, fallbackOpening = null, nowDate = new Date()) {
+  if (isMinorCursoVidaABC(patient)) {
+    return buildMinorAcudienteOpening(patient, nowDate);
+  }
+  if (fallbackOpening) return fallbackOpening;
+  const rawName = patient?.nombre || patient?.name || patient?.pacienteNombre || 'Paciente';
+  const tiempo = getTimeOfDayGreeting(nowDate);
+  return `Hola! ${tiempo}, me comunico con ${String(rawName).trim()}.`;
+}

@@ -37,6 +37,89 @@ const requireEnv = (key: string) => {
   return v;
 };
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeEs(val: unknown): string {
+  return String(val ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function getColombiaTimeOfDayGreeting(nowDate = new Date()): string {
+  let hour = nowDate.getUTCHours() - 5;
+  if (hour < 0) hour += 24;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Bogota",
+      hour: "numeric",
+      hour12: false,
+    }).formatToParts(nowDate);
+    const parsed = Number(parts.find((p) => p.type === "hour")?.value);
+    if (Number.isFinite(parsed)) {
+      hour = parsed === 24 ? 0 : parsed;
+    }
+  } catch {
+    // Fallback a UTC-5 (Colombia)
+  }
+  if (hour < 12) return "Buenos Días";
+  if (hour < 18) return "Buenas Tardes";
+  return "Buena Noche";
+}
+
+function isMinorCursoABC(patientInfo: Record<string, unknown>): boolean {
+  const normCurso = normalizeEs(
+    patientInfo.curso_vida_key ||
+      patientInfo.cursoVidaId ||
+      patientInfo.curso_vida ||
+      patientInfo.cursoVida ||
+      patientInfo.grupo_vida ||
+      "",
+  );
+  if (
+    patientInfo.es_gestante === true ||
+    normCurso === "g" ||
+    normCurso.includes("materno") ||
+    normCurso.includes("preventivo_mujer") ||
+    normCurso.includes("preventivo de la mujer") ||
+    normCurso.includes("gestan")
+  ) {
+    return false;
+  }
+  if (
+    normCurso === "a" ||
+    normCurso === "b" ||
+    normCurso === "c" ||
+    normCurso.includes("primera") ||
+    normCurso.includes("infancia") ||
+    normCurso.includes("adolesc")
+  ) {
+    return true;
+  }
+  const birthRaw = patientInfo.birthdate || patientInfo.fecha_nacimiento || patientInfo.birth_date;
+  if (birthRaw) {
+    const b = new Date(String(birthRaw));
+    if (!Number.isNaN(b.getTime())) {
+      const now = new Date();
+      let age = now.getFullYear() - b.getFullYear();
+      const m = now.getMonth() - b.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < b.getDate())) age--;
+      if (age >= 0 && age <= 17) return true;
+    }
+  }
+  const numEdad = Number(patientInfo.edad);
+  if (patientInfo.edad !== undefined && patientInfo.edad !== null && patientInfo.edad !== "" && Number.isFinite(numEdad)) {
+    return numEdad >= 0 && numEdad <= 17;
+  }
+  return false;
+}
+
+function buildMinorAcudienteOpening(nombrePaciente: string, tiempoSaludo: string): string {
+  const cleanName = String(nombrePaciente || "el paciente").trim() || "el paciente";
+  return `Hola! ${tiempoSaludo}, me comunico con la persona o acudiente responsable de ${cleanName}.`;
+}
+
 function buildVoicemailDetectionBlock(cfg: AntiVoicemailOptions) {
   if (cfg.antiVoicemail === false) {
     return { voicemailDetection: { enabled: false }, voicemailMessage: "" };
@@ -124,6 +207,52 @@ Deno.serve(async (req) => {
     const webhookUrl = `${supabaseUrl}/functions/v1/vapi-webhook`;
     const webhookSecret = Deno.env.get("VAPI_WEBHOOK_SECRET") || "";
 
+    // Resolver datos clínicos del paciente desde BD (para garantizar saludo obligatorio en Cursos A, B y C)
+    let dbPatient: Record<string, unknown> | null = null;
+    if (body.patientId && UUID_REGEX.test(String(body.patientId))) {
+      const { data: pRow } = await supabaseAdmin
+        .from("patients")
+        .select("name, curso_vida, birthdate, es_gestante")
+        .eq("id", body.patientId)
+        .maybeSingle();
+      dbPatient = (pRow as Record<string, unknown> | null) || null;
+    }
+
+    const mergedPatientData: Record<string, unknown> = {
+      ...(dbPatient || {}),
+      ...(body.patientData || {}),
+      nombre: String(body.patientData?.nombre || body.patientData?.name || dbPatient?.name || "Paciente SADI").trim(),
+      curso_vida: body.patientData?.curso_vida || body.patientData?.cursoVida || dbPatient?.curso_vida || "",
+      birthdate: body.patientData?.birthdate || body.patientData?.fecha_nacimiento || dbPatient?.birthdate || null,
+      es_gestante: body.patientData?.es_gestante ?? dbPatient?.es_gestante ?? false,
+    };
+
+    const tiempoSaludo = getColombiaTimeOfDayGreeting();
+    const patientFullName = String(mergedPatientData.nombre || "Paciente SADI");
+    const isMinorABC = isMinorCursoABC(mergedPatientData);
+    const minorOpening = isMinorABC ? buildMinorAcudienteOpening(patientFullName, tiempoSaludo) : null;
+
+    const baseOverrides = (body.assistantOverrides || {}) as Record<string, unknown>;
+    const existingFirstMsg = typeof baseOverrides.firstMessage === "string" ? baseOverrides.firstMessage.trim() : "";
+    const resolvedFirstMessage = isMinorABC
+      ? existingFirstMsg.startsWith(minorOpening!)
+        ? existingFirstMsg
+        : `${minorOpening} Le habla el asistente clínico del ${String((baseOverrides.variableValues as Record<string, unknown>)?.hospital_nombre || "Hospital Central SADI")} para coordinar la atención preventiva de ${patientFullName} bajo la Resolución 3280. Por favor marque 1 si confirma la asistencia o 2 si desea reagendar.`
+      : existingFirstMsg || undefined;
+
+    const mergedVariableValues: Record<string, unknown> = {
+      ...((baseOverrides.variableValues as Record<string, unknown>) || {}),
+      patient_id: body.patientId || "",
+      hospital_id: body.hospitalId || "",
+      nombre_completo: patientFullName,
+      curso_vida: String(mergedPatientData.curso_vida || ""),
+      es_menor_abc: isMinorABC ? "true" : "false",
+      saludo_hora: tiempoSaludo,
+      saludo_inicial: minorOpening || `Hola! ${tiempoSaludo}, me comunico con ${patientFullName}.`,
+      anti_voicemail: effectiveCfg.antiVoicemail ? "true" : "false",
+      ring_timeout_sec: String(effectiveCfg.preAnswerRingTimeoutSec || 19),
+    };
+
     // Opción A: Puerta de Enlace Asterisk + OpenVox (Early Media SIP 183 Pre-Answer antes de 200 OK -> $0 carrier)
     const ariUrl = Deno.env.get("OPENVOX_BRIDGE_URL") || Deno.env.get("ASTERISK_ARI_URL") || (dbCfg?.ari_gateway_host ? String(dbCfg.ari_gateway_host) : "");
     const useAsteriskPreAnswer = Boolean(ariUrl && effectiveCfg.earlyMediaPreAnswer);
@@ -146,10 +275,12 @@ Deno.serve(async (req) => {
           cancelOn183Voicemail: effectiveCfg.sipCancelOn183Voicemail !== false,
           webhookUrl,
           webhookSecret,
-          patientData: body.patientData || {},
+          patientData: mergedPatientData,
           vapiConfig: {
             assistantId: Deno.env.get("VAPI_ASSISTANT_ID") || null,
             phoneNumberId: Deno.env.get("VAPI_PHONE_NUMBER_ID") || null,
+            ...(resolvedFirstMessage ? { firstMessage: resolvedFirstMessage } : {}),
+            variableValues: mergedVariableValues,
             voicemailDetection,
             voicemailMessage,
           },
@@ -176,7 +307,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const baseOverrides = (body.assistantOverrides || {}) as Record<string, unknown>;
     const serverBlock: Record<string, unknown> = { url: webhookUrl };
     if (webhookSecret) serverBlock.secret = webhookSecret;
 
@@ -185,22 +315,17 @@ Deno.serve(async (req) => {
       phoneNumberId,
       customer: {
         number: formattedPhone,
-        name: String(body.patientData?.nombre || body.patientData?.name || "Paciente SADI"),
+        name: patientFullName,
       },
       assistantOverrides: {
         ...baseOverrides,
+        ...(resolvedFirstMessage ? { firstMessage: resolvedFirstMessage } : {}),
         voicemailDetection,
         voicemailMessage,
         silenceTimeoutSeconds: 18,
         server: serverBlock,
         serverMessages: ["status-update", "transcript", "end-of-call-report"],
-        variableValues: {
-          ...((baseOverrides.variableValues as Record<string, unknown>) || {}),
-          patient_id: body.patientId || "",
-          hospital_id: body.hospitalId || "",
-          anti_voicemail: effectiveCfg.antiVoicemail ? "true" : "false",
-          ring_timeout_sec: String(effectiveCfg.preAnswerRingTimeoutSec || 19),
-        },
+        variableValues: mergedVariableValues,
       },
       metadata: {
         patientId: body.patientId || null,

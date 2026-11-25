@@ -6,6 +6,9 @@ import {
   getAllowedCursoKeysForUser,
   canonicalizeCursoKey,
   formatCursosVidaLabel,
+  isMinorCursoVidaABC,
+  getTimeOfDayGreeting,
+  buildMinorAcudienteOpening,
 } from '@/services/cursoVidaConfig';
 import { isPatientAssignedToDoctor } from '@/pages/doctor/doctorUtils';
 import { 
@@ -220,10 +223,20 @@ export default function Rias3280ManagementPage() {
     const age = parsedFn && !isNaN(parsedFn.getTime()) ? (new Date().getFullYear() - parsedFn.getFullYear()) : 'su';
     const sem = selectedPatient?.semana_gestacional || '28';
 
-    return selectedProgram.guion_ia_base
+    const compiledBody = selectedProgram.guion_ia_base
       .replace(/{paciente}/g, name)
       .replace(/{edad}/g, `${age}`)
       .replace(/{semana_gestacional}/g, `${sem}`);
+
+    const isMinorABC = isMinorCursoVidaABC(
+      selectedPatient
+        ? { ...selectedPatient, curso_vida: selectedPatient.curso_vida || selectedProgram.curso_vida }
+        : selectedProgram.curso_vida
+    );
+    if (isMinorABC) {
+      return `${buildMinorAcudienteOpening(name)} ${compiledBody}`;
+    }
+    return compiledBody;
   };
 
   const handleDispatch = async () => {
@@ -254,13 +267,19 @@ export default function Rias3280ManagementPage() {
       let callResult = null;
       let duracion = 68;
 
+      const patientCallPayload = {
+        patientId: selectedPatient.id,
+        nombre: selectedPatient.nombre,
+        cedula: selectedPatient.documento,
+        programa: selectedProgram.nombre,
+        cursoVida: selectedPatient.curso_vida || selectedProgram.curso_vida,
+        curso_vida: selectedPatient.curso_vida || selectedProgram.curso_vida,
+        birthdate: selectedPatient.fecha_nacimiento || selectedPatient.birthdate || null,
+        direccion: selectedPatient.direccion || 'Santiago de Cali, Valle del Cauca'
+      };
+
       if (selectedChannel === 'call_ia') {
-        callResult = await vapiIntegrationService.triggerLiveCall(selectedPatient.telefono, {
-          nombre: selectedPatient.nombre,
-          cedula: selectedPatient.documento,
-          programa: selectedProgram.nombre,
-          direccion: selectedPatient.direccion || 'Santiago de Cali, Valle del Cauca'
-        });
+        callResult = await vapiIntegrationService.triggerLiveCall(selectedPatient.telefono, patientCallPayload);
       }
 
       // Generar transcripción clínica detallada
@@ -268,9 +287,14 @@ export default function Rias3280ManagementPage() {
       const ultimos3 = docStr.slice(-3);
       const pkg1 = ultimos3.slice(0, 1);
       const pkg2 = ultimos3.slice(1);
+      const isMinorABC = isMinorCursoVidaABC(patientCallPayload);
+      const tiempoSaludo = getTimeOfDayGreeting();
+      const aperturaAgente = isMinorABC
+        ? buildMinorAcudienteOpening(selectedPatient.nombre)
+        : `Hola! ${tiempoSaludo}, ${selectedPatient.nombre}. Con documento terminado en ${pkg1} ${pkg2}.`;
 
       const transcripcionTexto = [
-        `Agente IA SADI: "Buenas tardes, ${selectedPatient.nombre}. Con documento terminado en ${pkg1} ${pkg2}."`,
+        `Agente IA SADI: "${aperturaAgente}"`,
         `Agente IA SADI: "Le informamos que al continuar autoriza el tratamiento de sus datos de salud y que sus respuestas son indispensables para garantizar su cobertura en los programas preventivos obligatorios de la resolución treintaidos ochenta, del dos mil dieciocho."`,
         `Agente IA SADI: "Nos comunicamos de su hospital para coordinar su cita de ${selectedProgram.nombre}. ¿Ha presentado algún síntoma de alarma en los últimos días?"`,
         `Paciente (${selectedPatient.nombre}): "No señorita, me he sentido muy bien."`,
