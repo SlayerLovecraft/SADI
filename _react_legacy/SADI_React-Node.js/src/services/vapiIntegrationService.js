@@ -564,6 +564,71 @@ ${atencionesSummary}
   },
 
   /**
+   * Consulta en tiempo real el estado de una llamada activa en Vapi
+   * vía Edge Function `vapi-outbound-call` (action: 'status').
+   * Devuelve phase: 'calling' | 'in_call' | 'ended', answered, isSuccess, endedReason, durationSeconds.
+   */
+  async getLiveCallStatus(callId) {
+    if (!callId) {
+      return { ok: false, phase: 'ended', isSuccess: false, endedReason: 'missing-call-id' };
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
+        body: { action: 'status', callId }
+      });
+      if (!error && data && data.ok !== false) {
+        return data;
+      }
+      // Fallback: consultar vapi_agent_sessions en Supabase por si el webhook ya cerró la llamada
+      const { data: sessionRow } = await supabase
+        .from('vapi_agent_sessions')
+        .select('estado_llamada, duracion_segundos, deteccion_buzon, motivo_corte, transcripcion_completa, resumen_ia')
+        .eq('vapi_call_id', callId)
+        .maybeSingle();
+
+      if (sessionRow) {
+        const est = String(sessionRow.estado_llamada || '').toLowerCase();
+        if (est === 'en_curso' || est === 'calling' || est === 'ringing') {
+          return { ok: true, callId, phase: 'calling', vapiStatus: 'ringing', answered: false, isSuccess: false };
+        }
+        if (est === 'en_llamada' || est === 'in_progress' || est === 'answered') {
+          return { ok: true, callId, phase: 'in_call', vapiStatus: 'in-progress', answered: true, isSuccess: false };
+        }
+        const isSuccess =
+          !sessionRow.deteccion_buzon &&
+          ['completada', 'completed', 'exitosa'].includes(est) &&
+          Number(sessionRow.duracion_segundos || 0) > 0;
+        return {
+          ok: true,
+          callId,
+          phase: 'ended',
+          vapiStatus: 'ended',
+          answered: isSuccess,
+          isSuccess,
+          endedReason: sessionRow.motivo_corte || est,
+          durationSeconds: Number(sessionRow.duracion_segundos || 0),
+          transcript: sessionRow.transcripcion_completa || '',
+          summary: sessionRow.resumen_ia || '',
+        };
+      }
+
+      return {
+        ok: false,
+        phase: 'ended',
+        isSuccess: false,
+        endedReason: data?.error || error?.message || 'status-check-failed',
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        phase: 'ended',
+        isSuccess: false,
+        endedReason: err?.message || 'network-error',
+      };
+    }
+  },
+
+  /**
    * Alias unificado usado desde CampaignsPage.jsx para despachar llamadas individuales de campaña
    * heredando la misma protección anti-buzón dual.
    */

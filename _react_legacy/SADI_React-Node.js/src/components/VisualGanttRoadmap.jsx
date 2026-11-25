@@ -19,6 +19,7 @@ import {
   FileCheck2, Check, User
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +28,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { MESES_DEL_ANIO } from '@/services/roadmapService';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import LiveCallButton from '@/components/LiveCallButton';
 
 export default function VisualGanttRoadmap({
   resolutionData = [],
@@ -35,9 +38,45 @@ export default function VisualGanttRoadmap({
   selectedYear = new Date().getFullYear(),
   selectedMonth = new Date().getMonth() + 1,
   onChangeMonth = () => {},
-  onMakeCall = () => {},
+  onMakeCall = null,
   onViewTranscript = () => {}
 }) {
+  const { toast } = useToast();
+
+  const handleCallPatient = async (pat) => {
+    if (!pat) return;
+    if (typeof onMakeCall === 'function') {
+      return onMakeCall(pat);
+    }
+    return liveCallLifecycleService.executeLiveCall({
+      targetKey: pat.id,
+      phoneNumber: pat.telefono,
+      patientData: {
+        patientId: pat.patientId || pat.pacienteId || null,
+        nombre: pat.nombre,
+        cedula: pat.documento,
+        programa3280: pat.programaPrincipal || pat.hitoClinico || 'Demanda Inducida Res. 3280',
+        hitoClinico: pat.hitoClinico,
+        cursoVida: pat.cursoVida || pat.curso_vida,
+        curso_vida: pat.curso_vida || pat.cursoVida,
+        birthdate: pat.birthdate || pat.fecha_nacimiento || null,
+      },
+      onSuccess: (res) => {
+        const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday;
+        toast({
+          title: '🟢 Llamada Exitosa y Registrada (Puerto 1)',
+          description: `${pat.nombre} contactado correctamente.${rem !== undefined ? ` Cupo diario restante: ${rem} / 500.` : ''}`,
+        });
+      },
+      onFailure: (res) => {
+        toast({
+          title: 'Fallo al Contactar',
+          description: res?.message || `No se logró contactar a ${pat.nombre} por Puerto 1.`,
+          variant: 'destructive',
+        });
+      },
+    });
+  };
   // Búsqueda y filtros interactivos
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCourse, setFilterCourse] = useState('todos');
@@ -445,16 +484,22 @@ export default function VisualGanttRoadmap({
                             <span className="text-[8px] font-bold text-amber-800 uppercase truncate">
                               {pat.cursoVidaLabel.split(' ')[0]}
                             </span>
-                            <button
+                            <LiveCallButton
+                              callKey={pat.id}
+                              idleLabel="Llamar"
+                              compactIconOnly
+                              testId="gantt-card-call-btn"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onMakeCall(pat);
+                                handleCallPatient(pat);
                               }}
-                              className="p-1 hover:bg-amber-300 rounded text-amber-900 transition-colors"
-                              title="Llamar por Puerto 1"
-                            >
-                              <Phone className="w-3 h-3" />
-                            </button>
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-1.5 rounded text-[10px] font-bold gap-1"
+                              idleClassName="hover:bg-amber-300 text-amber-900"
+                              iconClassName="w-3 h-3 shrink-0"
+                              title={`Llamar a ${pat.nombre} (${pat.telefono}) por Puerto 1`}
+                            />
                           </div>
                         </div>
                       ))
@@ -689,16 +734,17 @@ export default function VisualGanttRoadmap({
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <Button
-                  onClick={() => {
-                    onMakeCall(selectedPatientModal);
-                    setSelectedPatientModal(null);
-                  }}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-xl gap-2 shadow-md"
-                >
-                  <Phone className="w-4 h-4" />
-                  Emitir Llamada en Vivo al Paciente (Puerto 1)
-                </Button>
+                <LiveCallButton
+                  callKey={selectedPatientModal.id}
+                  idleLabel="Emitir Llamada en Vivo al Paciente (Puerto 1)"
+                  testId="gantt-modal-call-btn"
+                  onClick={() => handleCallPatient(selectedPatientModal)}
+                  size="default"
+                  variant="default"
+                  className="w-full font-bold text-xs py-2.5 rounded-xl gap-2 shadow-md"
+                  idleClassName="bg-blue-600 hover:bg-blue-700 text-white"
+                  iconClassName="w-4 h-4 shrink-0"
+                />
               </div>
             </div>
           )}
@@ -738,18 +784,18 @@ export default function VisualGanttRoadmap({
                           <div className="text-[11px] text-gray-500">CC: {p.documento} • Tel: {p.telefono}</div>
                           <div className="text-[10px] text-amber-800 font-semibold">{p.hitoClinico}</div>
                         </div>
-                        <Button
+                        <LiveCallButton
+                          callKey={p.id}
+                          idleLabel="Llamar"
+                          testId="gantt-day-call-btn"
+                          onClick={() => handleCallPatient(p)}
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            onMakeCall(p);
-                            setSelectedDayDetails(null);
-                          }}
-                          className="text-xs font-bold rounded-xl text-blue-700 border-blue-200"
-                        >
-                          <Phone className="w-3.5 h-3.5 mr-1" />
-                          Llamar
-                        </Button>
+                          className="text-xs font-bold rounded-xl gap-1"
+                          idleClassName="text-blue-700 border-blue-200 hover:bg-blue-50"
+                          iconClassName="w-3.5 h-3.5 shrink-0"
+                          title={`Llamar a ${p.nombre} (${p.telefono}) por Puerto 1`}
+                        />
                       </div>
                     ))
                   )}

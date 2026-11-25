@@ -39,7 +39,8 @@ import {
   MAX_PATIENTS_PER_BATCH,
   getNextTandaSlotForTime,
 } from '@/services/ivrScheduleService';
-import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
 import { roadmapService, MESES_DEL_ANIO } from '@/services/roadmapService';
 import ResolutionAnnualMatrix from '@/components/ResolutionAnnualMatrix';
 import NoShowFollowupPanel from '@/components/NoShowFollowupPanel';
@@ -104,7 +105,7 @@ export default function IvrSchedulePage() {
   const [selectedTranscriptItem, setSelectedTranscriptItem] = useState(null);
   const [showTranscriptModal, setShowTranscriptModal] = useState(false);
 
-  const [callingId, setCallingId] = useState(null);
+  const dailyQuota = useDailyCallQuota(user?.hospitalId || user?.hospital_id || null);
 
   useEffect(() => {
     loadRoadmapData(selectedYear, selectedMonth);
@@ -302,53 +303,75 @@ export default function IvrSchedulePage() {
   };
 
   const handleMakeLiveCall = async (item) => {
-    setCallingId(item.id);
-    toast({
-      title: "📞 Iniciando llamada en vivo...",
-      description: `Marcando a ${item.nombre} (${item.telefono}) a través de Puerto 1...`
-    });
+    if (!item) return;
+    if (user?.role === 'doctor' && user?.solo_lectura && !user?.puede_lanzar_llamadas) {
+      toast({
+        title: "🔒 Permiso Restringido por el Hospital",
+        description: "Su usuario tiene permisos de 'Solo Lectura'. No está autorizada para emitir llamadas salientes.",
+        variant: "destructive"
+      });
+      return;
+    }
 
-    try {
-      const res = await vapiIntegrationService.triggerLiveCall(item.telefono, {
-        patientId: item.patientId,
-        hospitalId: item.hospitalId || user?.hospital_id || null,
+    await liveCallLifecycleService.executeLiveCall({
+      targetKey: item.id,
+      phoneNumber: item.telefono,
+      antiVoicemailConfig: config,
+      patientData: {
+        patientId: item.patientId || item.pacienteId || null,
+        hospitalId: item.hospitalId || user?.hospitalId || user?.hospital_id || null,
         doctorId: user?.doctor_id || null,
-        slotTanda: item.slotId,
+        slotTanda: item.slotId || null,
         nombre: item.nombre,
         cedula: item.documento,
-        programa3280: item.programa3280 || item.programaPrincipal,
-        hitoClinico: item.accion3280,
+        programa3280: item.programa3280 || item.programaPrincipal || item.programa,
+        hitoClinico: item.accion3280 || item.hitoClinico,
+        motivoLlamada: item.programa3280 || item.programaPrincipal || item.programa || 'Demanda Inducida Res. 3280',
         cursoVida: item.cursoVida || item.curso_vida,
         curso_vida: item.curso_vida || item.cursoVida,
         cursoVidaId: item.cursoVidaId || item.curso_vida_key,
         birthdate: item.birthdate || item.fecha_nacimiento || null,
         edad: item.edad ?? null,
-        direccion: item.direccion || 'Santiago de Cali'
-      }, config);
-      if (res.ok) {
-        const capaMsg = res.mode === 'asterisk_preanswer_sip_183'
-          ? 'Protección Pre-Answer SIP 183 + Vapi AMD activa'
-          : `Motor Anti-Buzón Vapi (${config.voicemailProvider || 'vapi'}) activo`;
-        toast({
-          title: "🟢 Llamada Conectada con Éxito",
-          description: `${item.nombre} en curso (${capaMsg}). ID: ${res.data?.id?.slice(0, 8) || 'ARI'}...`
+        direccion: item.direccion || 'Santiago de Cali',
+      },
+      onSuccess: (res) => {
+        setScheduleData((prev) => {
+          if (!prev?.items) return prev;
+          return {
+            ...prev,
+            items: prev.items.map((it) =>
+              it.id === item.id
+                ? { ...it, estado: 'confirmada', intentos: (it.intentos || 0) + 1 }
+                : it
+            ),
+          };
         });
-      } else {
+        const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
+        const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
         toast({
-          title: "Error al emitir llamada",
-          description: res.data?.message || JSON.stringify(res.data),
-          variant: "destructive"
+          title: "🟢 Llamada Exitosa y Registrada (Puerto 1)",
+          description: `${item.nombre} fue contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
         });
-      }
-    } catch (e) {
-      toast({
-        title: "Error de conexión",
-        description: e.message,
-        variant: "destructive"
-      });
-    } finally {
-      setCallingId(null);
-    }
+      },
+      onFailure: (res) => {
+        setScheduleData((prev) => {
+          if (!prev?.items) return prev;
+          return {
+            ...prev,
+            items: prev.items.map((it) =>
+              it.id === item.id
+                ? { ...it, intentos: (it.intentos || 0) + 1 }
+                : it
+            ),
+          };
+        });
+        toast({
+          title: "Fallo al Contactar",
+          description: res?.message || `No se logró contactar a ${item.nombre} por Puerto 1.`,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   const handleToggleResolution = () => {
@@ -626,8 +649,15 @@ export default function IvrSchedulePage() {
               Descargar Excel (3 Hojas)
             </Button>
 
-            <div className="text-right hidden sm:block">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                data-testid="ivr-daily-quota-badge"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-200 border border-cyan-400/40"
+              >
+                <PhoneCall className="w-3.5 h-3.5 text-cyan-300" />
+                Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap}
+              </span>
+              <span className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
                 config.resolutionActive || config.isLiveEnabled
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
                   : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
@@ -906,6 +936,12 @@ export default function IvrSchedulePage() {
                   <span className="text-[11px] text-blue-600 dark:text-blue-300 font-semibold bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800/60">
                     Tanda seleccionada: {selectedSlot.hora}
                   </span>
+                  <span
+                    data-testid="tandas-daily-quota-pill"
+                    className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800/60"
+                  >
+                    Cupo restante hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap} ({dailyQuota.usedToday} exitosa{dailyQuota.usedToday === 1 ? '' : 's'})
+                  </span>
                 </div>
 
                 {/* BOTÓN / SWITCH DE REINTENTAR HASTA QUE CONTESTE */}
@@ -1118,16 +1154,18 @@ export default function IvrSchedulePage() {
                             </td>
                             <td className="p-3 text-gray-700 dark:text-slate-300 font-semibold">{patient.intentos || 0}</td>
                             <td className="p-3 text-right">
-                              <Button
+                              <LiveCallButton
+                                callKey={patient.id}
+                                idleLabel="Llamar"
+                                testId="tanda-call-btn"
+                                onClick={() => handleMakeLiveCall(patient)}
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleMakeLiveCall(patient)}
-                                disabled={callingId === patient.id}
-                                className="text-xs font-bold rounded-xl bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700"
-                              >
-                                <Phone className="w-3.5 h-3.5" />
-                                Llamar
-                              </Button>
+                                className="text-xs font-bold rounded-xl gap-1.5"
+                                idleClassName="bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700"
+                                iconClassName="w-3.5 h-3.5 shrink-0"
+                                title={`Llamar a ${patient.nombre} (${patient.telefono}) por Puerto 1`}
+                              />
                             </td>
                           </tr>
                         );
@@ -1417,13 +1455,27 @@ export default function IvrSchedulePage() {
                         <td className="p-3 text-gray-700 dark:text-slate-300">{c.programa}</td>
                         <td className="p-3 text-red-600 dark:text-red-400 font-bold">{c.intentos} intentos fallidos</td>
                         <td className="p-3 text-right">
-                          <Button
-                            size="sm"
-                            onClick={() => setSelectedHumanCase(c)}
-                            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl"
-                          >
-                            Registrar Gestión
-                          </Button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <LiveCallButton
+                              callKey={c.id}
+                              idleLabel="Llamar"
+                              testId="human-case-call-btn"
+                              onClick={() => handleMakeLiveCall(c)}
+                              size="sm"
+                              variant="outline"
+                              className="text-xs font-bold rounded-xl gap-1"
+                              idleClassName="bg-white dark:bg-slate-800 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                              iconClassName="w-3.5 h-3.5 shrink-0"
+                              title={`Reintentar llamada a ${c.nombre} (${c.telefono}) por Puerto 1`}
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => setSelectedHumanCase(c)}
+                              className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl"
+                            >
+                              Registrar Gestión
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))

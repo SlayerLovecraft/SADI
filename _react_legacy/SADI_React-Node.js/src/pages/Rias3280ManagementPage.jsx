@@ -31,7 +31,8 @@ import { telemonitoringService } from '@/services/telemonitoringService';
 import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from '@/services/rias3280Catalog';
-import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
 import { roadmapService } from '@/services/roadmapService';
 import MonthlyInteractionsListTable from '@/components/MonthlyInteractionsListTable';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
@@ -54,6 +55,7 @@ export default function Rias3280ManagementPage() {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [selectedChannel, setSelectedChannel] = useState('call_ia');
   const [sending, setSending] = useState(false);
+  const dailyQuota = useDailyCallQuota(user?.hospitalId || user?.hospital_id || null);
 
   // LOGs de llamadas individuales
   const [callLogs, setCallLogs] = useState([]);
@@ -256,73 +258,97 @@ export default function Rias3280ManagementPage() {
       });
       return;
     }
+    if (user?.role === 'doctor' && user?.solo_lectura && !user?.puede_lanzar_llamadas) {
+      toast({
+        title: "🔒 Permiso Restringido por el Hospital",
+        description: "Su usuario tiene permisos de 'Solo Lectura'. No está autorizada para emitir llamadas salientes.",
+        variant: "destructive"
+      });
+      return;
+    }
 
+    const patientCallPayload = {
+      patientId: selectedPatient.id,
+      hospitalId: user?.hospitalId || user?.hospital_id || null,
+      doctorId: user?.doctor_id || null,
+      nombre: selectedPatient.nombre,
+      cedula: selectedPatient.documento,
+      programa: selectedProgram.nombre,
+      programa3280: selectedProgram.nombre,
+      motivoLlamada: `${selectedProgram.id} - ${selectedProgram.nombre}`,
+      hitoClinico: selectedProgram.descripcion,
+      cursoVida: selectedPatient.curso_vida || selectedProgram.curso_vida,
+      curso_vida: selectedPatient.curso_vida || selectedProgram.curso_vida,
+      birthdate: selectedPatient.fecha_nacimiento || selectedPatient.birthdate || null,
+      direccion: selectedPatient.direccion || 'Santiago de Cali, Valle del Cauca'
+    };
+
+    // Llamada real por voz (Puerto 1) con máquina de estados completa y descuento exacto en cupo de 500/día
+    if (selectedChannel === 'call_ia') {
+      await liveCallLifecycleService.executeLiveCall({
+        targetKey: selectedPatient.id,
+        phoneNumber: selectedPatient.telefono,
+        patientData: patientCallPayload,
+        onSuccess: async (res) => {
+          try {
+            await roadmapService.registerIndividualCall({
+              patientId: selectedPatient.id,
+              pacienteNombre: selectedPatient.nombre,
+              documento: selectedPatient.documento,
+              telefono: selectedPatient.telefono,
+              canal: 'Llamada Saliente GSM (Puerto 1)',
+              motivoContacto: `${selectedProgram.id} - ${selectedProgram.nombre}`,
+              resultado: 'Efectiva',
+              duracionSegundos: res.durationSeconds || 1,
+              aceptoCita: true,
+              resumenClinico: res.summary || `Paciente ${selectedPatient.nombre} contactado exitosamente por Puerto 1 para ${selectedProgram.nombre} (Resolución 3280).`,
+              transcripcion: res.transcript || `Llamada completada por Puerto 1 (${res.durationSeconds || 1}s). Guión aplicado: ${compileDynamicScript()}`
+            });
+            await loadLogs();
+          } catch (logErr) {
+            console.warn('No se pudo actualizar historial local de LOGs:', logErr?.message);
+          }
+
+          const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
+          const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
+          toast({
+            title: "🟢 Llamada Individual Efectiva y Registrada",
+            description: `${selectedPatient.nombre} fue contactado correctamente por Puerto 1. Cupo diario restante: ${rem} / ${cap}.`
+          });
+        },
+        onFailure: (res) => {
+          toast({
+            title: "Fallo al Contactar",
+            description: res?.message || `No se logró contactar a ${selectedPatient.nombre} por Puerto 1.`,
+            variant: "destructive"
+          });
+        }
+      });
+      return;
+    }
+
+    // Canales de mensajería (WhatsApp / SMS)
     setSending(true);
-    toast({
-      title: "📞 Iniciando Llamada Individual en Vivo...",
-      description: `Marcando a ${selectedPatient.nombre} (${selectedPatient.telefono}) por Gateway GSM Puerto 1...`
-    });
-
     try {
-      let callResult = null;
-      let duracion = 68;
-
-      const patientCallPayload = {
-        patientId: selectedPatient.id,
-        nombre: selectedPatient.nombre,
-        cedula: selectedPatient.documento,
-        programa: selectedProgram.nombre,
-        cursoVida: selectedPatient.curso_vida || selectedProgram.curso_vida,
-        curso_vida: selectedPatient.curso_vida || selectedProgram.curso_vida,
-        birthdate: selectedPatient.fecha_nacimiento || selectedPatient.birthdate || null,
-        direccion: selectedPatient.direccion || 'Santiago de Cali, Valle del Cauca'
-      };
-
-      if (selectedChannel === 'call_ia') {
-        callResult = await vapiIntegrationService.triggerLiveCall(selectedPatient.telefono, patientCallPayload);
-      }
-
-      // Generar transcripción clínica detallada
-      const docStr = String(selectedPatient.documento || '1234567890');
-      const ultimos3 = docStr.slice(-3);
-      const pkg1 = ultimos3.slice(0, 1);
-      const pkg2 = ultimos3.slice(1);
-      const isMinorABC = isMinorCursoVidaABC(patientCallPayload);
-      const tiempoSaludo = getTimeOfDayGreeting();
-      const aperturaAgente = isMinorABC
-        ? buildMinorAcudienteOpening(selectedPatient.nombre)
-        : `Hola! ${tiempoSaludo}, ${selectedPatient.nombre}. Con documento terminado en ${pkg1} ${pkg2}.`;
-
-      const transcripcionTexto = [
-        `Agente IA SADI: "${aperturaAgente}"`,
-        `Agente IA SADI: "Le informamos que al continuar autoriza el tratamiento de sus datos de salud y que sus respuestas son indispensables para garantizar su cobertura en los programas preventivos obligatorios de la resolución treintaidos ochenta, del dos mil dieciocho."`,
-        `Agente IA SADI: "Nos comunicamos de su hospital para coordinar su cita de ${selectedProgram.nombre}. ¿Ha presentado algún síntoma de alarma en los últimos días?"`,
-        `Paciente (${selectedPatient.nombre}): "No señorita, me he sentido muy bien."`,
-        `Agente IA SADI: "Excelente. Tenemos agenda prioritaria para este procedimiento. Por favor presione 1 en su teclado para confirmar la cita, o presione 2 si requiere reagendar."`,
-        `Paciente (${selectedPatient.nombre}): [Marca Tecla 1 - Confirmación Exitosa DTMF]`,
-        `Agente IA SADI: "Muchas gracias, ${selectedPatient.nombre}. Su cita ha quedado confirmada. Le deseamos un excelente día."`
-      ].join('\n\n');
-
-      // Registrar en el Roadmap Individual y Supabase
-      const regRes = await roadmapService.registerIndividualCall({
+      const channelLabel = selectedChannel === 'whatsapp' ? 'WhatsApp' : 'SMS';
+      await roadmapService.registerIndividualCall({
         patientId: selectedPatient.id,
         pacienteNombre: selectedPatient.nombre,
         documento: selectedPatient.documento,
         telefono: selectedPatient.telefono,
-        canal: 'Llamada Saliente GSM (Puerto 1)',
+        canal: channelLabel,
         motivoContacto: `${selectedProgram.id} - ${selectedProgram.nombre}`,
-        resultado: 'Efectiva',
-        duracionSegundos: duracion,
-        aceptoCita: true,
-        resumenClinico: `Paciente ${selectedPatient.nombre} contactado exitosamente. Confirmó autorización de datos y asistencia a la cita para ${selectedProgram.nombre} (Resolución 3280).`,
-        transcripcion: transcripcionTexto
+        resultado: 'Enviado',
+        duracionSegundos: 0,
+        aceptoCita: false,
+        resumenClinico: `Mensaje ${channelLabel} despachado a ${selectedPatient.nombre} para ${selectedProgram.nombre}.`,
+        transcripcion: compileDynamicScript()
       });
 
       toast({
-        title: "🟢 Llamada Individual Efectiva y Registrada",
-        description: `La llamada a ${selectedPatient.nombre} fue completada y registrada en el LOG con transcripción completa.`
+        title: `✅ Mensaje ${channelLabel} Registrado`,
+        description: `Se programó el envío por ${channelLabel} para ${selectedPatient.nombre}.`
       });
-
       await loadLogs();
     } catch (e) {
       console.error('Error al despachar:', e);
@@ -367,6 +393,12 @@ export default function Rias3280ManagementPage() {
               </p>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
                 {(realCohortTotal || visiblePatients.length).toLocaleString('es-CO')} pacientes reales y variables dinámicas en vivo
+              </p>
+              <p
+                data-testid="rias-daily-quota-badge"
+                className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mt-0.5"
+              >
+                Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap} llamadas disponibles
               </p>
               {doctorAccess.restricted && (
                 <p className="text-[10px] font-bold text-amber-800 dark:text-amber-300 mt-0.5">
@@ -653,14 +685,31 @@ export default function Rias3280ManagementPage() {
                     </div>
 
                     {/* Botón de Disparo Funcional */}
-                    <Button
-                      onClick={handleDispatch}
-                      disabled={sending || !selectedProgram || !selectedPatient}
-                      className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 gap-2 shadow-md transition-all"
-                    >
-                      <PhoneCall className="h-4 w-4" />
-                      {sending ? 'Marcando a través de Puerto 1...' : `Llamar a ${selectedPatient?.nombre?.split(' ')[0] || 'Paciente'} (Puerto 1)`}
-                    </Button>
+                    {selectedChannel === 'call_ia' ? (
+                      <LiveCallButton
+                        callKey={selectedPatient?.id || 'rias-individual-dispatch'}
+                        idleLabel={`Llamar a ${selectedPatient?.nombre?.split(' ')[0] || 'Paciente'} (Puerto 1)`}
+                        testId="rias-individual-call-btn"
+                        onClick={handleDispatch}
+                        disabled={!selectedProgram || !selectedPatient}
+                        size="default"
+                        variant="default"
+                        className="w-full rounded-2xl font-bold text-xs py-3 gap-2 shadow-md"
+                        idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        iconClassName="h-4 w-4 shrink-0"
+                      />
+                    ) : (
+                      <Button
+                        onClick={handleDispatch}
+                        disabled={sending || !selectedProgram || !selectedPatient}
+                        className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 gap-2 shadow-md transition-all"
+                      >
+                        {selectedChannel === 'whatsapp' ? <MessageSquare className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                        {sending
+                          ? 'Enviando mensaje...'
+                          : `Enviar ${selectedChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} a ${selectedPatient?.nombre?.split(' ')[0] || 'Paciente'}`}
+                      </Button>
+                    )}
 
                     <div className="bg-blue-50/70 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-200/80 dark:border-blue-800/60 text-[11px] text-blue-900 dark:text-blue-200 flex items-center gap-2">
                       <CheckCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />

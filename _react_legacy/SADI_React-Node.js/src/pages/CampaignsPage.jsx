@@ -40,7 +40,8 @@ import {
   IVR_TIME_SLOTS,
   MAX_PATIENTS_PER_BATCH
 } from '@/services/ivrScheduleService';
-import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
 import {
@@ -111,7 +112,7 @@ const CampaignsPage = () => {
   const [batchFilterStatus, setBatchFilterStatus] = useState('todos');
   const [isSimulating, setIsSimulating] = useState(false);
   const [config, setConfig] = useState(ivrScheduleService.getConfig());
-  const [callingId, setCallingId] = useState(null);
+  const dailyQuota = useDailyCallQuota(user?.hospitalId || user?.hospital_id || null);
 
   // Estados de Gestión Humana para Casos Aislados
   const [selectedHumanCase, setSelectedHumanCase] = useState(null);
@@ -545,18 +546,29 @@ const CampaignsPage = () => {
   };
 
   const handleCallSinglePatient = async (item) => {
-    setCallingId(item.id);
-    try {
-      const res = await vapiIntegrationService.makeOutboundCall({
-        patientId: item.patientId || null,
-        hospitalId: item.hospitalId || user?.hospital_id || null,
+    if (!item) return;
+    if (user?.role === 'doctor' && user?.solo_lectura && !user?.puede_lanzar_llamadas) {
+      toast({
+        title: "🔒 Permiso Restringido por el Hospital",
+        description: "Su usuario tiene permisos de 'Solo Lectura'. No está autorizada para emitir llamadas salientes.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    await liveCallLifecycleService.executeLiveCall({
+      targetKey: item.id,
+      phoneNumber: item.telefono,
+      antiVoicemailConfig: config,
+      patientData: {
+        patientId: item.patientId || item.pacienteId || null,
+        hospitalId: item.hospitalId || user?.hospitalId || user?.hospital_id || null,
         doctorId: user?.doctor_id || null,
-        slotId: item.slotId || null,
-        patientPhone: item.telefono || '+573002938450',
-        patientName: item.nombre || 'Paciente',
-        patientDoc: item.documento,
+        slotTanda: item.slotId || null,
+        nombre: item.nombre || 'Paciente',
+        cedula: item.documento,
         motivoLlamada: item.campana || 'Demanda Inducida Res. 3280',
-        accion3280: item.accion3280 || 'Control Preventivo de Salud',
+        programa3280: item.campana || item.programa3280 || 'Demanda Inducida Res. 3280',
         hitoClinico: item.accion3280 || 'Jornada Preventiva',
         cursoVida: item.cursoVida || item.curso_vida,
         curso_vida: item.curso_vida || item.cursoVida,
@@ -564,29 +576,45 @@ const CampaignsPage = () => {
         birthdate: item.birthdate || item.fecha_nacimiento || null,
         edad: item.edad ?? null,
         direccion: item.direccion || 'Santiago de Cali',
-        antiVoicemailConfig: config
-      });
-      if (res.ok) {
-        toast({
-          title: "🟢 Llamada de Campaña Conectada",
-          description: `Enviada con protección dual Anti-Buzón ($0 carrier). ID: ${res.data?.id?.slice(0, 8) || 'ARI'}...`
+      },
+      onSuccess: (res) => {
+        setScheduleData((prev) => {
+          if (!prev?.items) return prev;
+          return {
+            ...prev,
+            items: prev.items.map((it) =>
+              it.id === item.id
+                ? { ...it, estado: 'confirmada', intentos: (it.intentos || 0) + 1 }
+                : it
+            ),
+          };
         });
-      } else {
+        const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
+        const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
         toast({
-          title: "Error al emitir llamada",
-          description: res.data?.message || JSON.stringify(res.data),
-          variant: "destructive"
+          title: "🟢 Llamada de Campaña Exitosa (Puerto 1)",
+          description: `${item.nombre} fue contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
         });
-      }
-    } catch (e) {
-      toast({
-        title: "Error de conexión",
-        description: e.message,
-        variant: "destructive"
-      });
-    } finally {
-      setCallingId(null);
-    }
+      },
+      onFailure: (res) => {
+        setScheduleData((prev) => {
+          if (!prev?.items) return prev;
+          return {
+            ...prev,
+            items: prev.items.map((it) =>
+              it.id === item.id
+                ? { ...it, intentos: (it.intentos || 0) + 1 }
+                : it
+            ),
+          };
+        });
+        toast({
+          title: "Fallo al Contactar",
+          description: res?.message || `No se logró contactar a ${item.nombre} por Puerto 1.`,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   // Métricas de Tandas Diarias
@@ -661,7 +689,14 @@ const CampaignsPage = () => {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span
+              data-testid="campaigns-daily-quota-badge"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-200 border border-cyan-400/40"
+            >
+              <PhoneCall className="w-3.5 h-3.5 text-cyan-300" />
+              Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap}
+            </span>
             {/* BADGE DE MODO DE EMISIÓN */}
             <div className="text-right">
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${config.isLiveEnabled
@@ -1193,16 +1228,18 @@ const CampaignsPage = () => {
                           {item.estado}
                         </span>
 
-                        <Button
+                        <LiveCallButton
+                          callKey={item.id}
+                          idleLabel="Llamar"
+                          testId="campaign-tanda-call-btn"
+                          onClick={() => handleCallSinglePatient(item)}
                           size="sm"
                           variant="outline"
-                          onClick={() => handleCallSinglePatient(item)}
-                          disabled={callingId === item.id}
-                          className="bg-white dark:bg-slate-800 text-xs font-bold rounded-xl gap-1 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60 hover:bg-blue-50 dark:hover:bg-slate-700"
-                        >
-                          {callingId === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <PhoneCall className="w-3 h-3" />}
-                          Llamar
-                        </Button>
+                          className="text-xs font-bold rounded-xl gap-1"
+                          idleClassName="bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60 hover:bg-blue-50 dark:hover:bg-slate-700"
+                          iconClassName="w-3 h-3 shrink-0"
+                          title={`Llamar a ${item.nombre} (${item.telefono}) por Puerto 1`}
+                        />
                       </div>
                     </div>
                   ))}
@@ -1240,14 +1277,18 @@ const CampaignsPage = () => {
                         <GruposRiesgoBadges patient={{ grupo_riesgo: item.grupoRiesgo || item.grupo_riesgo, grupos_riesgo: item.gruposRiesgo || item.grupos_riesgo }} maxVisible={2} />
                       </div>
                     </div>
-                    <Button
+                    <LiveCallButton
+                      callKey={item.id}
+                      idleLabel="Reintentar Llamada"
+                      testId="campaign-retry-call-btn"
+                      onClick={() => handleCallSinglePatient(item)}
                       size="sm"
                       variant="outline"
-                      onClick={() => handleCallSinglePatient(item)}
-                      className="text-xs font-bold rounded-xl"
-                    >
-                      <PhoneCall className="w-3.5 h-3.5 mr-1" /> Reintentar Llamada
-                    </Button>
+                      className="text-xs font-bold rounded-xl gap-1"
+                      idleClassName="bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60"
+                      iconClassName="w-3.5 h-3.5 shrink-0"
+                      title={`Reintentar llamada a ${item.nombre} (${item.telefono}) por Puerto 1`}
+                    />
                   </div>
                 ))}
               </div>

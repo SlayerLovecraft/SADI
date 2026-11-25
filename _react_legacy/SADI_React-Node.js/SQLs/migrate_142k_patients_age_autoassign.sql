@@ -2916,4 +2916,168 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.update_appointment_status_for_doctor(UUID, UUID, TEXT) TO anon, authenticated;
 
+-- 22. Cupo diario en vivo de 500 llamadas exitosas + registro idempotente del ciclo de vida de llamadas (Puerto 1)
+CREATE OR REPLACE FUNCTION public.get_daily_call_quota_status(
+  p_hospital_id UUID DEFAULT NULL,
+  p_date DATE DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_date DATE := COALESCE(p_date, (NOW() AT TIME ZONE 'America/Bogota')::date);
+  v_daily_cap INT := 500;
+  v_used_vapi INT := 0;
+  v_used_evidence INT := 0;
+  v_used_total INT := 0;
+BEGIN
+  SELECT count(*)::INT
+  INTO v_used_vapi
+  FROM public.vapi_agent_sessions v
+  WHERE (p_hospital_id IS NULL OR v.hospital_id = p_hospital_id)
+    AND (v.created_at AT TIME ZONE 'America/Bogota')::date = v_date
+    AND NOT COALESCE(v.deteccion_buzon, FALSE)
+    AND lower(COALESCE(v.estado_llamada, '')) IN ('completada', 'completed', 'exitosa', 'answered');
+
+  SELECT count(*)::INT
+  INTO v_used_evidence
+  FROM public.ai_contact_evidence e
+  JOIN public.patients p ON p.patient_id = e.patient_id
+  WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+    AND (e.created_at AT TIME ZONE 'America/Bogota')::date = v_date
+    AND lower(COALESCE(e.canal, '')) ~ '(call|llamada|voz|vapi|tel)'
+    AND NOT COALESCE(e.deteccion_buzon, FALSE)
+    AND lower(COALESCE(e.resultado_contacto, '')) IN ('contactado_exitoso', 'exitoso', 'completado', 'confirmada', 'entregado')
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.vapi_agent_sessions v
+      WHERE v.patient_id = e.patient_id
+        AND abs(EXTRACT(EPOCH FROM (v.created_at - e.created_at))) < 120
+    );
+
+  v_used_total := COALESCE(v_used_vapi, 0) + COALESCE(v_used_evidence, 0);
+
+  RETURN jsonb_build_object(
+    'date', to_char(v_date, 'YYYY-MM-DD'),
+    'daily_cap', v_daily_cap,
+    'used_today', v_used_total,
+    'remaining_today', GREATEST(0, v_daily_cap - v_used_total)
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.get_daily_call_quota_status(UUID, DATE) TO anon, authenticated;
+
+CREATE OR REPLACE FUNCTION public.record_call_lifecycle_outcome(
+  p_hospital_id UUID DEFAULT NULL,
+  p_patient_id UUID DEFAULT NULL,
+  p_doctor_id UUID DEFAULT NULL,
+  p_vapi_call_id TEXT DEFAULT NULL,
+  p_phone TEXT DEFAULT NULL,
+  p_motivo TEXT DEFAULT 'Demanda Inducida Res. 3280',
+  p_duracion_segundos INT DEFAULT 0,
+  p_outcome TEXT DEFAULT 'failed',
+  p_ended_reason TEXT DEFAULT NULL,
+  p_transcript TEXT DEFAULT NULL,
+  p_summary TEXT DEFAULT NULL,
+  p_slot_tanda TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_call_id TEXT := NULLIF(trim(COALESCE(p_vapi_call_id, '')), '');
+  v_is_success BOOLEAN := lower(COALESCE(p_outcome, '')) IN ('success', 'completada', 'exitosa', 'answered');
+  v_is_voicemail BOOLEAN := lower(COALESCE(p_ended_reason, '')) ~ '(voicemail|machine_|sip-183|ring-timeout)';
+  v_existing_id UUID := NULL;
+  v_existing_estado TEXT := NULL;
+  v_was_already_success BOOLEAN := FALSE;
+  v_dur INT := CASE WHEN v_is_success THEN GREATEST(1, COALESCE(p_duracion_segundos, 1)) ELSE 0 END;
+  v_estado TEXT := CASE
+    WHEN v_is_success THEN 'completada'
+    WHEN v_is_voicemail THEN 'buzon_cortado'
+    ELSE 'no_contesta'
+  END;
+  v_hosp UUID := p_hospital_id;
+  v_quota JSONB;
+BEGIN
+  IF v_hosp IS NULL AND p_patient_id IS NOT NULL THEN
+    SELECT p.hospital_id INTO v_hosp FROM public.patients p WHERE p.patient_id = p_patient_id LIMIT 1;
+  END IF;
+
+  IF v_call_id IS NULL THEN
+    v_call_id := 'sadi-live-' || replace(gen_random_uuid()::text, '-', '');
+  END IF;
+
+  SELECT v.id, v.estado_llamada
+  INTO v_existing_id, v_existing_estado
+  FROM public.vapi_agent_sessions v
+  WHERE v.vapi_call_id = v_call_id
+  LIMIT 1;
+
+  v_was_already_success := lower(COALESCE(v_existing_estado, '')) IN ('completada', 'completed', 'exitosa', 'answered');
+
+  IF v_existing_id IS NOT NULL THEN
+    UPDATE public.vapi_agent_sessions
+    SET estado_llamada = CASE WHEN v_was_already_success THEN estado_llamada ELSE v_estado END,
+        duracion_segundos = CASE WHEN v_was_already_success THEN GREATEST(duracion_segundos, v_dur) ELSE v_dur END,
+        deteccion_buzon = CASE WHEN v_was_already_success THEN FALSE ELSE v_is_voicemail END,
+        capa_deteccion = CASE WHEN v_is_success OR v_was_already_success THEN 'dtmf_human' WHEN v_is_voicemail THEN 'vapi_amd_post_answer' ELSE 'no_answer' END,
+        motivo_corte = COALESCE(NULLIF(p_ended_reason, ''), motivo_corte, v_estado),
+        transcripcion_completa = COALESCE(NULLIF(p_transcript, ''), transcripcion_completa),
+        resumen_ia = COALESCE(NULLIF(p_summary, ''), resumen_ia),
+        facturable_ips = (v_is_success OR v_was_already_success),
+        costo_sadi_cop = CASE WHEN v_is_success OR v_was_already_success THEN GREATEST(duracion_segundos, v_dur) * 12 ELSE 0 END,
+        updated_at = NOW()
+    WHERE id = v_existing_id;
+  ELSIF p_patient_id IS NOT NULL THEN
+    INSERT INTO public.vapi_agent_sessions (
+      vapi_call_id, patient_id, doctor_id, hospital_id, telefono_llamado,
+      motivo_llamada, estado_llamada, duracion_segundos,
+      transcripcion_completa, resumen_ia, deteccion_buzon, capa_deteccion,
+      cobro_carrier_evitado, sip_codigo_respuesta, motivo_corte,
+      facturable_ips, costo_sadi_cop, slot_tanda
+    )
+    VALUES (
+      v_call_id, p_patient_id, p_doctor_id, v_hosp, COALESCE(NULLIF(p_phone, ''), 'desconocido'),
+      COALESCE(NULLIF(p_motivo, ''), 'Demanda Inducida Res. 3280'), v_estado, v_dur,
+      NULLIF(p_transcript, ''), NULLIF(p_summary, ''), v_is_voicemail,
+      CASE WHEN v_is_success THEN 'dtmf_human' WHEN v_is_voicemail THEN 'vapi_amd_post_answer' ELSE 'no_answer' END,
+      FALSE, CASE WHEN v_is_success THEN 200 ELSE 480 END, COALESCE(NULLIF(p_ended_reason, ''), v_estado),
+      v_is_success, CASE WHEN v_is_success THEN v_dur * 12 ELSE 0 END, p_slot_tanda
+    );
+  END IF;
+
+  IF v_is_success AND NOT v_was_already_success AND p_patient_id IS NOT NULL THEN
+    UPDATE public.patients
+    SET conteo_canales = jsonb_set(
+      COALESCE(conteo_canales, '{"sms":0,"call":0,"email":0,"whatsapp":0}'::jsonb),
+      '{call}',
+      to_jsonb(COALESCE((conteo_canales->>'call')::INT, 0) + 1),
+      TRUE
+    )
+    WHERE patient_id = p_patient_id;
+
+    DELETE FROM public.cronograma_summary_cache WHERE cache_key LIKE 'reports_%';
+  END IF;
+
+  v_quota := public.get_daily_call_quota_status(v_hosp, (NOW() AT TIME ZONE 'America/Bogota')::date);
+
+  RETURN jsonb_build_object(
+    'ok', TRUE,
+    'vapi_call_id', v_call_id,
+    'counted_as_success', (v_is_success AND NOT v_was_already_success),
+    'quota', v_quota
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.record_call_lifecycle_outcome(UUID, UUID, UUID, TEXT, TEXT, TEXT, INT, TEXT, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated;
+
 NOTIFY pgrst, 'reload schema';

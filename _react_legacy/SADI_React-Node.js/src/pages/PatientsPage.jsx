@@ -13,7 +13,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
-import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import { useDailyCallQuota } from '@/components/LiveCallButton';
 import { ivrScheduleService } from '@/services/ivrScheduleService';
 import { CURSOS_VIDA_LIST } from '@/services/cursoVidaConfig';
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils';
@@ -64,6 +65,7 @@ const PatientsPage = () => {
   const [callingPatientId, setCallingPatientId] = useState(null);
   const { user } = useAuth();
   const { toast } = useToast();
+  const dailyQuota = useDailyCallQuota(user?.hospitalId || user?.hospital_id || null);
   const [syntheticLoading, setSyntheticLoading] = useState(false);
   const hasLoadedOnceRef = useRef(false);
   const requestSeqRef = useRef(0);
@@ -163,33 +165,19 @@ const PatientsPage = () => {
 
   const handleCallPatient = async (patient) => {
     if (!patient) return;
-    if (!patient.telefono) {
-      toast({
-        title: "Paciente sin teléfono",
-        description: `${patient.nombre} no tiene un número telefónico registrado.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
     setCallingPatientId(patient.id);
-    toast({
-      title: "📞 Iniciando llamada individual...",
-      description: `Marcando a ${patient.nombre} (${patient.telefono}) vía Agente IA SADI...`,
-    });
-
     try {
-      const ivrCfg = ivrScheduleService.getConfig();
-      const res = await vapiIntegrationService.triggerLiveCall(
-        patient.telefono,
-        {
+      await liveCallLifecycleService.executeLiveCall({
+        targetKey: patient.id,
+        phoneNumber: patient.telefono,
+        patientData: {
           patientId: patient.patient_id || patient.id,
           hospitalId: patient.hospitalId || user?.hospitalId || user?.hospital_id || null,
           doctorId: user?.doctor_id || null,
           nombre: patient.nombre,
           documento: patient.cc || patient.documento || '',
           programa3280: patient.programa || patient.program || 'Valoración Preventiva Res. 3280',
-          motivoLlamada: `Llamada Individual Res. 3280 · ${patient.curso_vida || 'Atención Preventiva'}`,
+          motivoLlamada: `Llamada Individual Puerto 1 · ${patient.curso_vida || 'Atención Preventiva'}`,
           cursoVida: patient.curso_vida || patient.grupo_vida || '',
           curso_vida: patient.curso_vida || patient.grupo_vida || '',
           curso_vida_key: patient.curso_vida_key || null,
@@ -197,26 +185,21 @@ const PatientsPage = () => {
           edad: patient.edad ?? null,
           direccion: patient.direccion || 'Santiago de Cali',
         },
-        ivrCfg
-      );
-
-      if (res.ok) {
-        toast({
-          title: "🟢 Llamada individual conectada",
-          description: `Llamando a ${patient.nombre} (${patient.telefono}). ID: ${res.data?.id?.slice(0, 8) || 'VAPI'}`,
-        });
-      } else {
-        toast({
-          title: "No se pudo emitir la llamada",
-          description: res.data?.message || res.data?.error || 'Verifica la configuración de Vapi / Gateway GSM.',
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
-      toast({
-        title: "Error al iniciar llamada",
-        description: err?.message || 'Error de conexión con el motor de llamadas.',
-        variant: "destructive",
+        antiVoicemailConfig: ivrScheduleService.getConfig(),
+        onSuccess: (res) => {
+          toast({
+            title: "🟢 Llamada exitosa registrada (Puerto 1)",
+            description: `${patient.nombre} atendido (${res.durationSeconds}s). Cupo diario restante: ${res.quota?.remainingToday ?? dailyQuota.remainingToday} / ${res.quota?.dailyCap ?? 500}.`,
+          });
+          loadPatients(false);
+        },
+        onFailure: (err) => {
+          toast({
+            title: "Fallo al Contactar",
+            description: err?.message || `No fue posible contactar a ${patient.nombre}.`,
+            variant: "destructive",
+          });
+        },
       });
     } finally {
       setCallingPatientId(null);
@@ -652,6 +635,14 @@ const PatientsPage = () => {
                   Censo oficial y telemonitoreo clínico de pacientes registrados en el hospital •{' '}
                   <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60">
                     {totalPatients.toLocaleString('es-CO')} pacientes vinculados
+                  </span>
+                  {' • '}
+                  <span
+                    data-testid="patients-daily-quota-badge"
+                    className="font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/60"
+                    title="Cupo restante de llamadas exitosas hoy sobre el tope diario de 500 (Puerto 1)"
+                  >
+                    Cupo diario hoy: {dailyQuota.remainingToday} / {dailyQuota.dailyCap}
                   </span>
                 </p>
               </div>

@@ -13,6 +13,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
+import LiveCallButton from '@/components/LiveCallButton';
 
 // Canales disponibles
 const CHANNELS = [
@@ -246,22 +247,16 @@ export default function PatientTelemetryTable({
                       <td className="p-2.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
                           {onCallPatient && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              data-testid="patient-call-btn"
-                              disabled={callingPatientId === patient.id || !patient.telefono}
+                            <LiveCallButton
+                              callKey={patient.id}
+                              idleLabel="Llamar"
+                              testId="patient-call-btn"
+                              disabled={!patient.telefono}
                               onClick={() => onCallPatient(patient)}
-                              className="h-7 px-2 gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/70 font-bold text-[11px] disabled:opacity-40"
-                              title={patient.telefono ? `Llamar individualmente a ${patient.nombre} (${patient.telefono})` : 'Paciente sin teléfono registrado'}
-                            >
-                              {callingPatientId === patient.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <PhoneCall className="h-3.5 w-3.5" />
-                              )}
-                              <span>{callingPatientId === patient.id ? '...' : 'Llamar'}</span>
-                            </Button>
+                              className="h-7 px-2 gap-1 rounded-lg font-bold text-[11px] disabled:opacity-40"
+                              idleClassName="bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/70"
+                              title={patient.telefono ? `Llamar individualmente a ${patient.nombre} (${patient.telefono}) por Puerto 1` : 'Paciente sin teléfono registrado'}
+                            />
                           )}
                           {onEditPatient && (
                             <Button

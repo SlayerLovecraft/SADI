@@ -248,34 +248,26 @@ Deno.serve(async (req) => {
 
       updateFields.fallback_sms_enviado = fallbackSmsSent;
 
-      if (callId) {
-        const { data: existing } = await supabaseAdmin
-          .from("vapi_agent_sessions")
-          .select("id, patient_id")
-          .eq("vapi_call_id", callId)
-          .maybeSingle();
+      const isSuccessCall = !classification.isVoicemail && billableDuration > 0 &&
+        !/(did-not-answer|busy|failed|error|rejected)/i.test(endedReason);
 
-        if (existing?.id) {
-          await supabaseAdmin
-            .from("vapi_agent_sessions")
-            .update(updateFields)
-            .eq("id", existing.id);
-        } else if (metadata?.patientId) {
-          await Promise.resolve(
-            supabaseAdmin
-              .from("vapi_agent_sessions")
-              .insert({
-                ...updateFields,
-                vapi_call_id: callId,
-                patient_id: metadata.patientId,
-                doctor_id: metadata.doctorId || null,
-                hospital_id: metadata.hospitalId || null,
-                telefono_llamado: String(callObj?.customer?.number || "desconocido"),
-                motivo_llamada: String(metadata.motivoLlamada || "Demanda Inducida Res. 3280"),
-                slot_tanda: metadata.slotTanda || null,
-              } as any),
-          ).catch(() => null);
-        }
+      if (callId || metadata?.patientId) {
+        await Promise.resolve(
+          supabaseAdmin.rpc("record_call_lifecycle_outcome", {
+            p_hospital_id: metadata?.hospitalId || null,
+            p_patient_id: metadata?.patientId || null,
+            p_doctor_id: metadata?.doctorId || null,
+            p_vapi_call_id: callId || `vapi-${Date.now()}`,
+            p_phone: String(callObj?.customer?.number || "desconocido"),
+            p_motivo: String(metadata?.motivoLlamada || "Demanda Inducida Res. 3280"),
+            p_duracion_segundos: billableDuration,
+            p_outcome: isSuccessCall ? "success" : "failed",
+            p_ended_reason: String(updateFields.motivo_corte || endedReason || ""),
+            p_transcript: transcript || null,
+            p_summary: String(updateFields.resumen_ia || ""),
+            p_slot_tanda: metadata?.slotTanda || null,
+          }),
+        ).catch(() => null);
       }
 
       if (metadata?.patientId) {
@@ -290,12 +282,12 @@ Deno.serve(async (req) => {
               duracion_segundos: billableDuration,
               transcripcion_dialogo: transcript ? [{ role: "transcript", text: transcript }] : [],
               resumen_clinico_ia: String(updateFields.resumen_ia || "Contacto telefónico procesado"),
-              resultado_contacto: classification.isVoicemail ? "buzon_cortado_sin_cobro" : "contactado_exitoso",
+              resultado_contacto: isSuccessCall ? "contactado_exitoso" : (classification.isVoicemail ? "buzon_cortado_sin_cobro" : "no_contesta"),
               deteccion_buzon: classification.isVoicemail,
               capa_deteccion: updateFields.capa_deteccion,
               cobro_carrier_evitado: false,
-              sip_codigo_respuesta: 200,
-              facturable_ips: Boolean(updateFields.facturable_ips),
+              sip_codigo_respuesta: isSuccessCall ? 200 : 480,
+              facturable_ips: Boolean(isSuccessCall),
             } as any),
         ).catch(() => null);
       }

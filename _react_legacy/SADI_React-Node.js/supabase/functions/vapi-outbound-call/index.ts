@@ -20,7 +20,9 @@ interface AntiVoicemailOptions {
 }
 
 interface OutboundCallBody {
-  phoneNumber: string;
+  action?: "call" | "status" | null;
+  callId?: string | null;
+  phoneNumber?: string;
   phoneNumberId?: string | null;
   gsmPort?: number | null;
   callerNumber?: string | null;
@@ -37,6 +39,97 @@ interface OutboundCallBody {
 
 const DEFAULT_PORT1_PHONE_NUMBER_ID = "3e836f48-6110-410d-a340-fd625598b324";
 const DEFAULT_PORT1_CALLER_NUMBER = "+573106783338";
+
+const UNANSWERED_OR_FAILED_REASONS = new Set([
+  "customer-did-not-answer",
+  "customer-busy",
+  "voicemail",
+  "voicemail-reached",
+  "machine_start",
+  "machine_end_beep",
+  "machine_end_silence",
+  "twilio-failed-to-connect-call",
+  "vonage-rejected",
+  "assistant-error",
+  "phone-call-provider-closed-websocket",
+  "sip-183-voicemail-cancel",
+  "ring-timeout-before-200ok",
+  "early-media-voicemail-cutoff",
+  "pipeline-error-openai-llm-failed",
+  "pipeline-error-eleven-labs-voice-failed",
+  "call.start.error-get-transport",
+  "call.start.error-sip-register",
+]);
+
+function classifyVapiLiveCall(vapiCall: Record<string, unknown>) {
+  const rawStatus = String(vapiCall?.status || "queued").toLowerCase();
+  const endedReason = String(vapiCall?.endedReason || "").toLowerCase();
+  const startedAt = vapiCall?.startedAt ? Date.parse(String(vapiCall.startedAt)) : NaN;
+  const endedAt = vapiCall?.endedAt ? Date.parse(String(vapiCall.endedAt)) : NaN;
+  let durationSeconds = Number(vapiCall?.durationSeconds ?? 0);
+  if ((!Number.isFinite(durationSeconds) || durationSeconds <= 0) && Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt > startedAt) {
+    durationSeconds = Math.max(0, Math.round((endedAt - startedAt) / 1000));
+  }
+  const transcript = String(
+    vapiCall?.transcript ||
+      (vapiCall?.artifact as Record<string, unknown> | undefined)?.transcript ||
+      "",
+  );
+  const summary = String(
+    vapiCall?.summary ||
+      (vapiCall?.analysis as Record<string, unknown> | undefined)?.summary ||
+      "",
+  );
+
+  if (rawStatus === "queued" || rawStatus === "ringing") {
+    return {
+      phase: "calling" as const,
+      vapiStatus: rawStatus,
+      answered: false,
+      isSuccess: false,
+      endedReason,
+      durationSeconds: 0,
+      transcript,
+      summary,
+    };
+  }
+
+  if (rawStatus === "in-progress" || rawStatus === "forwarding") {
+    return {
+      phase: "in_call" as const,
+      vapiStatus: rawStatus,
+      answered: true,
+      isSuccess: false,
+      endedReason,
+      durationSeconds,
+      transcript,
+      summary,
+    };
+  }
+
+  // rawStatus === 'ended'
+  const failedByReason =
+    UNANSWERED_OR_FAILED_REASONS.has(endedReason) ||
+    endedReason.includes("error") ||
+    endedReason.includes("failed") ||
+    endedReason.includes("voicemail") ||
+    endedReason.includes("did-not-answer") ||
+    endedReason.includes("busy") ||
+    endedReason.includes("rejected");
+
+  const wasAnswered = (Number.isFinite(startedAt) || durationSeconds > 0) && !failedByReason;
+
+  return {
+    phase: "ended" as const,
+    vapiStatus: rawStatus,
+    answered: wasAnswered,
+    isSuccess: wasAnswered && !failedByReason,
+    endedReason,
+    durationSeconds: wasAnswered ? Math.max(1, durationSeconds) : 0,
+    transcript,
+    summary,
+  };
+}
 
 const requireEnv = (key: string) => {
   const v = Deno.env.get(key);
@@ -161,6 +254,48 @@ Deno.serve(async (req) => {
     });
 
     const body = (await req.json().catch(() => null)) as OutboundCallBody | null;
+
+    // -------------------------------------------------------------------------
+    // ACCIÓN 'status': Polling en tiempo real del ciclo de vida de la llamada Vapi
+    // (queued/ringing -> 'calling' | in-progress -> 'in_call' | ended -> 'ended')
+    // -------------------------------------------------------------------------
+    if (body?.action === "status") {
+      const callId = String(body.callId || "").trim();
+      if (!callId) {
+        return jsonResponse(req, 400, { ok: false, error: "callId es obligatorio para consultar estado" });
+      }
+      const vapiKey = Deno.env.get("VAPI_PRIVATE_KEY") || Deno.env.get("VAPI_API_KEY");
+      if (!vapiKey) {
+        return jsonResponse(req, 500, { ok: false, error: "Falta VAPI_PRIVATE_KEY en Edge Functions." });
+      }
+
+      const stRes = await fetch(`https://api.vapi.ai/call/${encodeURIComponent(callId)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${vapiKey}`,
+          Accept: "application/json",
+        },
+      });
+      const stData = (await stRes.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!stRes.ok) {
+        return jsonResponse(req, stRes.status, {
+          ok: false,
+          status: stRes.status,
+          phase: "ended",
+          isSuccess: false,
+          error: stData?.message || "No se pudo consultar el estado de la llamada en Vapi",
+          data: stData,
+        });
+      }
+
+      const classified = classifyVapiLiveCall(stData);
+      return jsonResponse(req, 200, {
+        ok: true,
+        callId,
+        ...classified,
+      });
+    }
+
     if (!body?.phoneNumber) {
       return jsonResponse(req, 400, { ok: false, error: "phoneNumber es obligatorio" });
     }
@@ -220,7 +355,7 @@ Deno.serve(async (req) => {
       const { data: pRow } = await supabaseAdmin
         .from("patients")
         .select("name, curso_vida, birthdate, es_gestante")
-        .eq("id", body.patientId)
+        .eq("patient_id", body.patientId)
         .maybeSingle();
       dbPatient = (pRow as Record<string, unknown> | null) || null;
     }

@@ -9,7 +9,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { normalizeCursosArray } from '@/services/cursoVidaConfig';
 import { demanda3280Service, GRUPOS_RIESGO_3280 } from '@/services/demanda3280Service';
-import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import {
   getCaliComunas,
@@ -75,7 +76,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
   // Modal de Detalle / Llamada
   const [selectedItemForModal, setSelectedItemForModal] = useState(null);
-  const [callingId, setCallingId] = useState(null);
+  const dailyQuota = useDailyCallQuota(user?.hospitalId || user?.hospital_id || null);
 
   const doctorCursosParam = useMemo(() => {
     if (user?.role !== 'doctor') return null;
@@ -247,8 +248,9 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
   const totalPages = Math.max(1, Math.ceil(filteredCount / itemsPerPage));
   const paginatedInteractions = interactions;
 
-  // Disparar llamada inmediata por Puerto 1 con validación de permisos
+  // Disparar llamada inmediata REAL por Puerto 1 con ciclo de vida completo y descuento en cupo de 500/día
   const handleDirectCall = async (item) => {
+    if (!item) return;
     // Verificar restricción de permisos del personal
     if (user?.role === 'doctor' && user?.solo_lectura && !user?.puede_lanzar_llamadas) {
       toast({
@@ -259,41 +261,52 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
       return;
     }
 
-    setCallingId(item.id);
-    toast({
-      title: "📞 Conectando Llamada en Vivo (Puerto 1)...",
-      description: `Marcando a ${item.pacienteNombre} (${item.telefono}) por Gateway GSM...`
-    });
-
-    try {
-      await vapiIntegrationService.triggerLiveCall(item.telefono, {
+    await liveCallLifecycleService.executeLiveCall({
+      targetKey: item.id,
+      phoneNumber: item.telefono,
+      patientData: {
         patientId: item.pacienteId || null,
+        hospitalId: user?.hospitalId || user?.hospital_id || null,
+        doctorId: user?.doctor_id || null,
         nombre: item.pacienteNombre,
         cedula: item.pacienteDoc,
         programa: item.protocoloNombre,
+        programa3280: item.protocoloNombre,
+        hitoClinico: item.hitoClinico,
+        motivoLlamada: item.protocoloNombre || 'Demanda Inducida Res. 3280',
         cursoVida: item.cursoVida || item.curso_vida,
         curso_vida: item.curso_vida || item.cursoVida,
         birthdate: item.birthdate || item.fechaNacimiento || null,
-        direccion: item.barrio ? `${item.barrio}, ${item.zona}` : 'Santiago de Cali, Valle del Cauca'
-      });
-
-      toast({
-        title: "🟢 Llamada Conectada con Éxito",
-        description: `Canal GSM Puerto 1 enlazado para ${item.pacienteNombre}. Se actualizó el estado a 'Confirmada'.`
-      });
-
-      // Actualizar estado local
-      setInteractions(prev => prev.map(it => it.id === item.id ? { ...it, estado: 'Confirmada', intentos: (it.intentos || 0) + 1 } : it));
-      if (onExecuteCallSuccess) onExecuteCallSuccess();
-    } catch (e) {
-      toast({
-        title: "Fallo de conexión",
-        description: e.message || 'Error al conectar la llamada por Puerto 1.',
-        variant: "destructive"
-      });
-    } finally {
-      setCallingId(null);
-    }
+        edad: item.edad ?? null,
+        direccion: item.barrio ? `${item.barrio}, ${item.zona}` : 'Santiago de Cali, Valle del Cauca',
+      },
+      onSuccess: (res) => {
+        setInteractions((prev) =>
+          prev.map((it) =>
+            it.id === item.id ? { ...it, estado: 'Confirmada', intentos: (it.intentos || 0) + 1 } : it
+          )
+        );
+        const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
+        const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
+        toast({
+          title: "🟢 Llamada Exitosa y Registrada (Puerto 1)",
+          description: `${item.pacienteNombre} fue contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
+        });
+        if (onExecuteCallSuccess) onExecuteCallSuccess();
+      },
+      onFailure: (res) => {
+        setInteractions((prev) =>
+          prev.map((it) =>
+            it.id === item.id ? { ...it, estado: 'No Contesta', intentos: (it.intentos || 0) + 1 } : it
+          )
+        );
+        toast({
+          title: "Fallo al Contactar",
+          description: res?.message || `No se logró contactar a ${item.pacienteNombre} por Puerto 1.`,
+          variant: "destructive",
+        });
+      },
+    });
   };
 
   return (
@@ -304,7 +317,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
       {/* ========================================================================= */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 dark:border-slate-800 pb-5">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
@@ -314,6 +327,12 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
             </span>
             <span className="text-[11px] font-mono text-gray-400 dark:text-slate-400">
               Próxima en: <strong className="text-gray-700 dark:text-slate-200">{secondsRemaining}s</strong>
+            </span>
+            <span
+              data-testid="demanda-daily-quota-badge"
+              className="text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/60"
+            >
+              Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap}
             </span>
           </div>
 
@@ -638,9 +657,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
                 </td>
               </tr>
             ) : (
-              paginatedInteractions.map((item, idx) => {
-                const isCalling = callingId === item.id;
-
+              paginatedInteractions.map((item) => {
                 return (
                   <tr key={item.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
 
@@ -786,15 +803,18 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
 
-                        <Button
-                          size="sm"
+                        <LiveCallButton
+                          callKey={item.id}
+                          idleLabel="Llamar (P. 1)"
+                          testId="demanda-call-btn"
                           onClick={() => handleDirectCall(item)}
-                          disabled={isCalling}
-                          className="h-7 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] gap-1 shadow-sm"
-                        >
-                          <PhoneCall className="w-3 h-3" />
-                          {isCalling ? 'Marcando...' : 'Llamar (P. 22)'}
-                        </Button>
+                          size="sm"
+                          variant="default"
+                          className="h-7 px-2.5 rounded-xl font-bold text-[11px] gap-1 shadow-sm"
+                          idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          iconClassName="w-3 h-3 shrink-0"
+                          title={`Llamar a ${item.pacienteNombre} (${item.telefono}) por Puerto 1`}
+                        />
                       </div>
                     </td>
 
@@ -945,17 +965,17 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
               )}
 
               <div className="pt-2">
-                <Button
-                  onClick={() => {
-                    handleDirectCall(selectedItemForModal);
-                    setSelectedItemForModal(null);
-                  }}
-                  disabled={callingId === selectedItemForModal.id}
-                  className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 gap-2 shadow-md"
-                >
-                  <PhoneCall className="h-4 w-4" />
-                  Ejecutar Llamada Ahora por GSM Puerto 1
-                </Button>
+                <LiveCallButton
+                  callKey={selectedItemForModal.id}
+                  idleLabel="Ejecutar Llamada Ahora por GSM Puerto 1"
+                  testId="demanda-modal-call-btn"
+                  onClick={() => handleDirectCall(selectedItemForModal)}
+                  size="default"
+                  variant="default"
+                  className="w-full rounded-2xl font-bold text-xs py-3 gap-2 shadow-md"
+                  idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  iconClassName="h-4 w-4 shrink-0"
+                />
               </div>
 
             </div>

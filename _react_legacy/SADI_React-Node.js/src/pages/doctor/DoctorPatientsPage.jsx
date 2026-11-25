@@ -11,7 +11,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
 import { staffService } from '@/services/staffService';
-import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import LiveCallButton from '@/components/LiveCallButton';
 import { ivrScheduleService } from '@/services/ivrScheduleService';
 import { getDoctorLifeCourseTheme, formatCursosVidaLabel, canonicalizeCursoKey } from '@/services/cursoVidaConfig';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
@@ -166,55 +167,40 @@ const DoctorPatientsPage = () => {
       return;
     }
     const phone = patient.telefono || patient.phone;
-    if (!phone) {
-      toast({
-        title: "Paciente sin teléfono",
-        description: `${patient.nombre || patient.name} no tiene teléfono registrado.`,
-        variant: "destructive",
-      });
-      return;
-    }
     const pid = patient.id || patient.patient_id;
     setCallingPatientId(pid);
-    toast({
-      title: "📞 Iniciando llamada individual...",
-      description: `Marcando a ${patient.nombre || patient.name} (${phone})...`,
-    });
     try {
-      const res = await vapiIntegrationService.triggerLiveCall(
-        phone,
-        {
+      await liveCallLifecycleService.executeLiveCall({
+        targetKey: pid,
+        phoneNumber: phone,
+        patientData: {
           patientId: pid,
           hospitalId: patient.hospital_id || user?.hospitalId || null,
           doctorId: doctorProfile?.doctor_id || doctorProfile?.id || user?.doctor_id || null,
           nombre: patient.nombre || patient.name,
           documento: patient.documento || patient.document || patient.cc || '',
           programa3280: patient.program || 'Valoración Preventiva Res. 3280',
+          motivoLlamada: `Llamada Médica Puerto 1 · ${patient.curso_vida || 'Res. 3280'}`,
           cursoVida: patient.curso_vida || patient.grupo_vida || '',
           curso_vida: patient.curso_vida || patient.grupo_vida || '',
           birthdate: patient.fecha_nacimiento || patient.birthdate || null,
           edad: patient.edad ?? null,
           direccion: patient.address || 'Santiago de Cali',
         },
-        ivrScheduleService.getConfig()
-      );
-      if (res.ok) {
-        toast({
-          title: "🟢 Llamada individual conectada",
-          description: `Llamando a ${patient.nombre || patient.name}.`,
-        });
-      } else {
-        toast({
-          title: "No se pudo emitir la llamada",
-          description: res.data?.message || res.data?.error || 'Verifica la configuración de Vapi.',
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
-      toast({
-        title: "Error de conexión",
-        description: err?.message || 'Error iniciando llamada.',
-        variant: "destructive",
+        antiVoicemailConfig: ivrScheduleService.getConfig(),
+        onSuccess: (res) => {
+          toast({
+            title: "🟢 Llamada exitosa registrada (Puerto 1)",
+            description: `${patient.nombre || patient.name} atendido (${res.durationSeconds}s). Cupo diario restante: ${res.quota?.remainingToday ?? 500} / ${res.quota?.dailyCap ?? 500}.`,
+          });
+        },
+        onFailure: (err) => {
+          toast({
+            title: "Fallo al Contactar",
+            description: err?.message || `No se logró contactar a ${patient.nombre || patient.name}.`,
+            variant: "destructive",
+          });
+        },
       });
     } finally {
       setCallingPatientId(null);
@@ -409,20 +395,16 @@ const DoctorPatientsPage = () => {
 
                   {/* Acciones Rápidas */}
                   <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={callingPatientId === (patient.id || patient.patient_id) || !(patient.telefono || patient.phone)}
+                    <LiveCallButton
+                      callKey={patient.id || patient.patient_id}
+                      idleLabel="Llamar"
+                      testId="doctor-patient-call-btn"
+                      disabled={!(patient.telefono || patient.phone)}
                       onClick={() => handleCallPatient(patient)}
-                      className="flex-1 py-2 px-3 text-center bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1.5"
-                      title={patient.telefono || patient.phone ? `Llamar individualmente a ${patient.nombre || patient.name}` : 'Sin teléfono registrado'}
-                    >
-                      {callingPatientId === (patient.id || patient.patient_id) ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <PhoneCall className="h-3.5 w-3.5" />
-                      )}
-                      <span>{callingPatientId === (patient.id || patient.patient_id) ? 'Llamando...' : 'Llamar'}</span>
-                    </button>
+                      className="flex-1 h-auto py-2 px-3 font-bold text-xs rounded-xl shadow-sm gap-1.5"
+                      idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      title={patient.telefono || patient.phone ? `Llamar individualmente a ${patient.nombre || patient.name} por Puerto 1` : 'Sin teléfono registrado'}
+                    />
                     <Link
                       to="/doctor/clinical-records"
                       className="flex-1 py-2 px-3 text-center bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1.5"

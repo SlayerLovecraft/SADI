@@ -43,6 +43,8 @@ import {
 } from '@/services/caliDivipola';
 import { NOSHOW_POLICY } from '@/services/noShowFollowupService';
 import { demanda3280Service } from '@/services/demanda3280Service';
+import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -83,6 +85,52 @@ function ResolutionAnnualMatrix({
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const dailyQuota = useDailyCallQuota(safeHospitalUuid(user));
+
+  const handleCallDayPatient = async (cItem) => {
+    if (!cItem) return;
+    if (user?.role === 'doctor' && user?.solo_lectura && !user?.puede_lanzar_llamadas) {
+      toast({
+        title: "🔒 Permiso Restringido por el Hospital",
+        description: "Su usuario tiene permisos de 'Solo Lectura'. No está autorizada para emitir llamadas salientes.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    await liveCallLifecycleService.executeLiveCall({
+      targetKey: cItem.id,
+      phoneNumber: cItem.telefono,
+      patientData: {
+        patientId: cItem.id,
+        hospitalId: safeHospitalUuid(user),
+        doctorId: user?.doctor_id || null,
+        nombre: cItem.nombre,
+        cedula: cItem.documento,
+        programa3280: cItem.accion3280 || 'Demanda Inducida Res. 3280',
+        hitoClinico: cItem.accion3280,
+        motivoLlamada: cItem.accion3280 || 'Demanda Inducida Res. 3280',
+        cursoVida: cItem.curso_vida || cItem.cursoVida,
+        curso_vida: cItem.curso_vida || cItem.cursoVida,
+        edad: cItem.edad ?? null,
+      },
+      onSuccess: (res) => {
+        const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
+        const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
+        toast({
+          title: '🟢 Llamada Exitosa y Registrada (Puerto 1)',
+          description: `${cItem.nombre} contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
+        });
+      },
+      onFailure: (res) => {
+        toast({
+          title: 'Fallo al Contactar',
+          description: res?.message || `No se logró contactar a ${cItem.nombre} por Puerto 1.`,
+          variant: 'destructive',
+        });
+      },
+    });
+  };
 
   // Permisos efectivos del usuario por Cursos de Vida (7 Cursos: A - G)
   const doctorAccess = useMemo(() => getAllowedCursoKeysForUser(user), [user]);
@@ -1249,6 +1297,13 @@ function ResolutionAnnualMatrix({
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5">
                 <Gauge className="w-3.5 h-3.5 text-emerald-400" />
                 Límite Operativo: {DAILY_CALL_CAPACITY} llamadas IA/día ({CALLS_PER_HOUR}/h • 08:00 AM - 06:00 PM • Lun–Sáb sin festivos)
+              </span>
+              <span
+                data-testid="cronograma-daily-quota-badge"
+                className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-200 border border-cyan-400/40 flex items-center gap-1.5"
+              >
+                <Phone className="w-3.5 h-3.5 text-cyan-300" />
+                Cupo hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap} restantes ({dailyQuota.usedToday} realizadas)
               </span>
             </div>
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-3">
@@ -2501,28 +2556,35 @@ function ResolutionAnnualMatrix({
                 </div>
 
                 {/* Aforo exacto sobre 500 llamadas/día: SOLO visible en la fila global Ruta Res. 3280 */}
-                {!selectedRoadmapDay.specificItem && (
-                  <div
-                    data-testid="day-modal-aforo-box"
-                    className="bg-slate-800/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-right shrink-0"
-                  >
-                    <div className="text-[10px] uppercase font-bold text-slate-400">
-                      Aforo Diario IA (Tope {DAILY_CALL_CAPACITY})
+                {!selectedRoadmapDay.specificItem && (() => {
+                  const isToday = selectedRoadmapDay.isoDate === dailyQuota.date;
+                  const usedCount = isToday
+                    ? dailyQuota.usedToday
+                    : (dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0);
+                  const remainingCount = isToday
+                    ? dailyQuota.remainingToday
+                    : Math.max(0, DAILY_CALL_CAPACITY - usedCount);
+                  return (
+                    <div
+                      data-testid="day-modal-aforo-box"
+                      className="bg-slate-800/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-right shrink-0"
+                    >
+                      <div className="text-[10px] uppercase font-bold text-slate-400">
+                        Aforo Diario IA (Tope {DAILY_CALL_CAPACITY}){isToday ? ' • EN VIVO HOY' : ''}
+                      </div>
+                      <div className="text-sm font-black text-emerald-400">
+                        {usedCount} / {DAILY_CALL_CAPACITY} {isToday ? 'llamadas realizadas hoy' : 'llamadas IA'}
+                      </div>
+                      <div className="text-[10px] text-slate-300">
+                        Saldo disponible{isToday ? ' hoy' : ''}:{' '}
+                        <strong data-testid="day-modal-remaining-quota">{remainingCount}</strong>
+                        {dayModalMeta.smsRespaldo > 0 && (
+                          <span className="text-amber-300 font-bold"> • +{dayModalMeta.smsRespaldo} SMS respaldo</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm font-black text-emerald-400">
-                      {dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0} / {DAILY_CALL_CAPACITY} llamadas IA
-                    </div>
-                    <div className="text-[10px] text-slate-300">
-                      Saldo disponible:{' '}
-                      <strong>
-                        {Math.max(0, DAILY_CALL_CAPACITY - (dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0))}
-                      </strong>
-                      {dayModalMeta.smsRespaldo > 0 && (
-                        <span className="text-amber-300 font-bold"> • +{dayModalMeta.smsRespaldo} SMS respaldo</span>
-                      )}
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               {/* Cuerpo del Día */}
@@ -2656,15 +2718,29 @@ function ResolutionAnnualMatrix({
                                 </div>
                               </div>
 
-                              <Button
-                                size="sm"
-                                variant={isSelected ? 'default' : 'outline'}
-                                onClick={() => setSelectedPromptPatient(isSelected ? null : cItem)}
-                                className="text-[11px] h-8 gap-1.5 rounded-xl font-bold shrink-0"
-                              >
-                                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                                {isSelected ? 'Ocultar Guion IA' : 'Ver Guion IA Completo'}
-                              </Button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <LiveCallButton
+                                  callKey={cItem.id}
+                                  idleLabel="Llamar"
+                                  testId="day-modal-call-btn"
+                                  onClick={() => handleCallDayPatient(cItem)}
+                                  size="sm"
+                                  variant="default"
+                                  className="text-[11px] h-8 px-2.5 gap-1 rounded-xl font-bold shrink-0"
+                                  idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  iconClassName="w-3.5 h-3.5 shrink-0"
+                                  title={`Llamar a ${cItem.nombre} (${cItem.telefono}) por Puerto 1`}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant={isSelected ? 'default' : 'outline'}
+                                  onClick={() => setSelectedPromptPatient(isSelected ? null : cItem)}
+                                  className="text-[11px] h-8 gap-1.5 rounded-xl font-bold shrink-0"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                  {isSelected ? 'Ocultar Guion IA' : 'Ver Guion IA Completo'}
+                                </Button>
+                              </div>
                             </div>
 
                             {isSelected && (
