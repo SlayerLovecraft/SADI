@@ -412,7 +412,7 @@ export default function StaffPatientInteractionsTable({
             </div>
             <div>
               <span className="text-[10px] text-gray-400 font-bold uppercase block">
-                Reproduciendo Audio de Agente IA · GSM Puerto 22
+                Reproduciendo Audio de Agente IA · GSM Puerto 1
               </span>
               <p className="text-xs font-bold text-gray-100">
                 Llamada con: {activeAudioPatient.nombre} · Coordinada por: {staffName}
@@ -501,7 +501,7 @@ export default function StaffPatientInteractionsTable({
               <div className="space-y-2.5 bg-slate-900 dark:bg-slate-950 text-slate-100 p-4 rounded-2xl max-h-72 overflow-y-auto font-mono text-[11px] border border-transparent dark:border-slate-800">
                 <div className="text-[10px] text-slate-400 font-bold pb-2 border-b border-slate-800 flex items-center justify-between">
                   <span>LOG AUDITABLE DE DIÁLOGO</span>
-                  <span>CANAL: GSM PUERTO 22</span>
+                  <span>CANAL: GSM PUERTO 1</span>
                 </div>
 
                 {selectedTranscript.data.dialogo.map((d, dIdx) => {

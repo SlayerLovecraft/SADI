@@ -53,7 +53,7 @@ export const VAPI_VOICEMAIL_ENDED_REASONS = [
 
 export const DEFAULT_ANTI_VOICEMAIL_CONFIG = {
   antiVoicemail: true,
-  earlyMediaPreAnswer: true,
+  earlyMediaPreAnswer: false, // false mientras 190.90.52.5 tenga firewall cerrado al VPS 69.197.142.64; las llamadas salen vía Vapi -> Issabel PBX (Puerto 1) con Vapi AMD activo
   preAnswerRingTimeoutSec: 19,
   sipCancelOn183Voicemail: true,
   voicemailProvider: 'vapi', // 'vapi' | 'google' | 'openai' (sin Twilio)

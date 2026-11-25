@@ -1,6 +1,6 @@
 // ==============================================================================
 // ReportsPage.jsx - REPORTES Y ANÁLISIS DE DEMANDA INDUCIDA (RESOLUCIÓN 3280)
-// - Header Multicanal: SMS, Email, Llamadas (Puerto 22), WhatsApp vs Cursos A-J y Riesgo 1-7
+// - Header Multicanal: SMS, Email, Llamadas (Puerto 1), WhatsApp vs Cursos A-J y Riesgo 1-7
 // - Cuadro con Columna Flotante de Filtros (Curso de Vida, Riesgo, Barrio, Comuna, Zona Urbana/Rural)
 // - Gráfica de Torta Interactiva Exportable a PNG y EXCEL
 // - Módulos de Exportación y Auditoría Hospitalaria
@@ -536,7 +536,7 @@ const ReportsPage = () => {
                   {(matrixData?.recentCommunications || []).map((ev) => {
                     const canalLabel =
                       ev.canal === 'call'
-                        ? 'Llamada (Puerto 22)'
+                        ? 'Llamada (Puerto 1)'
                         : ev.canal === 'whatsapp'
                         ? 'WhatsApp'
                         : ev.canal === 'email'
@@ -715,7 +715,7 @@ const ReportsPage = () => {
                   Interacciones Multicanal
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Logs de llamadas (Puerto 22), mensajes SMS, WhatsApp y correos emitidos.
+                  Logs de llamadas (Puerto 1), mensajes SMS, WhatsApp y correos emitidos.
                 </p>
               </div>
 

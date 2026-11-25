@@ -260,7 +260,7 @@ export default function Rias3280ManagementPage() {
     setSending(true);
     toast({
       title: "📞 Iniciando Llamada Individual en Vivo...",
-      description: `Marcando a ${selectedPatient.nombre} (${selectedPatient.telefono}) por Gateway GSM Puerto 22...`
+      description: `Marcando a ${selectedPatient.nombre} (${selectedPatient.telefono}) por Gateway GSM Puerto 1...`
     });
 
     try {
@@ -309,7 +309,7 @@ export default function Rias3280ManagementPage() {
         pacienteNombre: selectedPatient.nombre,
         documento: selectedPatient.documento,
         telefono: selectedPatient.telefono,
-        canal: 'Llamada Saliente GSM (Puerto 22)',
+        canal: 'Llamada Saliente GSM (Puerto 1)',
         motivoContacto: `${selectedProgram.id} - ${selectedProgram.nombre}`,
         resultado: 'Efectiva',
         duracionSegundos: duracion,
@@ -613,7 +613,7 @@ export default function Rias3280ManagementPage() {
                       </label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
-                          { id: 'call_ia', label: 'Llamada IA (Puerto 22)', icon: PhoneCall },
+                          { id: 'call_ia', label: 'Llamada IA (Puerto 1)', icon: PhoneCall },
                           { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
                           { id: 'sms', label: 'SMS', icon: Send }
                         ].map(ch => {
@@ -659,7 +659,7 @@ export default function Rias3280ManagementPage() {
                       className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 gap-2 shadow-md transition-all"
                     >
                       <PhoneCall className="h-4 w-4" />
-                      {sending ? 'Marcando a través de Puerto 22...' : `Llamar a ${selectedPatient?.nombre?.split(' ')[0] || 'Paciente'} (Puerto 22)`}
+                      {sending ? 'Marcando a través de Puerto 1...' : `Llamar a ${selectedPatient?.nombre?.split(' ')[0] || 'Paciente'} (Puerto 1)`}
                     </Button>
 
                     <div className="bg-blue-50/70 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-200/80 dark:border-blue-800/60 text-[11px] text-blue-900 dark:text-blue-200 flex items-center gap-2">

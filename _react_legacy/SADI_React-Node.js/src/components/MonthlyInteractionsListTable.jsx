@@ -247,7 +247,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
   const totalPages = Math.max(1, Math.ceil(filteredCount / itemsPerPage));
   const paginatedInteractions = interactions;
 
-  // Disparar llamada inmediata por Puerto 22 con validación de permisos
+  // Disparar llamada inmediata por Puerto 1 con validación de permisos
   const handleDirectCall = async (item) => {
     // Verificar restricción de permisos del personal
     if (user?.role === 'doctor' && user?.solo_lectura && !user?.puede_lanzar_llamadas) {
@@ -261,7 +261,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
     setCallingId(item.id);
     toast({
-      title: "📞 Conectando Llamada en Vivo (Puerto 22)...",
+      title: "📞 Conectando Llamada en Vivo (Puerto 1)...",
       description: `Marcando a ${item.pacienteNombre} (${item.telefono}) por Gateway GSM...`
     });
 
@@ -279,7 +279,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
       toast({
         title: "🟢 Llamada Conectada con Éxito",
-        description: `Canal GSM Puerto 22 enlazado para ${item.pacienteNombre}. Se actualizó el estado a 'Confirmada'.`
+        description: `Canal GSM Puerto 1 enlazado para ${item.pacienteNombre}. Se actualizó el estado a 'Confirmada'.`
       });
 
       // Actualizar estado local
@@ -288,7 +288,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
     } catch (e) {
       toast({
         title: "Fallo de conexión",
-        description: e.message || 'Error al conectar la llamada por Puerto 22.',
+        description: e.message || 'Error al conectar la llamada por Puerto 1.',
         variant: "destructive"
       });
     } finally {
@@ -954,7 +954,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
                   className="w-full rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3 gap-2 shadow-md"
                 >
                   <PhoneCall className="h-4 w-4" />
-                  Ejecutar Llamada Ahora por GSM Puerto 22
+                  Ejecutar Llamada Ahora por GSM Puerto 1
                 </Button>
               </div>
 

@@ -21,6 +21,10 @@ interface AntiVoicemailOptions {
 
 interface OutboundCallBody {
   phoneNumber: string;
+  phoneNumberId?: string | null;
+  gsmPort?: number | null;
+  callerNumber?: string | null;
+  routeMode?: "auto" | "vapi_issabel_port1" | "asterisk_preanswer" | null;
   patientId?: string | null;
   hospitalId?: string | null;
   doctorId?: string | null;
@@ -30,6 +34,9 @@ interface OutboundCallBody {
   assistantOverrides?: Record<string, unknown>;
   antiVoicemailConfig?: AntiVoicemailOptions;
 }
+
+const DEFAULT_PORT1_PHONE_NUMBER_ID = "3e836f48-6110-410d-a340-fd625598b324";
+const DEFAULT_PORT1_CALLER_NUMBER = "+573106783338";
 
 const requireEnv = (key: string) => {
   const v = Deno.env.get(key);
@@ -192,7 +199,7 @@ Deno.serve(async (req) => {
 
     const effectiveCfg: AntiVoicemailOptions = {
       antiVoicemail: body.antiVoicemailConfig?.antiVoicemail ?? (dbCfg?.anti_voicemail_enabled as boolean | undefined) ?? true,
-      earlyMediaPreAnswer: body.antiVoicemailConfig?.earlyMediaPreAnswer ?? (dbCfg?.early_media_pre_answer as boolean | undefined) ?? true,
+      earlyMediaPreAnswer: body.antiVoicemailConfig?.earlyMediaPreAnswer ?? (dbCfg?.early_media_pre_answer as boolean | undefined) ?? false,
       preAnswerRingTimeoutSec: body.antiVoicemailConfig?.preAnswerRingTimeoutSec ?? (dbCfg?.pre_answer_ring_timeout_sec as number | undefined) ?? 19,
       sipCancelOn183Voicemail: body.antiVoicemailConfig?.sipCancelOn183Voicemail ?? (dbCfg?.sip_cancel_on_183_voicemail as boolean | undefined) ?? true,
       voicemailProvider: (body.antiVoicemailConfig?.voicemailProvider ?? dbCfg?.voicemail_provider ?? "vapi") as any,
@@ -253,9 +260,19 @@ Deno.serve(async (req) => {
       ring_timeout_sec: String(effectiveCfg.preAnswerRingTimeoutSec || 19),
     };
 
-    // Opción A: Puerta de Enlace Asterisk + OpenVox (Early Media SIP 183 Pre-Answer antes de 200 OK -> $0 carrier)
+    const targetPhoneNumberId =
+      body.phoneNumberId ||
+      Deno.env.get("VAPI_PHONE_NUMBER_ID") ||
+      DEFAULT_PORT1_PHONE_NUMBER_ID;
+    const targetGsmPort = Number(body.gsmPort || 1);
+    const targetCallerNumber = body.callerNumber || DEFAULT_PORT1_CALLER_NUMBER;
+
+    // Opción A: Puerta de Enlace Asterisk + OpenVox directo (Early Media SIP 183 Pre-Answer antes de 200 OK -> $0 carrier)
+    // Solo se usa cuando NO se solicita ruta Vapi+Issabel Puerto 1 y earlyMediaPreAnswer está habilitado.
     const ariUrl = Deno.env.get("OPENVOX_BRIDGE_URL") || Deno.env.get("ASTERISK_ARI_URL") || (dbCfg?.ari_gateway_host ? String(dbCfg.ari_gateway_host) : "");
-    const useAsteriskPreAnswer = Boolean(ariUrl && effectiveCfg.earlyMediaPreAnswer);
+    const useAsteriskPreAnswer =
+      body.routeMode !== "vapi_issabel_port1" &&
+      Boolean(ariUrl && effectiveCfg.earlyMediaPreAnswer);
 
     if (useAsteriskPreAnswer) {
       const ariSecret = Deno.env.get("ASTERISK_BRIDGE_SECRET") || "";
@@ -267,6 +284,8 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           phoneNumber: formattedPhone,
+          gsmPort: targetGsmPort,
+          callerNumber: targetCallerNumber,
           patientId: body.patientId || null,
           hospitalId: body.hospitalId || null,
           doctorId: body.doctorId || null,
@@ -278,7 +297,7 @@ Deno.serve(async (req) => {
           patientData: mergedPatientData,
           vapiConfig: {
             assistantId: Deno.env.get("VAPI_ASSISTANT_ID") || null,
-            phoneNumberId: Deno.env.get("VAPI_PHONE_NUMBER_ID") || null,
+            phoneNumberId: targetPhoneNumberId,
             ...(resolvedFirstMessage ? { firstMessage: resolvedFirstMessage } : {}),
             variableValues: mergedVariableValues,
             voicemailDetection,
@@ -290,15 +309,17 @@ Deno.serve(async (req) => {
       return jsonResponse(req, bridgeRes.ok ? 200 : bridgeRes.status, {
         ok: bridgeRes.ok,
         mode: "asterisk_preanswer_sip_183",
+        gsmPort: targetGsmPort,
+        callerNumber: targetCallerNumber,
         data: bridgeData,
         voicemailProtection: { preAnswerSip183: true, postAnswerVapi: voicemailDetection },
       });
     }
 
-    // Opción B: Despacho directo vía API de Vapi con Voicemail Detection nativo + Webhook SADI
+    // Opción B: Despacho directo vía API de Vapi -> Issabel PBX (OpenVox Puerto 1: +573106783338) con Voicemail Detection nativo + Webhook SADI
     const vapiKey = Deno.env.get("VAPI_PRIVATE_KEY") || Deno.env.get("VAPI_API_KEY");
     const assistantId = Deno.env.get("VAPI_ASSISTANT_ID");
-    const phoneNumberId = Deno.env.get("VAPI_PHONE_NUMBER_ID");
+    const phoneNumberId = targetPhoneNumberId;
 
     if (!vapiKey || !assistantId || !phoneNumberId) {
       return jsonResponse(req, 500, {

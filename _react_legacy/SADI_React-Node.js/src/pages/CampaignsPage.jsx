@@ -1359,7 +1359,7 @@ const CampaignsPage = () => {
                   <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1.5">
                     <span className="text-slate-500 dark:text-slate-400">Canales Autorizados:</span>
                     <strong className="text-slate-800 dark:text-slate-100">
-                      {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 22), WhatsApp'}
+                      {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 1), WhatsApp'}
                     </strong>
                   </div>
                   {selectedCampaign?.directriz_ia && (

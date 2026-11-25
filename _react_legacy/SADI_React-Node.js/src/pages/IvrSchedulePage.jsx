@@ -305,7 +305,7 @@ export default function IvrSchedulePage() {
     setCallingId(item.id);
     toast({
       title: "📞 Iniciando llamada en vivo...",
-      description: `Marcando a ${item.nombre} (${item.telefono}) a través de Puerto 22...`
+      description: `Marcando a ${item.nombre} (${item.telefono}) a través de Puerto 1...`
     });
 
     try {

@@ -451,7 +451,7 @@ export default function VisualGanttRoadmap({
                                 onMakeCall(pat);
                               }}
                               className="p-1 hover:bg-amber-300 rounded text-amber-900 transition-colors"
-                              title="Llamar por Puerto 22"
+                              title="Llamar por Puerto 1"
                             >
                               <Phone className="w-3 h-3" />
                             </button>
@@ -697,7 +697,7 @@ export default function VisualGanttRoadmap({
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-xl gap-2 shadow-md"
                 >
                   <Phone className="w-4 h-4" />
-                  Emitir Llamada en Vivo al Paciente (Puerto 22)
+                  Emitir Llamada en Vivo al Paciente (Puerto 1)
                 </Button>
               </div>
             </div>

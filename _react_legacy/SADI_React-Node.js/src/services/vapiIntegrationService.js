@@ -18,6 +18,14 @@ import {
   isVoicemailOutcome,
 } from './antiVoicemailConfig';
 
+export const OPENVOX_INDIVIDUAL_PORT_CONFIG = {
+  port: 1,
+  label: 'Puerto 1',
+  callerNumber: '+573106783338',
+  vapiPhoneNumberId: '3e836f48-6110-410d-a340-fd625598b324',
+  trunkName: 'Issabel PBX - NetGroup OpenVox',
+};
+
 function readStoredAntiVoicemailConfig() {
   try {
     const raw = localStorage.getItem('sadi_ivr_config');
@@ -454,11 +462,20 @@ ${atencionesSummary}
         }
       : {};
 
-    // Camino principal seguro: Edge Function `vapi-outbound-call` (con SIP 183 ARI si aplica + Vapi AMD)
+    const targetPhoneNumberId =
+      patientData.phoneNumberId ||
+      import.meta.env.VITE_VAPI_PHONE_NUMBER_ID ||
+      OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId;
+
+    // Camino principal seguro: Edge Function `vapi-outbound-call` (Puerto 1 vía Vapi + Issabel PBX con Vapi AMD activo)
     try {
       const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
         body: {
           phoneNumber: formattedPhone,
+          phoneNumberId: targetPhoneNumberId,
+          gsmPort: patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port,
+          callerNumber: patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber,
+          routeMode: patientData.routeMode || (antiVoicemailCfg.earlyMediaPreAnswer ? 'auto' : 'vapi_issabel_port1'),
           patientId: patientData.patientId || patientData.id || null,
           hospitalId: patientData.hospitalId || patientData.hospital_id || null,
           doctorId: patientData.doctorId || patientData.doctor_id || null,
@@ -469,6 +486,8 @@ ${atencionesSummary}
             nombre: nombreCompleto,
             es_menor_abc: isMinorABC,
             saludo_hora: tiempoSaludo,
+            gsm_port: patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port,
+            caller_number: patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber,
           },
           antiVoicemailConfig: antiVoicemailCfg,
           assistantOverrides: {
@@ -496,7 +515,7 @@ ${atencionesSummary}
 
     // Fallback exclusivo para entorno de desarrollo si se definió una variable de entorno local explícita
     const devApiKey = import.meta.env.VITE_VAPI_PRIVATE_KEY || import.meta.env.VITE_VAPI_API_KEY;
-    const defaultPhoneId = import.meta.env.VITE_VAPI_PHONE_NUMBER_ID;
+    const defaultPhoneId = targetPhoneNumberId || OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId;
     const defaultAssistantId = import.meta.env.VITE_VAPI_ASSISTANT_ID;
 
     if (!devApiKey || !defaultPhoneId || !defaultAssistantId) {
