@@ -32,7 +32,7 @@ import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from '@/services/rias3280Catalog';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
-import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
+import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import { roadmapService } from '@/services/roadmapService';
 import MonthlyInteractionsListTable from '@/components/MonthlyInteractionsListTable';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
@@ -394,12 +394,11 @@ export default function Rias3280ManagementPage() {
               <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
                 {(realCohortTotal || visiblePatients.length).toLocaleString('es-CO')} pacientes reales y variables dinámicas en vivo
               </p>
-              <p
-                data-testid="rias-daily-quota-badge"
-                className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mt-0.5"
-              >
-                Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap} llamadas disponibles
-              </p>
+              <DailyQuotaBadge
+                quota={dailyQuota}
+                testId="rias-daily-quota-badge"
+                variant="inline"
+              />
               {doctorAccess.restricted && (
                 <p className="text-[10px] font-bold text-amber-800 dark:text-amber-300 mt-0.5">
                   Acceso limitado a: {formatCursosVidaLabel(user?.cursos_vida_asignados)}

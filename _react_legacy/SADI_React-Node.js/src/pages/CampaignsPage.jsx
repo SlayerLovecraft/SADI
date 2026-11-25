@@ -41,7 +41,7 @@ import {
   MAX_PATIENTS_PER_BATCH
 } from '@/services/ivrScheduleService';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
-import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
+import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
 import {
@@ -382,6 +382,7 @@ const CampaignsPage = () => {
         const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
         localData.unshift(relanchedCampaign);
         localStorage.setItem('sadi_campaigns_v2', JSON.stringify(localData));
+        window.dispatchEvent(new Event('sadi:campaigns-updated'));
       } catch (e) {
         console.error('Error guardando relanzamiento en localStorage:', e);
       }
@@ -426,6 +427,7 @@ const CampaignsPage = () => {
           const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
           const filtered = localData.filter(c => c.id !== selectedCampaign.id);
           localStorage.setItem('sadi_campaigns_v2', JSON.stringify(filtered));
+          window.dispatchEvent(new Event('sadi:campaigns-updated'));
         } catch (e) { }
       } else {
         await campaignService.delete(selectedCampaign.id);
@@ -690,13 +692,12 @@ const CampaignsPage = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <span
-              data-testid="campaigns-daily-quota-badge"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-200 border border-cyan-400/40"
-            >
-              <PhoneCall className="w-3.5 h-3.5 text-cyan-300" />
-              Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap}
-            </span>
+            <DailyQuotaBadge
+              quota={dailyQuota}
+              testId="campaigns-daily-quota-badge"
+              variant="hero"
+              className="py-1.5 px-3"
+            />
             {/* BADGE DE MODO DE EMISIÓN */}
             <div className="text-right">
               <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${config.isLiveEnabled

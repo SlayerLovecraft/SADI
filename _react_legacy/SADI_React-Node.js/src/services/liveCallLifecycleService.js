@@ -41,11 +41,80 @@ function getStoredHospitalUuid() {
 const callStates = new Map(); // key -> { phase, callId, startedAt, error, patientName }
 const callListeners = new Set();
 
-// Estado global reactivo del cupo diario (500 llamadas exitosas/día)
+// Estado global reactivo del cupo diario (500 llamadas/día)
+// Descuenta en tiempo real: Prioridad Res. 3280 + Campañas activas hoy + Llamadas exitosas hoy
+function getColombiaTodayIso() {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Bogota',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (y && m && d) return `${y}-${m}-${d}`;
+  } catch {}
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function computeLocalCampaignCallsForDate(dateIso) {
+  const target = String(dateIso || getColombiaTodayIso()).slice(0, 10);
+  try {
+    const raw = localStorage.getItem('sadi_campaigns_v2');
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list) || list.length === 0) return 0;
+
+    let total = 0;
+    for (const camp of list) {
+      if (!camp) continue;
+      const st = String(camp.estado || '').toLowerCase();
+      if (st === 'completada' || st === 'cancelada' || st === 'eliminada') continue;
+
+      const dates = [];
+      if (Array.isArray(camp.fechas_ejecucion) && camp.fechas_ejecucion.length > 0) {
+        dates.push(...camp.fechas_ejecucion.map((d) => String(d || '').slice(0, 10)));
+      } else if (Array.isArray(camp.config_frecuencia?.selectedDates) && camp.config_frecuencia.selectedDates.length > 0) {
+        dates.push(...camp.config_frecuencia.selectedDates.map((d) => String(d || '').slice(0, 10)));
+      } else if (camp.fecha_programada) {
+        dates.push(String(camp.fecha_programada).slice(0, 10));
+      }
+
+      if (!dates.includes(target)) continue;
+
+      // Si la campaña deshabilitó explícitamente llamadas de voz (ej. llamadas_ia_asignadas === 0 y sin canal de voz)
+      if (camp.llamadas_ia_asignadas !== undefined && camp.llamadas_ia_asignadas !== null) {
+        const assignedVoice = Math.max(0, Number(camp.llamadas_ia_asignadas) || 0);
+        if (assignedVoice > 0) {
+          total += Math.ceil(assignedVoice / Math.max(1, dates.length));
+        }
+        continue;
+      }
+
+      const canalStr = String(camp.canal || 'llamada').toLowerCase();
+      if (canalStr && !/(llamada|voz|vapi|call|ivr)/i.test(canalStr)) continue;
+
+      const vol = Math.max(0, Number(camp.pacientes_asignados || camp.destinatarios || 0) || 0);
+      if (vol > 0) {
+        total += Math.ceil(vol / Math.max(1, dates.length));
+      }
+    }
+    return total;
+  } catch {
+    return 0;
+  }
+}
+
 let quotaState = {
-  date: new Date().toISOString().slice(0, 10),
+  date: getColombiaTodayIso(),
   dailyCap: DAILY_CALL_CAPACITY,
+  reservedResolucion: 0,
+  reservedCampaignsDb: 0,
+  reservedCampaignsLocal: 0,
+  reservedCampaigns: 0,
   usedToday: 0,
+  committedToday: 0,
   remainingToday: DAILY_CALL_CAPACITY,
   loaded: false,
 };
@@ -86,21 +155,60 @@ function notifyQuotaListeners() {
 
 function applyQuotaPayload(raw) {
   if (!raw || typeof raw !== 'object') return quotaState;
+  const dateIso = String(raw.date || quotaState.date || getColombiaTodayIso()).slice(0, 10);
   const dailyCap = Number(raw.daily_cap ?? raw.dailyCap ?? DAILY_CALL_CAPACITY) || DAILY_CALL_CAPACITY;
-  const usedToday = Math.max(0, Number(raw.used_today ?? raw.usedToday ?? 0) || 0);
-  const remainingToday =
-    raw.remaining_today !== undefined
-      ? Math.max(0, Number(raw.remaining_today) || 0)
-      : Math.max(0, dailyCap - usedToday);
-  quotaState = {
-    date: raw.date || quotaState.date,
+  const reservedResolucion = Math.min(
     dailyCap,
+    Math.max(0, Number(raw.reserved_resolucion ?? raw.reservedResolucion ?? quotaState.reservedResolucion ?? 0) || 0)
+  );
+  const reservedCampaignsDb = Math.max(
+    0,
+    Number(raw.reserved_campaigns_db ?? raw.reservedCampaignsDb ?? quotaState.reservedCampaignsDb ?? 0) || 0
+  );
+  const reservedCampaignsLocal = computeLocalCampaignCallsForDate(dateIso);
+  const reservedCampaigns = Math.min(
+    Math.max(0, dailyCap - reservedResolucion),
+    reservedCampaignsDb + reservedCampaignsLocal
+  );
+  const usedToday = Math.max(0, Number(raw.used_today ?? raw.usedToday ?? 0) || 0);
+  const committedToday = Math.min(dailyCap, reservedResolucion + reservedCampaigns + usedToday);
+  const remainingToday = Math.max(0, dailyCap - committedToday);
+
+  quotaState = {
+    date: dateIso,
+    dailyCap,
+    reservedResolucion,
+    reservedCampaignsDb,
+    reservedCampaignsLocal,
+    reservedCampaigns,
     usedToday,
+    committedToday,
     remainingToday,
     loaded: true,
   };
   notifyQuotaListeners();
   return quotaState;
+}
+
+// Reaccionar en tiempo real cuando el usuario crea, relanza o elimina una campaña local
+if (typeof window !== 'undefined') {
+  const recomputeOnCampaignChange = () => {
+    if (quotaState.loaded) {
+      applyQuotaPayload({
+        date: quotaState.date,
+        daily_cap: quotaState.dailyCap,
+        reserved_resolucion: quotaState.reservedResolucion,
+        reserved_campaigns_db: quotaState.reservedCampaignsDb,
+        used_today: quotaState.usedToday,
+      });
+    }
+  };
+  window.addEventListener('sadi:campaigns-updated', recomputeOnCampaignChange);
+  window.addEventListener('storage', (ev) => {
+    if (!ev || ev.key === 'sadi_campaigns_v2') {
+      recomputeOnCampaignChange();
+    }
+  });
 }
 
 function sleep(ms) {
@@ -204,9 +312,11 @@ export const liveCallLifecycleService = {
     if (outcome === 'success') {
       const nextUsed = quotaState.usedToday + 1;
       applyQuotaPayload({
+        date: quotaState.date,
         daily_cap: quotaState.dailyCap,
+        reserved_resolucion: quotaState.reservedResolucion,
+        reserved_campaigns_db: quotaState.reservedCampaignsDb,
         used_today: nextUsed,
-        remaining_today: Math.max(0, quotaState.dailyCap - nextUsed),
       });
     }
     return { ok: false, quota: { ...quotaState } };
@@ -392,7 +502,7 @@ export const liveCallLifecycleService = {
         durationSeconds: finalStatusRes.durationSeconds || 1,
         transcript: finalStatusRes.transcript || '',
         summary: finalStatusRes.summary || '',
-        quota: dbOutcome?.quota || this.getQuotaSnapshot(),
+        quota: this.getQuotaSnapshot(),
       };
       if (onSuccess) onSuccess(okRes);
       return okRes;

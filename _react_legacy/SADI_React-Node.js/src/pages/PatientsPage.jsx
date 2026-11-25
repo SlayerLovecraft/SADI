@@ -14,7 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
-import { useDailyCallQuota } from '@/components/LiveCallButton';
+import { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import { ivrScheduleService } from '@/services/ivrScheduleService';
 import { CURSOS_VIDA_LIST } from '@/services/cursoVidaConfig';
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils';
@@ -631,20 +631,18 @@ const PatientsPage = () => {
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
                   Pacientes
                 </h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                  Censo oficial y telemonitoreo clínico de pacientes registrados en el hospital •{' '}
-                  <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60">
+                <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                  <span>Censo oficial y telemonitoreo clínico de pacientes registrados en el hospital •</span>
+                  <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800/60 text-xs">
                     {totalPatients.toLocaleString('es-CO')} pacientes vinculados
                   </span>
-                  {' • '}
-                  <span
-                    data-testid="patients-daily-quota-badge"
-                    className="font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/60"
-                    title="Cupo restante de llamadas exitosas hoy sobre el tope diario de 500 (Puerto 1)"
-                  >
-                    Cupo diario hoy: {dailyQuota.remainingToday} / {dailyQuota.dailyCap}
-                  </span>
-                </p>
+                  <DailyQuotaBadge
+                    quota={dailyQuota}
+                    testId="patients-daily-quota-badge"
+                    variant="soft"
+                    className="py-0.5"
+                  />
+                </div>
               </div>
             </div>
           </div>

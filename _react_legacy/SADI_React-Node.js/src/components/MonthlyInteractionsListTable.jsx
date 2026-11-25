@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { normalizeCursosArray } from '@/services/cursoVidaConfig';
 import { demanda3280Service, GRUPOS_RIESGO_3280 } from '@/services/demanda3280Service';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
-import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
+import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import {
   getCaliComunas,
@@ -328,12 +328,12 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
             <span className="text-[11px] font-mono text-gray-400 dark:text-slate-400">
               Próxima en: <strong className="text-gray-700 dark:text-slate-200">{secondsRemaining}s</strong>
             </span>
-            <span
-              data-testid="demanda-daily-quota-badge"
-              className="text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/60"
-            >
-              Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap}
-            </span>
+            <DailyQuotaBadge
+              quota={dailyQuota}
+              testId="demanda-daily-quota-badge"
+              variant="soft"
+              className="text-[11px] py-0.5"
+            />
           </div>
 
           <h2 className="text-xl font-black text-gray-900 dark:text-white mt-1 flex items-center gap-2">

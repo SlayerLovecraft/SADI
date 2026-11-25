@@ -2923,17 +2923,47 @@ CREATE OR REPLACE FUNCTION public.get_daily_call_quota_status(
 )
 RETURNS JSONB
 LANGUAGE plpgsql
-STABLE
+VOLATILE
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
   v_date DATE := COALESCE(p_date, (NOW() AT TIME ZONE 'America/Bogota')::date);
+  v_date_str TEXT := to_char(v_date, 'YYYY-MM-DD');
+  v_year INT := EXTRACT(YEAR FROM v_date)::INT;
   v_daily_cap INT := 500;
+  v_summary JSONB := NULL;
+  v_reserved_res INT := 0;
+  v_reserved_camp_db INT := 0;
   v_used_vapi INT := 0;
   v_used_evidence INT := 0;
   v_used_total INT := 0;
+  v_committed_db INT := 0;
+  v_remaining_db INT := 500;
 BEGIN
+  BEGIN
+    v_summary := public.get_cronograma_res3280_summary(p_hospital_id, NULL::text[], v_year);
+    v_reserved_res := LEAST(
+      v_daily_cap,
+      GREATEST(0, COALESCE((v_summary->'daily_breakdown'->v_date_str->>'llamadas')::INT, 0))
+    );
+  EXCEPTION WHEN OTHERS THEN
+    v_reserved_res := 0;
+  END;
+
+  BEGIN
+    SELECT COALESCE(SUM(GREATEST(0, COALESCE(c.destinatarios, 0) - COALESCE(c.enviados, 0))), 0)::INT
+    INTO v_reserved_camp_db
+    FROM public.campaigns c
+    WHERE (p_hospital_id IS NULL OR c.hospital_id = p_hospital_id)
+      AND c.fecha_programada = v_date
+      AND lower(COALESCE(c.estado, '')) NOT IN ('completada', 'cancelada', 'eliminada');
+  EXCEPTION WHEN OTHERS THEN
+    v_reserved_camp_db := 0;
+  END;
+
+  v_reserved_camp_db := LEAST(GREATEST(0, v_daily_cap - v_reserved_res), COALESCE(v_reserved_camp_db, 0));
+
   SELECT count(*)::INT
   INTO v_used_vapi
   FROM public.vapi_agent_sessions v
@@ -2959,12 +2989,17 @@ BEGIN
     );
 
   v_used_total := COALESCE(v_used_vapi, 0) + COALESCE(v_used_evidence, 0);
+  v_committed_db := LEAST(v_daily_cap, v_reserved_res + v_reserved_camp_db + v_used_total);
+  v_remaining_db := GREATEST(0, v_daily_cap - v_committed_db);
 
   RETURN jsonb_build_object(
-    'date', to_char(v_date, 'YYYY-MM-DD'),
+    'date', v_date_str,
     'daily_cap', v_daily_cap,
+    'reserved_resolucion', v_reserved_res,
+    'reserved_campaigns_db', v_reserved_camp_db,
     'used_today', v_used_total,
-    'remaining_today', GREATEST(0, v_daily_cap - v_used_total)
+    'committed_today', v_committed_db,
+    'remaining_today', v_remaining_db
   );
 END;
 $$;

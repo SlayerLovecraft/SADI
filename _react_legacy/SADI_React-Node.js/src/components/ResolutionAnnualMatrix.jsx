@@ -44,7 +44,7 @@ import {
 import { NOSHOW_POLICY } from '@/services/noShowFollowupService';
 import { demanda3280Service } from '@/services/demanda3280Service';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
-import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
+import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -1036,6 +1036,7 @@ function ResolutionAnnualMatrix({
       const updated = [newCampaign, ...existingCampaigns];
       setExistingCampaigns(updated);
       localStorage.setItem('sadi_campaigns_v2', JSON.stringify(updated));
+      window.dispatchEvent(new Event('sadi:campaigns-updated'));
     } catch (e) {
       console.error('Error guardando campaña:', e);
     }
@@ -1298,13 +1299,12 @@ function ResolutionAnnualMatrix({
                 <Gauge className="w-3.5 h-3.5 text-emerald-400" />
                 Límite Operativo: {DAILY_CALL_CAPACITY} llamadas IA/día ({CALLS_PER_HOUR}/h • 08:00 AM - 06:00 PM • Lun–Sáb sin festivos)
               </span>
-              <span
-                data-testid="cronograma-daily-quota-badge"
-                className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-200 border border-cyan-400/40 flex items-center gap-1.5"
-              >
-                <Phone className="w-3.5 h-3.5 text-cyan-300" />
-                Cupo hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap} restantes ({dailyQuota.usedToday} realizadas)
-              </span>
+              <DailyQuotaBadge
+                quota={dailyQuota}
+                testId="cronograma-daily-quota-badge"
+                variant="hero"
+                className="py-0.5"
+              />
             </div>
             <h2 className="text-2xl md:text-3xl font-bold tracking-tight flex items-center gap-3">
               <Calendar className="w-8 h-8 text-blue-400 shrink-0" />
@@ -2559,7 +2559,7 @@ function ResolutionAnnualMatrix({
                 {!selectedRoadmapDay.specificItem && (() => {
                   const isToday = selectedRoadmapDay.isoDate === dailyQuota.date;
                   const usedCount = isToday
-                    ? dailyQuota.usedToday
+                    ? dailyQuota.committedToday
                     : (dayModalMeta.llamadasIa || selectedRoadmapDay.llamadasAsignadas || 0);
                   const remainingCount = isToday
                     ? dailyQuota.remainingToday
@@ -2573,12 +2573,18 @@ function ResolutionAnnualMatrix({
                         Aforo Diario IA (Tope {DAILY_CALL_CAPACITY}){isToday ? ' • EN VIVO HOY' : ''}
                       </div>
                       <div className="text-sm font-black text-emerald-400">
-                        {usedCount} / {DAILY_CALL_CAPACITY} {isToday ? 'llamadas realizadas hoy' : 'llamadas IA'}
+                        {usedCount} / {DAILY_CALL_CAPACITY} {isToday ? 'cupos comprometidos hoy' : 'llamadas IA'}
                       </div>
                       <div className="text-[10px] text-slate-300">
-                        Saldo disponible{isToday ? ' hoy' : ''}:{' '}
+                        Disponibles{isToday ? ' hoy' : ''}:{' '}
                         <strong data-testid="day-modal-remaining-quota">{remainingCount}</strong>
-                        {dayModalMeta.smsRespaldo > 0 && (
+                        {isToday && (
+                          <span className="text-slate-400">
+                            {' '}• Res. 3280: {dailyQuota.reservedResolucion} · Camp.: {dailyQuota.reservedCampaigns}
+                            {dailyQuota.usedToday > 0 ? ` · Indiv.: ${dailyQuota.usedToday}` : ''}
+                          </span>
+                        )}
+                        {!isToday && dayModalMeta.smsRespaldo > 0 && (
                           <span className="text-amber-300 font-bold"> • +{dayModalMeta.smsRespaldo} SMS respaldo</span>
                         )}
                       </div>

@@ -40,7 +40,7 @@ import {
   getNextTandaSlotForTime,
 } from '@/services/ivrScheduleService';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
-import LiveCallButton, { useDailyCallQuota } from '@/components/LiveCallButton';
+import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import { roadmapService, MESES_DEL_ANIO } from '@/services/roadmapService';
 import ResolutionAnnualMatrix from '@/components/ResolutionAnnualMatrix';
 import NoShowFollowupPanel from '@/components/NoShowFollowupPanel';
@@ -650,13 +650,12 @@ export default function IvrSchedulePage() {
             </Button>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                data-testid="ivr-daily-quota-badge"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-200 border border-cyan-400/40"
-              >
-                <PhoneCall className="w-3.5 h-3.5 text-cyan-300" />
-                Cupo diario hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap}
-              </span>
+              <DailyQuotaBadge
+                quota={dailyQuota}
+                testId="ivr-daily-quota-badge"
+                variant="hero"
+                className="py-1.5 px-3"
+              />
               <span className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
                 config.resolutionActive || config.isLiveEnabled
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
@@ -936,12 +935,12 @@ export default function IvrSchedulePage() {
                   <span className="text-[11px] text-blue-600 dark:text-blue-300 font-semibold bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800/60">
                     Tanda seleccionada: {selectedSlot.hora}
                   </span>
-                  <span
-                    data-testid="tandas-daily-quota-pill"
-                    className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800/60"
-                  >
-                    Cupo restante hoy: <strong>{dailyQuota.remainingToday}</strong> / {dailyQuota.dailyCap} ({dailyQuota.usedToday} exitosa{dailyQuota.usedToday === 1 ? '' : 's'})
-                  </span>
+                  <DailyQuotaBadge
+                    quota={dailyQuota}
+                    testId="tandas-daily-quota-pill"
+                    variant="soft"
+                    className="text-[11px] py-0.5 rounded-md"
+                  />
                 </div>
 
                 {/* BOTÓN / SWITCH DE REINTENTAR HASTA QUE CONTESTE */}
