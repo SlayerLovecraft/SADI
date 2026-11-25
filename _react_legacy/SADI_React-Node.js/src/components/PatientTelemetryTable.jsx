@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { 
-  Activity, TrendingUp, AlertTriangle, CheckCircle2, Phone, MessageSquare, 
+  Activity, TrendingUp, AlertTriangle, CheckCircle2, Phone, PhoneCall, MessageSquare, 
   Mail, Smartphone, Eye, Calendar, Clock, Edit, Trash2, User, ChevronDown,
-  HeartPulse, ShieldAlert, Check
+  HeartPulse, ShieldAlert, Check, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +24,8 @@ const CHANNELS = [
 
 export default function PatientTelemetryTable({
   patients = [],
+  onCallPatient,
+  callingPatientId = null,
   onEditPatient,
   onDeletePatient,
   selectedPatientIds = [],
@@ -54,19 +56,19 @@ export default function PatientTelemetryTable({
           <thead className="bg-slate-900 text-white font-bold text-[11px] tracking-wider uppercase">
             <tr>
               {selectable && (
-                <th className="p-3.5 w-10 text-center">
+                <th className="p-2.5 w-9 text-center">
                   <span className="sr-only">Seleccionar</span>
                 </th>
               )}
-              <th className="p-3.5 whitespace-nowrap">Nombre del Paciente</th>
-              <th className="p-3.5 whitespace-nowrap">Dispositivo</th>
-              <th className="p-3.5 whitespace-nowrap">Curso de Vida</th>
-              <th className="p-3.5 whitespace-nowrap">Grupos de Riesgo</th>
-              <th className="p-3.5 text-center whitespace-nowrap">Historial de Medida</th>
-              <th className="p-3.5 text-center whitespace-nowrap">Valores Críticos</th>
-              <th className="p-3.5 text-center whitespace-nowrap">Canales de Atención</th>
-              {(onEditPatient || onDeletePatient) && (
-                <th className="p-3.5 text-right whitespace-nowrap">Acciones</th>
+              <th className="p-2.5 whitespace-nowrap">Nombre del Paciente</th>
+              <th className="p-2.5 whitespace-nowrap">Dispositivo</th>
+              <th className="p-2.5 whitespace-nowrap">Curso de Vida</th>
+              <th className="p-2.5 whitespace-nowrap">Grupos de Riesgo</th>
+              <th className="p-2.5 text-center whitespace-nowrap">Historial</th>
+              <th className="p-2.5 text-center whitespace-nowrap">Valores Críticos</th>
+              <th className="p-2.5 text-center whitespace-nowrap">Canales</th>
+              {(onCallPatient || onEditPatient || onDeletePatient) && (
+                <th className="p-2.5 text-right whitespace-nowrap">Acciones</th>
               )}
             </tr>
           </thead>
@@ -106,7 +108,7 @@ export default function PatientTelemetryTable({
                   <tr key={patient.id} className="hover:bg-blue-50/40 dark:hover:bg-slate-800/50 transition-colors">
                     {/* Selección */}
                     {selectable && (
-                      <td className="p-3.5 text-center">
+                      <td className="p-2.5 text-center">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -117,16 +119,16 @@ export default function PatientTelemetryTable({
                     )}
 
                     {/* 1. Nombre del Paciente */}
-                    <td className="p-3.5 whitespace-nowrap">
-                      <div className="flex items-center gap-2.5">
+                    <td className="p-2.5 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-800 dark:text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
                           {patient.nombre ? patient.nombre.charAt(0).toUpperCase() : 'P'}
                         </div>
-                        <div>
-                          <div className="font-bold text-gray-900 dark:text-white text-xs flex items-center gap-1.5">
+                        <div className="max-w-[200px]">
+                          <div className="font-bold text-gray-900 dark:text-white text-xs truncate" title={patient.nombre}>
                             {patient.nombre}
                           </div>
-                          <div className="text-[10px] text-gray-500 dark:text-slate-400 font-mono">
+                          <div className="text-[10px] text-gray-500 dark:text-slate-400 font-mono truncate">
                             {patient.tipo_documento || 'CC'}: {patient.cc || patient.cedula || 'N/A'} {patient.edad !== null && patient.edad !== undefined ? `· ${patient.edad} años` : ''} {patient.sexo ? `(${patient.sexo})` : ''}
                           </div>
                         </div>
@@ -134,7 +136,7 @@ export default function PatientTelemetryTable({
                     </td>
 
                     {/* 2. Dispositivo */}
-                    <td className="p-3.5 max-w-[190px]">
+                    <td className="p-2.5 max-w-[165px]">
                       {hasDevice ? (
                         <div className="flex flex-col gap-1">
                           {dispositivos.map((d, dIdx) => (
@@ -156,12 +158,12 @@ export default function PatientTelemetryTable({
                     </td>
 
                     {/* 3. Curso de Vida y Profesional Asignado */}
-                    <td className="p-3.5 whitespace-nowrap">
+                    <td className="p-2.5 whitespace-nowrap">
                       <div className="flex flex-col items-start gap-1">
                         <CursoVidaBadge patient={patient} />
                         {patient.doctor_nombre && (
                           <span
-                            className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-slate-400 max-w-[190px] truncate"
+                            className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-600 dark:text-slate-400 max-w-[165px] truncate"
                             title={`Profesional asignado: ${patient.doctor_nombre}`}
                           >
                             <User className="w-2.5 h-2.5 text-blue-500 shrink-0" />
@@ -172,15 +174,15 @@ export default function PatientTelemetryTable({
                     </td>
 
                     {/* 4. Grupos de Riesgo Clínicos Reales (nunca inventados) */}
-                    <td className="p-3.5 max-w-[240px]">
+                    <td className="p-2.5 max-w-[200px]">
                       <GruposRiesgoBadges patient={patient} maxVisible={3} />
                     </td>
 
                     {/* 5. Historial de Medida (Click -> Curva) */}
-                    <td className="p-3.5 text-center whitespace-nowrap">
+                    <td className="p-2.5 text-center whitespace-nowrap">
                       <button
                         onClick={() => setCurvePatient(patient)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm ${
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-sm ${
                           hasMeasures
                             ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100 dark:shadow-none hover:shadow-md'
                             : 'bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 border border-gray-300 dark:border-slate-700'
@@ -193,10 +195,10 @@ export default function PatientTelemetryTable({
                     </td>
 
                     {/* 6. Valores Críticos (Click -> Fecha y Hora) */}
-                    <td className="p-3.5 text-center whitespace-nowrap">
+                    <td className="p-2.5 text-center whitespace-nowrap">
                       <button
                         onClick={() => setCriticalPatient(patient)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-transform active:scale-95 ${
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-xl text-[10px] font-bold transition-transform active:scale-95 ${
                           hasCritical
                             ? 'bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-800/70 hover:bg-red-100 dark:hover:bg-red-950 animate-pulse'
                             : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-950/80'
@@ -218,12 +220,12 @@ export default function PatientTelemetryTable({
                     </td>
 
                     {/* 7. Canales de Atención (Selector interactivo + Conteo) */}
-                    <td className="p-3.5 text-center whitespace-nowrap">
-                      <div className="inline-flex flex-col items-center gap-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-1.5 rounded-xl">
+                    <td className="p-2.5 text-center whitespace-nowrap">
+                      <div className="inline-flex flex-col items-center gap-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 p-1 rounded-xl">
                         <select
                           value={activeChannelId}
                           onChange={(e) => handleChannelChange(patient.id, e.target.value)}
-                          className="text-[10px] font-bold bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-2 py-0.5 text-gray-700 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                          className="text-[10px] font-bold bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-1.5 py-0.5 text-gray-700 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                         >
                           {CHANNELS.map(ch => (
                             <option key={ch.id} value={ch.id}>
@@ -240,9 +242,27 @@ export default function PatientTelemetryTable({
                     </td>
 
                     {/* Acciones */}
-                    {(onEditPatient || onDeletePatient) && (
-                      <td className="p-3.5 text-right whitespace-nowrap">
+                    {(onCallPatient || onEditPatient || onDeletePatient) && (
+                      <td className="p-2.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
+                          {onCallPatient && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              data-testid="patient-call-btn"
+                              disabled={callingPatientId === patient.id || !patient.telefono}
+                              onClick={() => onCallPatient(patient)}
+                              className="h-7 px-2 gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/70 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/70 font-bold text-[11px] disabled:opacity-40"
+                              title={patient.telefono ? `Llamar individualmente a ${patient.nombre} (${patient.telefono})` : 'Paciente sin teléfono registrado'}
+                            >
+                              {callingPatientId === patient.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <PhoneCall className="h-3.5 w-3.5" />
+                              )}
+                              <span>{callingPatientId === patient.id ? '...' : 'Llamar'}</span>
+                            </Button>
+                          )}
                           {onEditPatient && (
                             <Button
                               variant="ghost"

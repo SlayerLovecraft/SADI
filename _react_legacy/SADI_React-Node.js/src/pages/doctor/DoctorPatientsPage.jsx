@@ -1,21 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router-dom';
 import { 
-  User, Search, AlertTriangle, Loader2, Stethoscope, Phone, Mail, 
-  MapPin, Activity, FolderArchive, ShieldCheck, Heart, ChevronLeft, ChevronRight 
+  User, Search, AlertTriangle, Loader2, Stethoscope, Phone, PhoneCall, Mail, 
+  MapPin, Activity, FolderArchive, ShieldCheck, Heart, ChevronLeft, ChevronRight, X 
 } from 'lucide-react';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { telemonitoringService, SEED_DOCTORS_3280 } from '@/services/telemonitoringService';
 import { staffService } from '@/services/staffService';
+import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { ivrScheduleService } from '@/services/ivrScheduleService';
 import { getDoctorLifeCourseTheme, formatCursosVidaLabel, canonicalizeCursoKey } from '@/services/cursoVidaConfig';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import { isPatientAssignedToDoctor } from './doctorUtils';
 
 const DoctorPatientsPage = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -29,6 +33,8 @@ const DoctorPatientsPage = () => {
   const [scopeTotalCount, setScopeTotalCount] = useState(0);
   const [directTotalCount, setDirectTotalCount] = useState(0);
   const [doctorProfile, setDoctorProfile] = useState(null);
+  const [callingPatientId, setCallingPatientId] = useState(null);
+  const requestSeqRef = useRef(0);
 
   const theme = useMemo(() => {
     return getDoctorLifeCourseTheme(doctorProfile?.cursos_vida_asignados);
@@ -43,54 +49,46 @@ const DoctorPatientsPage = () => {
   }, [doctorProfile?.cursos_vida_asignados]);
 
   useEffect(() => {
+    const trimmed = searchTerm.trim();
+    if (trimmed !== debouncedSearch) {
+      requestSeqRef.current += 1;
+    }
     const t = setTimeout(() => {
       setPage(1);
-      setDebouncedSearch(searchTerm);
-    }, 300);
+      setDebouncedSearch(trimmed);
+    }, 260);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
-  const loadPatients = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Cargar perfil del doctor y conteos generales solo cuando cambia el usuario (evita sobrecargar cada búsqueda)
+  useEffect(() => {
+    let active = true;
+    const initDoctorScope = async () => {
+      try {
+        const doctors = await telemonitoringService.getDoctors();
+        const currentDoc = doctors.find(d =>
+          (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
+          d.id === user?.id ||
+          d.doctor_id === user?.doctor_id
+        ) || {
+          id: user?.id || user?.doctor_id,
+          doctor_id: user?.doctor_id || user?.id,
+          name: user?.nombre || 'Dr. Médico Especialista',
+          email: user?.email,
+          specialty: user?.doctor_specialty || 'Medicina Especializada',
+          area_3280: user?.doctor_specialty || 'Área Clínica Asignada',
+          cursos_vida_asignados: Array.isArray(user?.cursos_vida_asignados) ? user.cursos_vida_asignados : []
+        };
+        if (!active) return;
+        setDoctorProfile(currentDoc);
 
-      // 1. Obtener perfil completo del doctor autenticado
-      const doctors = await telemonitoringService.getDoctors();
-      const currentDoc = doctors.find(d => 
-        (d.email && user?.email && d.email.toLowerCase() === user.email.toLowerCase()) ||
-        d.id === user?.id || 
-        d.doctor_id === user?.doctor_id
-      ) || {
-        id: user?.id || user?.doctor_id,
-        doctor_id: user?.doctor_id || user?.id,
-        name: user?.nombre || 'Dr. Médico Especialista',
-        email: user?.email,
-        specialty: user?.doctor_specialty || 'Medicina Especializada',
-        area_3280: user?.doctor_specialty || 'Área Clínica Asignada',
-        cursos_vida_asignados: Array.isArray(user?.cursos_vida_asignados) ? user.cursos_vida_asignados : []
-      };
-      setDoctorProfile(currentDoc);
+        const docCursos = Array.isArray(currentDoc?.cursos_vida_asignados) ? currentDoc.cursos_vida_asignados : [];
+        const docId = currentDoc?.doctor_id || currentDoc?.id || null;
+        const hospId = currentDoc?.hospital_id || currentDoc?.hospitalId || user?.hospitalId || null;
 
-      const docCursos = Array.isArray(currentDoc?.cursos_vida_asignados) ? currentDoc.cursos_vida_asignados : [];
-      const docId = currentDoc?.doctor_id || currentDoc?.id || null;
-      const hospId = currentDoc?.hospital_id || currentDoc?.hospitalId || user?.hospitalId || null;
+        const statsRes = await staffService.getAssignmentStats(hospId);
+        if (!active || !statsRes?.success) return;
 
-      // 2. Obtener página y conteos reales desde Postgres RPC (soporta 142k+)
-      const [statsRes, pageRes] = await Promise.all([
-        staffService.getAssignmentStats(hospId),
-        staffService.getAssignedPatientsPaginated({
-          doctorId: docId,
-          cursos: docCursos,
-          hospitalId: hospId,
-          search: debouncedSearch,
-          mode: viewMode,
-          page,
-          pageSize,
-        }),
-      ]);
-
-      if (statsRes?.success) {
         let sTotal = 0;
         if (docCursos.includes('todos')) sTotal = Number(statsRes.totalPatients || 0);
         else {
@@ -105,7 +103,36 @@ const DoctorPatientsPage = () => {
         }
         setScopeTotalCount(sTotal);
         setDirectTotalCount(Number(statsRes.byDoctorDirect?.[String(docId)] || 0));
+      } catch {
+        // Fallback silencioso usando el usuario en sesión
       }
+    };
+    initDoctorScope();
+    return () => { active = false; };
+  }, [user]);
+
+  const loadPatients = useCallback(async () => {
+    if (!doctorProfile) return;
+    const reqId = ++requestSeqRef.current;
+    try {
+      setLoading(true);
+      setError(null);
+
+      const docCursos = Array.isArray(doctorProfile?.cursos_vida_asignados) ? doctorProfile.cursos_vida_asignados : [];
+      const docId = doctorProfile?.doctor_id || doctorProfile?.id || null;
+      const hospId = doctorProfile?.hospital_id || doctorProfile?.hospitalId || user?.hospitalId || null;
+
+      const pageRes = await staffService.getAssignedPatientsPaginated({
+        doctorId: docId,
+        cursos: docCursos,
+        hospitalId: hospId,
+        search: debouncedSearch,
+        mode: viewMode,
+        page,
+        pageSize,
+      });
+
+      if (reqId !== requestSeqRef.current) return;
 
       if (!pageRes.success) {
         throw new Error(pageRes.error || 'No se pudieron cargar los pacientes asignados');
@@ -114,17 +141,85 @@ const DoctorPatientsPage = () => {
       setPatients(pageRes.data || []);
       setTotalCount(Number(pageRes.totalCount || 0));
     } catch (e) {
+      if (reqId !== requestSeqRef.current) return;
       setPatients([]);
       setTotalCount(0);
       setError(e?.message || 'No se pudieron cargar los pacientes asignados');
     } finally {
-      setLoading(false);
+      if (reqId === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
-  }, [user, debouncedSearch, viewMode, page]);
+  }, [doctorProfile, user, debouncedSearch, viewMode, page]);
 
   useEffect(() => {
     loadPatients();
   }, [loadPatients]);
+
+  const handleCallPatient = async (patient) => {
+    if (user?.solo_lectura && !user?.puede_lanzar_llamadas) {
+      toast({
+        title: "🔒 Permiso Restringido",
+        description: "Su usuario tiene permiso de 'Solo Lectura' y no está autorizado para lanzar llamadas.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const phone = patient.telefono || patient.phone;
+    if (!phone) {
+      toast({
+        title: "Paciente sin teléfono",
+        description: `${patient.nombre || patient.name} no tiene teléfono registrado.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    const pid = patient.id || patient.patient_id;
+    setCallingPatientId(pid);
+    toast({
+      title: "📞 Iniciando llamada individual...",
+      description: `Marcando a ${patient.nombre || patient.name} (${phone})...`,
+    });
+    try {
+      const res = await vapiIntegrationService.triggerLiveCall(
+        phone,
+        {
+          patientId: pid,
+          hospitalId: patient.hospital_id || user?.hospitalId || null,
+          doctorId: doctorProfile?.doctor_id || doctorProfile?.id || user?.doctor_id || null,
+          nombre: patient.nombre || patient.name,
+          documento: patient.documento || patient.document || patient.cc || '',
+          programa3280: patient.program || 'Valoración Preventiva Res. 3280',
+          cursoVida: patient.curso_vida || patient.grupo_vida || '',
+          curso_vida: patient.curso_vida || patient.grupo_vida || '',
+          birthdate: patient.fecha_nacimiento || patient.birthdate || null,
+          edad: patient.edad ?? null,
+          direccion: patient.address || 'Santiago de Cali',
+        },
+        ivrScheduleService.getConfig()
+      );
+      if (res.ok) {
+        toast({
+          title: "🟢 Llamada individual conectada",
+          description: `Llamando a ${patient.nombre || patient.name}.`,
+        });
+      } else {
+        toast({
+          title: "No se pudo emitir la llamada",
+          description: res.data?.message || res.data?.error || 'Verifica la configuración de Vapi.',
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Error de conexión",
+        description: err?.message || 'Error iniciando llamada.',
+        variant: "destructive",
+      });
+    } finally {
+      setCallingPatientId(null);
+    }
+  };
 
   const filteredPatients = patients;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -176,11 +271,25 @@ const DoctorPatientsPage = () => {
             <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar por nombre de paciente, documento, teléfono o curso de vida..."
+              placeholder="Buscar por nombre (con o sin tildes), documento, teléfono o curso de vida..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              className="w-full pl-11 pr-10 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setPage(1);
+                  setDebouncedSearch('');
+                }}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                title="Limpiar búsqueda"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
           <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold shrink-0">
             <button
@@ -300,6 +409,20 @@ const DoctorPatientsPage = () => {
 
                   {/* Acciones Rápidas */}
                   <div className="pt-3 border-t border-gray-100 flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={callingPatientId === (patient.id || patient.patient_id) || !(patient.telefono || patient.phone)}
+                      onClick={() => handleCallPatient(patient)}
+                      className="flex-1 py-2 px-3 text-center bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                      title={patient.telefono || patient.phone ? `Llamar individualmente a ${patient.nombre || patient.name}` : 'Sin teléfono registrado'}
+                    >
+                      {callingPatientId === (patient.id || patient.patient_id) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <PhoneCall className="h-3.5 w-3.5" />
+                      )}
+                      <span>{callingPatientId === (patient.id || patient.patient_id) ? 'Llamando...' : 'Llamar'}</span>
+                    </button>
                     <Link
                       to="/doctor/clinical-records"
                       className="flex-1 py-2 px-3 text-center bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1.5"

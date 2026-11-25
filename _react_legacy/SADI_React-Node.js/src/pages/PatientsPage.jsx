@@ -7,12 +7,14 @@ import Layout from '@/components/Layout';
 import CSVUploadDialog from '@/components/CSVUploadDialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Search, Plus, User, Users, Phone, MapPin, Edit, Trash2, Mail, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { Search, Plus, User, Users, Phone, MapPin, Edit, Trash2, Mail, ChevronLeft, ChevronRight, Sparkles, X, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
+import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { ivrScheduleService } from '@/services/ivrScheduleService';
 import { CURSOS_VIDA_LIST } from '@/services/cursoVidaConfig';
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils';
 import PatientTelemetryTable from '@/components/PatientTelemetryTable';
@@ -59,9 +61,12 @@ const PatientsPage = () => {
   const [doctors, setDoctors] = useState([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [bulkDoctorId, setBulkDoctorId] = useState('');
+  const [callingPatientId, setCallingPatientId] = useState(null);
   const { user } = useAuth();
   const { toast } = useToast();
   const [syntheticLoading, setSyntheticLoading] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
+  const requestSeqRef = useRef(0);
 
   // Estado para nuevo paciente
   const [newPatient, setNewPatient] = useState({
@@ -91,32 +96,48 @@ const PatientsPage = () => {
   });
 
   useEffect(() => {
+    const trimmed = searchTerm.trim();
+    // Invalidar inmediatamente cualquier petición en vuelo previa al cambiar el texto
+    if (trimmed !== debouncedSearch) {
+      requestSeqRef.current += 1;
+      if (hasLoadedOnceRef.current) setTableLoading(true);
+    }
     const t = setTimeout(() => {
       setPage(1);
-      setDebouncedSearch(searchTerm);
-    }, 320);
+      setDebouncedSearch(trimmed);
+    }, 260);
     return () => clearTimeout(t);
   }, [searchTerm]);
 
   useEffect(() => {
-    loadPatients(patients.length === 0);
+    loadPatients(!hasLoadedOnceRef.current);
   }, [user, page, pageSize, cursoFilter, debouncedSearch]);
 
-  const loadPatients = async (showFullSpinner = false) => {
-    if (showFullSpinner) setLoading(true);
+  const loadPatients = async (showFullSpinner = false, overrides = {}) => {
+    const reqId = ++requestSeqRef.current;
+    const effectivePage = overrides.page ?? page;
+    const effectiveSearch = overrides.search !== undefined ? overrides.search : debouncedSearch;
+    const effectiveCurso = overrides.cursoVida ?? cursoFilter;
+
+    if (showFullSpinner && !hasLoadedOnceRef.current) setLoading(true);
     else setTableLoading(true);
     try {
       const result = await patientService.getPaginated({
-        page,
+        page: effectivePage,
         pageSize,
-        search: debouncedSearch,
-        cursoVida: cursoFilter,
+        search: effectiveSearch,
+        cursoVida: effectiveCurso,
       });
 
+      // Descartar respuestas antiguas si el usuario ya lanzó una búsqueda más reciente
+      if (reqId !== requestSeqRef.current) return;
+
       if (result.success && result.data) {
+        hasLoadedOnceRef.current = true;
         setPatients(result.data);
         setTotalPatients(Number(result.totalCount ?? result.data.length));
       } else {
+        hasLoadedOnceRef.current = true;
         toast({
           title: "Error al cargar pacientes",
           description: result.error || "No se pudieron cargar los datos",
@@ -124,6 +145,8 @@ const PatientsPage = () => {
         });
       }
     } catch (error) {
+      if (reqId !== requestSeqRef.current) return;
+      hasLoadedOnceRef.current = true;
       console.error('❌ Error loading patients:', error);
       toast({
         title: "Error de conexión",
@@ -131,8 +154,72 @@ const PatientsPage = () => {
         variant: "destructive"
       });
     } finally {
-      if (showFullSpinner) setLoading(false);
-      setTableLoading(false);
+      if (reqId === requestSeqRef.current) {
+        setLoading(false);
+        setTableLoading(false);
+      }
+    }
+  };
+
+  const handleCallPatient = async (patient) => {
+    if (!patient) return;
+    if (!patient.telefono) {
+      toast({
+        title: "Paciente sin teléfono",
+        description: `${patient.nombre} no tiene un número telefónico registrado.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCallingPatientId(patient.id);
+    toast({
+      title: "📞 Iniciando llamada individual...",
+      description: `Marcando a ${patient.nombre} (${patient.telefono}) vía Agente IA SADI...`,
+    });
+
+    try {
+      const ivrCfg = ivrScheduleService.getConfig();
+      const res = await vapiIntegrationService.triggerLiveCall(
+        patient.telefono,
+        {
+          patientId: patient.patient_id || patient.id,
+          hospitalId: patient.hospitalId || user?.hospitalId || user?.hospital_id || null,
+          doctorId: user?.doctor_id || null,
+          nombre: patient.nombre,
+          documento: patient.cc || patient.documento || '',
+          programa3280: patient.programa || patient.program || 'Valoración Preventiva Res. 3280',
+          motivoLlamada: `Llamada Individual Res. 3280 · ${patient.curso_vida || 'Atención Preventiva'}`,
+          cursoVida: patient.curso_vida || patient.grupo_vida || '',
+          curso_vida: patient.curso_vida || patient.grupo_vida || '',
+          curso_vida_key: patient.curso_vida_key || null,
+          birthdate: patient.fechaNacimiento || patient.birthdate || null,
+          edad: patient.edad ?? null,
+          direccion: patient.direccion || 'Santiago de Cali',
+        },
+        ivrCfg
+      );
+
+      if (res.ok) {
+        toast({
+          title: "🟢 Llamada individual conectada",
+          description: `Llamando a ${patient.nombre} (${patient.telefono}). ID: ${res.data?.id?.slice(0, 8) || 'VAPI'}`,
+        });
+      } else {
+        toast({
+          title: "No se pudo emitir la llamada",
+          description: res.data?.message || res.data?.error || 'Verifica la configuración de Vapi / Gateway GSM.',
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Error al iniciar llamada",
+        description: err?.message || 'Error de conexión con el motor de llamadas.',
+        variant: "destructive",
+      });
+    } finally {
+      setCallingPatientId(null);
     }
   };
 
@@ -865,11 +952,41 @@ const PatientsPage = () => {
                 <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Buscar en BD por nombre, CC, teléfono o barrio..."
+                  data-testid="patients-search-input"
+                  placeholder="Buscar en BD por nombre (con o sin tildes), CC, teléfono o barrio..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const clean = searchTerm.trim();
+                      setPage(1);
+                      setDebouncedSearch(clean);
+                      loadPatients(false, { page: 1, search: clean });
+                    }
+                  }}
+                  className="w-full pl-10 pr-20 py-2.5 text-sm border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1.5">
+                  {tableLoading && (
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                  )}
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      data-testid="patients-search-clear"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setPage(1);
+                        setDebouncedSearch('');
+                      }}
+                      className="p-0.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors"
+                      title="Limpiar búsqueda"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
               <select
                 value={cursoFilter}
@@ -959,6 +1076,8 @@ const PatientsPage = () => {
               selectable={true}
               selectedPatientIds={selectedPatientIds}
               onToggleSelect={togglePatientSelection}
+              onCallPatient={handleCallPatient}
+              callingPatientId={callingPatientId}
               onEditPatient={openEditDialog}
               onDeletePatient={setPatientToDelete}
               emptyMessage={searchTerm || cursoFilter !== 'todos' ? 'No se encontraron pacientes que coincidan con la búsqueda o curso de vida.' : 'No hay pacientes registrados en este hospital.'}

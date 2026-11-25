@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import Layout from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,7 @@ const FRANJAS_HORARIAS_10H = [
 ];
 
 const CampaignsPage = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
   const doctorAccess = useMemo(() => getAllowedCursoKeysForUser(user), [user]);
@@ -775,10 +777,8 @@ const CampaignsPage = () => {
               <div className="flex items-center gap-2 shrink-0">
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    // Navegar al Cronograma si existe en el router o invocar evento
-                    window.location.hash = '#/cronograma';
-                  }}
+                  data-testid="btn-ir-al-cronograma"
+                  onClick={() => navigate('/ivr-schedule')}
                   className="bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-slate-700 text-xs font-bold rounded-xl gap-1.5"
                 >
                   <Calendar className="w-3.5 h-3.5" />
@@ -872,7 +872,7 @@ const CampaignsPage = () => {
                   Para crear nuevas campañas con segmentación clínica, accede al Cronograma y haz clic en la celda del mes deseado.
                 </p>
                 <Button
-                  onClick={() => { window.location.hash = '#/cronograma'; }}
+                  onClick={() => navigate('/ivr-schedule')}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md gap-1.5"
                 >
                   <Calendar className="h-4 w-4" />

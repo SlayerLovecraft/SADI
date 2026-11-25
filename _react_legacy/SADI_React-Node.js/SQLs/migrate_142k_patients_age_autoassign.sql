@@ -729,7 +729,35 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_dashboard_patient_demography(UUID) TO anon, authenticated;
 
--- 8. RPC Paginado de Pacientes (incluye grupos_riesgo TEXT[] y campos Cali DIVIPOLA)
+-- 8. Función de normalización sin tildes + Índice GIN trigrama + RPC Paginado de Pacientes
+CREATE OR REPLACE FUNCTION public.sadi_norm_search(p_text TEXT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  SELECT translate(
+    lower(COALESCE(p_text, '')),
+    'áàäâãéèëêíìïîóòöôõúùüûñçÁÀÄÂÃÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇ',
+    'aaaaaeeeeiiiiooooouuuuncaaaaaeeeeiiiiooooouuuunc'
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.sadi_norm_search(TEXT) TO anon, authenticated;
+
+CREATE INDEX IF NOT EXISTS gin_patients_search_norm_trgm
+ON public.patients
+USING gin (
+  public.sadi_norm_search(
+    COALESCE(name, '') || ' ' ||
+    COALESCE(document, '') || ' ' ||
+    COALESCE(phone, '') || ' ' ||
+    COALESCE(barrio, '') || ' ' ||
+    COALESCE(city, '') || ' ' ||
+    COALESCE(curso_vida, '')
+  ) gin_trgm_ops
+);
+
 DROP FUNCTION IF EXISTS public.get_patients_paginated(UUID, TEXT, TEXT, UUID, INT, INT);
 CREATE OR REPLACE FUNCTION public.get_patients_paginated(
   p_hospital_id UUID DEFAULT NULL,
@@ -783,7 +811,11 @@ SET search_path = public
 SET statement_timeout = '30s'
 AS $$
 DECLARE
-  v_search TEXT := NULLIF(trim(COALESCE(p_search, '')), '');
+  v_norm TEXT := NULLIF(trim(regexp_replace(public.sadi_norm_search(COALESCE(p_search, '')), '\s+', ' ', 'g')), '');
+  v_digits TEXT := regexp_replace(COALESCE(p_search, ''), '[^0-9]', '', 'g');
+  v_is_numeric BOOLEAN := FALSE;
+  v_tokens TEXT[] := ARRAY[]::TEXT[];
+  v_lead_tok TEXT := NULL;
   v_curso TEXT := NULLIF(lower(trim(COALESCE(p_curso_vida, ''))), '');
   v_limit INT := GREATEST(1, LEAST(COALESCE(p_page_size, 50), 1000));
   v_offset INT := (GREATEST(1, COALESCE(p_page, 1)) - 1) * v_limit;
@@ -793,45 +825,130 @@ BEGIN
     v_curso := NULL;
   END IF;
 
-  SELECT count(*)::BIGINT
-  INTO v_total
-  FROM public.patients p
-  WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-    AND (p_doctor_id IS NULL OR p.doctor_id = p_doctor_id)
-    AND (v_curso IS NULL OR p.curso_vida = v_curso)
-    AND (
-      v_search IS NULL
-      OR p.name ILIKE '%' || v_search || '%'
-      OR p.document ILIKE '%' || v_search || '%'
-      OR p.phone ILIKE '%' || v_search || '%'
-      OR p.city ILIKE '%' || v_search || '%'
-      OR p.barrio ILIKE '%' || v_search || '%'
-    );
+  IF v_norm IS NULL THEN
+    SELECT count(*)::BIGINT
+    INTO v_total
+    FROM public.patients p
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+      AND (p_doctor_id IS NULL OR p.doctor_id = p_doctor_id)
+      AND (v_curso IS NULL OR p.curso_vida = v_curso);
+
+    RETURN QUERY
+    SELECT
+      p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento, p.llave,
+      p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
+      COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
+      p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
+      p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
+      p.eps, p.ips_asignada, p.tipo_usuario,
+      p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
+      p.doctor_id, s.doctor_name, s.doctor_email, s.doctor_specialty, p.created_at, v_total
+    FROM public.patients p
+    LEFT JOIN public.staff s ON s.doctor_id = p.doctor_id
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+      AND (p_doctor_id IS NULL OR p.doctor_id = p_doctor_id)
+      AND (v_curso IS NULL OR p.curso_vida = v_curso)
+    ORDER BY p.created_at DESC NULLS LAST, p.patient_id
+    LIMIT v_limit
+    OFFSET v_offset;
+    RETURN;
+  END IF;
+
+  v_is_numeric := (v_norm ~ '^[0-9\.\-\+\s]+$' AND length(v_digits) >= 3);
+  IF v_is_numeric THEN
+    RETURN QUERY
+    WITH matched AS (
+      SELECT
+        p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento, p.llave,
+        p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
+        COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
+        p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
+        p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
+        p.eps, p.ips_asignada, p.tipo_usuario,
+        p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
+        p.doctor_id, p.created_at,
+        CASE WHEN p.document = v_digits THEN 0 ELSE 1 END AS exact_rank,
+        count(*) OVER()::BIGINT AS total_count
+      FROM public.patients p
+      WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+        AND (p_doctor_id IS NULL OR p.doctor_id = p_doctor_id)
+        AND (v_curso IS NULL OR p.curso_vida = v_curso)
+        AND (
+          p.document = v_digits
+          OR p.document ILIKE '%' || v_digits || '%'
+          OR p.phone ILIKE '%' || v_digits || '%'
+        )
+    )
+    SELECT
+      m.patient_id, m.hospital_id, m.name, m.document, m.tipo_documento, m.llave,
+      m.phone, m.email, m.birthdate, m.sex, m.city, m.address, m.program,
+      m.curso_vida, m.grupo_riesgo, m.grupos_riesgo,
+      m.zona, m.barrio, m.comuna, m.corregimiento, m.vereda, m.centro_poblado,
+      m.eps, m.ips_asignada, m.tipo_usuario,
+      m.dispositivos_caseros, m.valores_criticos, m.historial_medidas, m.conteo_canales,
+      m.doctor_id, s.doctor_name, s.doctor_email, s.doctor_specialty, m.created_at, m.total_count
+    FROM matched m
+    LEFT JOIN public.staff s ON s.doctor_id = m.doctor_id
+    ORDER BY m.exact_rank ASC, m.created_at DESC NULLS LAST, m.patient_id
+    LIMIT v_limit
+    OFFSET v_offset;
+    RETURN;
+  END IF;
+
+  v_tokens := regexp_split_to_array(v_norm, '\s+');
+  SELECT tok INTO v_lead_tok FROM unnest(v_tokens) AS tok ORDER BY length(tok) DESC LIMIT 1;
 
   RETURN QUERY
+  WITH matched AS (
+    SELECT
+      p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento, p.llave,
+      p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
+      COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
+      p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
+      p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
+      p.eps, p.ips_asignada, p.tipo_usuario,
+      p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
+      p.doctor_id, p.created_at,
+      count(*) OVER()::BIGINT AS total_count
+    FROM public.patients p
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+      AND (p_doctor_id IS NULL OR p.doctor_id = p_doctor_id)
+      AND (v_curso IS NULL OR p.curso_vida = v_curso)
+      AND public.sadi_norm_search(
+        COALESCE(p.name, '') || ' ' ||
+        COALESCE(p.document, '') || ' ' ||
+        COALESCE(p.phone, '') || ' ' ||
+        COALESCE(p.barrio, '') || ' ' ||
+        COALESCE(p.city, '') || ' ' ||
+        COALESCE(p.curso_vida, '')
+      ) LIKE '%' || v_lead_tok || '%'
+      AND (
+        array_length(v_tokens, 1) <= 1
+        OR NOT EXISTS (
+          SELECT 1
+          FROM unnest(v_tokens) AS t
+          WHERE public.sadi_norm_search(
+            COALESCE(p.name, '') || ' ' ||
+            COALESCE(p.document, '') || ' ' ||
+            COALESCE(p.phone, '') || ' ' ||
+            COALESCE(p.barrio, '') || ' ' ||
+            COALESCE(p.city, '') || ' ' ||
+            COALESCE(p.curso_vida, '')
+          ) NOT LIKE '%' || t || '%'
+        )
+      )
+  )
   SELECT
-    p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento, p.llave,
-    p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
-    COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
-    p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
-    p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
-    p.eps, p.ips_asignada, p.tipo_usuario,
-    p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
-    p.doctor_id, s.doctor_name, s.doctor_email, s.doctor_specialty, p.created_at, v_total
-  FROM public.patients p
-  LEFT JOIN public.staff s ON s.doctor_id = p.doctor_id
-  WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-    AND (p_doctor_id IS NULL OR p.doctor_id = p_doctor_id)
-    AND (v_curso IS NULL OR p.curso_vida = v_curso)
-    AND (
-      v_search IS NULL
-      OR p.name ILIKE '%' || v_search || '%'
-      OR p.document ILIKE '%' || v_search || '%'
-      OR p.phone ILIKE '%' || v_search || '%'
-      OR p.city ILIKE '%' || v_search || '%'
-      OR p.barrio ILIKE '%' || v_search || '%'
-    )
-  ORDER BY p.created_at DESC NULLS LAST, p.patient_id
+    m.patient_id, m.hospital_id, m.name, m.document, m.tipo_documento, m.llave,
+    m.phone, m.email, m.birthdate, m.sex, m.city, m.address, m.program,
+    m.curso_vida, m.grupo_riesgo, m.grupos_riesgo,
+    m.zona, m.barrio, m.comuna, m.corregimiento, m.vereda, m.centro_poblado,
+    m.eps, m.ips_asignada, m.tipo_usuario,
+    m.dispositivos_caseros, m.valores_criticos, m.historial_medidas, m.conteo_canales,
+    m.doctor_id, s.doctor_name, s.doctor_email, s.doctor_specialty, m.created_at, m.total_count
+  FROM matched m
+  LEFT JOIN public.staff s ON s.doctor_id = m.doctor_id
+  ORDER BY m.created_at DESC NULLS LAST, m.patient_id
   LIMIT v_limit
   OFFSET v_offset;
 END;
@@ -927,10 +1044,13 @@ AS $$
 DECLARE
   v_cursos TEXT[] := p_cursos;
   v_has_todos BOOLEAN := FALSE;
-  v_search TEXT := NULLIF(trim(COALESCE(p_search, '')), '');
+  v_norm TEXT := NULLIF(trim(regexp_replace(public.sadi_norm_search(COALESCE(p_search, '')), '\s+', ' ', 'g')), '');
+  v_digits TEXT := regexp_replace(COALESCE(p_search, ''), '[^0-9]', '', 'g');
+  v_is_numeric BOOLEAN := FALSE;
+  v_tokens TEXT[] := ARRAY[]::TEXT[];
+  v_lead_tok TEXT := NULL;
   v_limit INT := GREATEST(1, LEAST(COALESCE(p_page_size, 50), 1000));
   v_offset INT := (GREATEST(1, COALESCE(p_page, 1)) - 1) * v_limit;
-  v_total BIGINT := 0;
 BEGIN
   IF v_cursos IS NULL AND p_doctor_id IS NOT NULL THEN
     SELECT ARRAY(SELECT jsonb_array_elements_text(COALESCE(s.cursos_vida_asignados, '[]'::jsonb)))
@@ -945,120 +1065,82 @@ BEGIN
     RETURN;
   END IF;
 
-  IF p_mode = 'direct' THEN
-    IF p_doctor_id IS NULL THEN
-      RETURN;
-    END IF;
-
-    SELECT count(*)::BIGINT
-    INTO v_total
-    FROM public.patients p
-    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-      AND p.doctor_id = p_doctor_id
-      AND (
-        v_search IS NULL
-        OR p.name ILIKE '%' || v_search || '%'
-        OR p.document ILIKE '%' || v_search || '%'
-        OR p.phone ILIKE '%' || v_search || '%'
-        OR p.curso_vida ILIKE '%' || v_search || '%'
-      );
-
-    RETURN QUERY
-    SELECT
-      p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento,
-      p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
-      COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
-      p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
-      p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
-      p.eps, p.ips_asignada, p.tipo_usuario,
-      p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
-      p.doctor_id, p.created_at, v_total
-    FROM public.patients p
-    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-      AND p.doctor_id = p_doctor_id
-      AND (
-        v_search IS NULL
-        OR p.name ILIKE '%' || v_search || '%'
-        OR p.document ILIKE '%' || v_search || '%'
-        OR p.phone ILIKE '%' || v_search || '%'
-        OR p.curso_vida ILIKE '%' || v_search || '%'
-      )
-    ORDER BY p.created_at DESC NULLS LAST, p.patient_id
-    LIMIT v_limit
-    OFFSET v_offset;
-  ELSIF v_has_todos THEN
-    SELECT count(*)::BIGINT
-    INTO v_total
-    FROM public.patients p
-    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-      AND (
-        v_search IS NULL
-        OR p.name ILIKE '%' || v_search || '%'
-        OR p.document ILIKE '%' || v_search || '%'
-        OR p.phone ILIKE '%' || v_search || '%'
-        OR p.curso_vida ILIKE '%' || v_search || '%'
-      );
-
-    RETURN QUERY
-    SELECT
-      p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento,
-      p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
-      COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
-      p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
-      p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
-      p.eps, p.ips_asignada, p.tipo_usuario,
-      p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
-      p.doctor_id, p.created_at, v_total
-    FROM public.patients p
-    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-      AND (
-        v_search IS NULL
-        OR p.name ILIKE '%' || v_search || '%'
-        OR p.document ILIKE '%' || v_search || '%'
-        OR p.phone ILIKE '%' || v_search || '%'
-        OR p.curso_vida ILIKE '%' || v_search || '%'
-      )
-    ORDER BY p.created_at DESC NULLS LAST, p.patient_id
-    LIMIT v_limit
-    OFFSET v_offset;
-  ELSE
-    SELECT count(*)::BIGINT
-    INTO v_total
-    FROM public.patients p
-    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-      AND p.curso_vida = ANY(v_cursos)
-      AND (
-        v_search IS NULL
-        OR p.name ILIKE '%' || v_search || '%'
-        OR p.document ILIKE '%' || v_search || '%'
-        OR p.phone ILIKE '%' || v_search || '%'
-        OR p.curso_vida ILIKE '%' || v_search || '%'
-      );
-
-    RETURN QUERY
-    SELECT
-      p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento,
-      p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
-      COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
-      p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
-      p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
-      p.eps, p.ips_asignada, p.tipo_usuario,
-      p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
-      p.doctor_id, p.created_at, v_total
-    FROM public.patients p
-    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
-      AND p.curso_vida = ANY(v_cursos)
-      AND (
-        v_search IS NULL
-        OR p.name ILIKE '%' || v_search || '%'
-        OR p.document ILIKE '%' || v_search || '%'
-        OR p.phone ILIKE '%' || v_search || '%'
-        OR p.curso_vida ILIKE '%' || v_search || '%'
-      )
-    ORDER BY p.created_at DESC NULLS LAST, p.patient_id
-    LIMIT v_limit
-    OFFSET v_offset;
+  IF p_mode = 'direct' AND p_doctor_id IS NULL THEN
+    RETURN;
   END IF;
+
+  v_is_numeric := (v_norm IS NOT NULL AND v_norm ~ '^[0-9\.\-\+\s]+$' AND length(v_digits) >= 3);
+  IF v_norm IS NOT NULL AND NOT v_is_numeric THEN
+    v_tokens := regexp_split_to_array(v_norm, '\s+');
+    SELECT tok INTO v_lead_tok FROM unnest(v_tokens) AS tok ORDER BY length(tok) DESC LIMIT 1;
+  END IF;
+
+  RETURN QUERY
+  WITH matched AS (
+    SELECT
+      p.patient_id, p.hospital_id, p.name, p.document, p.tipo_documento,
+      p.phone, p.email, p.birthdate, p.sex, p.city, p.address, p.program,
+      COALESCE(p.curso_vida, 'adultez'::varchar) AS curso_vida,
+      p.grupo_riesgo, COALESCE(p.grupos_riesgo, '{}'::text[]) AS grupos_riesgo,
+      p.zona, p.barrio, p.comuna, p.corregimiento, p.vereda, p.centro_poblado,
+      p.eps, p.ips_asignada, p.tipo_usuario,
+      p.dispositivos_caseros, p.valores_criticos, p.historial_medidas, p.conteo_canales,
+      p.doctor_id, p.created_at,
+      count(*) OVER()::BIGINT AS total_count
+    FROM public.patients p
+    WHERE (p_hospital_id IS NULL OR p.hospital_id = p_hospital_id)
+      AND (
+        (p_mode = 'direct' AND p.doctor_id = p_doctor_id)
+        OR (p_mode <> 'direct' AND (v_has_todos OR p.curso_vida = ANY(v_cursos)))
+      )
+      AND (
+        v_norm IS NULL
+        OR (
+          v_is_numeric AND (
+            p.document = v_digits
+            OR p.document ILIKE '%' || v_digits || '%'
+            OR p.phone ILIKE '%' || v_digits || '%'
+          )
+        )
+        OR (
+          NOT v_is_numeric
+          AND public.sadi_norm_search(
+            COALESCE(p.name, '') || ' ' ||
+            COALESCE(p.document, '') || ' ' ||
+            COALESCE(p.phone, '') || ' ' ||
+            COALESCE(p.barrio, '') || ' ' ||
+            COALESCE(p.city, '') || ' ' ||
+            COALESCE(p.curso_vida, '')
+          ) LIKE '%' || v_lead_tok || '%'
+          AND (
+            array_length(v_tokens, 1) <= 1
+            OR NOT EXISTS (
+              SELECT 1 FROM unnest(v_tokens) AS t
+              WHERE public.sadi_norm_search(
+                COALESCE(p.name, '') || ' ' ||
+                COALESCE(p.document, '') || ' ' ||
+                COALESCE(p.phone, '') || ' ' ||
+                COALESCE(p.barrio, '') || ' ' ||
+                COALESCE(p.city, '') || ' ' ||
+                COALESCE(p.curso_vida, '')
+              ) NOT LIKE '%' || t || '%'
+            )
+          )
+        )
+      )
+  )
+  SELECT
+    m.patient_id, m.hospital_id, m.name, m.document, m.tipo_documento,
+    m.phone, m.email, m.birthdate, m.sex, m.city, m.address, m.program,
+    m.curso_vida, m.grupo_riesgo, m.grupos_riesgo,
+    m.zona, m.barrio, m.comuna, m.corregimiento, m.vereda, m.centro_poblado,
+    m.eps, m.ips_asignada, m.tipo_usuario,
+    m.dispositivos_caseros, m.valores_criticos, m.historial_medidas, m.conteo_canales,
+    m.doctor_id, m.created_at, m.total_count
+  FROM matched m
+  ORDER BY m.created_at DESC NULLS LAST, m.patient_id
+  LIMIT v_limit
+  OFFSET v_offset;
 END;
 $$;
 

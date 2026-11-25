@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { isSupabaseAuthError, withTimeout } from '@/lib/utils'
+import { isSupabaseAuthError, withTimeout, runWithSupabaseAuthRecovery } from '@/lib/utils'
 import { programToSpecialty, pickDoctorIdForPatient } from '@/pages/doctor/doctorUtils'
 import { staffService } from './staffService'
 import { SEED_PATIENTS_3280 } from './telemonitoringService'
@@ -143,19 +143,28 @@ function mapFrontendToSupabase(patient) {
   };
 }
 
-// Obtener hospital_id del usuario logueado con fallback al hospital oficial de Caldas
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DEFAULT_SADI_HOSPITAL_UUID = 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
+
+function sanitizeHospitalUuid(rawId) {
+  const s = String(rawId || '').trim();
+  if (!s || s === 'hosp-001' || !UUID_REGEX.test(s)) return DEFAULT_SADI_HOSPITAL_UUID;
+  return s;
+}
+
+// Obtener hospital_id del usuario logueado con fallback seguro al hospital oficial
 function getCurrentHospitalId() {
   try {
     const userData = localStorage.getItem('sadi_user');
     if (userData) {
       const user = JSON.parse(userData);
-      const targetId = user.hospitalId || user.hospital_id || 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
-      return targetId;
+      const targetId = user.hospitalId || user.hospital_id || DEFAULT_SADI_HOSPITAL_UUID;
+      return sanitizeHospitalUuid(targetId);
     }
   } catch (error) {
     console.error('❌ Error obteniendo hospitalId:', error);
   }
-  return 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
+  return DEFAULT_SADI_HOSPITAL_UUID;
 }
 
 export const patientService = {
@@ -171,41 +180,68 @@ export const patientService = {
     hospitalId: overrideHospitalId = null,
   } = {}) {
     try {
-      const hospitalId = overrideHospitalId || getCurrentHospitalId();
+      const hospitalId = overrideHospitalId ? sanitizeHospitalUuid(overrideHospitalId) : getCurrentHospitalId();
       if (!hospitalId) {
         return { success: false, error: 'No se pudo identificar el hospital del usuario', data: [], totalCount: 0 };
       }
 
       const safePage = Math.max(1, Number(page) || 1);
       const safeSize = Math.max(1, Math.min(1000, Number(pageSize) || 50));
+      const cleanSearch = search?.trim() || null;
 
-      const { data: rpcData, error: rpcError } = await withTimeout(
-        supabase.rpc('get_patients_paginated', {
-          p_hospital_id: hospitalId,
-          p_search: search?.trim() || null,
-          p_curso_vida: cursoVida || 'todos',
-          p_doctor_id: doctorId || null,
-          p_page: safePage,
-          p_page_size: safeSize,
-        }),
-        15000,
+      let { data: rpcData, error: rpcError } = await runWithSupabaseAuthRecovery(
+        supabase,
+        () =>
+          supabase.rpc('get_patients_paginated', {
+            p_hospital_id: hospitalId,
+            p_search: cleanSearch,
+            p_curso_vida: cursoVida || 'todos',
+            p_doctor_id: doctorId || null,
+            p_page: safePage,
+            p_page_size: safeSize,
+          }),
+        20000,
         'Tiempo de espera agotado al consultar pacientes paginados'
       );
+
+      // Si una cuenta alias sin censo propio devuelve 0 sin filtros, reintentar con censo global
+      if (!rpcError && Array.isArray(rpcData) && rpcData.length === 0 && !cleanSearch && safePage === 1 && (!cursoVida || cursoVida === 'todos') && !doctorId) {
+        const retryGlobal = await runWithSupabaseAuthRecovery(
+          supabase,
+          () =>
+            supabase.rpc('get_patients_paginated', {
+              p_hospital_id: null,
+              p_search: null,
+              p_curso_vida: 'todos',
+              p_doctor_id: null,
+              p_page: safePage,
+              p_page_size: safeSize,
+            }),
+          20000,
+          'Tiempo de espera agotado al consultar censo global'
+        );
+        if (!retryGlobal.error && Array.isArray(retryGlobal.data) && retryGlobal.data.length > 0) {
+          rpcData = retryGlobal.data;
+        }
+      }
 
       if (!rpcError && Array.isArray(rpcData)) {
         const totalCount = rpcData.length > 0 ? Number(rpcData[0].total_count || 0) : 0;
         let mappedData = rpcData.map(mapSupabaseToFrontend);
 
-        // Si estamos buscando o filtrando en una página <=50, el total exacto viene en row.total_count;
-        // si rpcData viene vacío y page === 1 con filtros, totalCount es 0.
+        // Enriquecimiento opcional de signos_vitales con timeout corto para no frenar la búsqueda
         if (mappedData.length > 0 && mappedData.length <= 200) {
           try {
             const patientIds = mappedData.map((p) => p.patient_id || p.id).filter(Boolean);
-            const { data: vitals } = await supabase
-              .from('signos_vitales')
-              .select('*')
-              .in('paciente_id', patientIds)
-              .order('fecha', { ascending: true });
+            const { data: vitals } = await withTimeout(
+              supabase
+                .from('signos_vitales')
+                .select('*')
+                .in('paciente_id', patientIds)
+                .order('fecha', { ascending: true }),
+              3500,
+              'Timeout signos_vitales'
+            );
 
             if (vitals && vitals.length > 0) {
               const vitalsByPatient = {};
