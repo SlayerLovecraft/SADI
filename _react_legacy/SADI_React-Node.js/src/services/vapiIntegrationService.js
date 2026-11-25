@@ -509,6 +509,27 @@ ${atencionesSummary}
           data: data.data || data
         };
       }
+      if (error) {
+        let parsedBody = null;
+        try {
+          if (error.context && typeof error.context.json === 'function') {
+            parsedBody = await error.context.json();
+          }
+        } catch {}
+        const status = parsedBody?.status || error.context?.status || 500;
+        const msg =
+          parsedBody?.data?.message ||
+          parsedBody?.error ||
+          parsedBody?.message ||
+          error.message ||
+          'Error al invocar la Edge Function vapi-outbound-call.';
+        return {
+          ok: false,
+          status,
+          mode: parsedBody?.mode || 'vapi_edge_function',
+          data: parsedBody?.data || { message: Array.isArray(msg) ? msg.join('; ') : String(msg) }
+        };
+      }
     } catch (edgeErr) {
       console.warn('Edge Function vapi-outbound-call no disponible aún, verificando env local:', edgeErr?.message);
     }
