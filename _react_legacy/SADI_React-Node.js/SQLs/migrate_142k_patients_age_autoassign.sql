@@ -1822,7 +1822,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  DELETE FROM public.cronograma_summary_cache;
+  DELETE FROM public.cronograma_summary_cache WHERE cache_key IS NOT NULL;
   RETURN NULL;
 END;
 $$;
