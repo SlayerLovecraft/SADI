@@ -53,7 +53,7 @@ export default function MultichannelReportHeader({ matrixData, loading = false }
     },
     {
       id: 'call',
-      label: 'Llamadas Realizadas (Puerto 1)',
+      label: 'Llamadas Realizadas (Puerto 13)',
       icon: Phone,
       color: 'text-emerald-700 dark:text-emerald-400',
       bg: 'bg-emerald-50 dark:bg-slate-900',

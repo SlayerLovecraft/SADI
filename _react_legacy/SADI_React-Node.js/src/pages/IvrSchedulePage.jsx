@@ -349,7 +349,7 @@ export default function IvrSchedulePage() {
         const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
         const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
         toast({
-          title: "🟢 Llamada Exitosa y Registrada (Puerto 1)",
+          title: "🟢 Llamada Exitosa y Registrada (Puerto 13)",
           description: `${item.nombre} fue contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
         });
       },
@@ -367,7 +367,7 @@ export default function IvrSchedulePage() {
         });
         toast({
           title: "Fallo al Contactar",
-          description: res?.message || `No se logró contactar a ${item.nombre} por Puerto 1.`,
+          description: res?.message || `No se logró contactar a ${item.nombre} por Puerto 13.`,
           variant: "destructive",
         });
       },
@@ -1163,7 +1163,7 @@ export default function IvrSchedulePage() {
                                 className="text-xs font-bold rounded-xl gap-1.5"
                                 idleClassName="bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700"
                                 iconClassName="w-3.5 h-3.5 shrink-0"
-                                title={`Llamar a ${patient.nombre} (${patient.telefono}) por Puerto 1`}
+                                title={`Llamar a ${patient.nombre} (${patient.telefono}) por Puerto 13`}
                               />
                             </td>
                           </tr>
@@ -1465,7 +1465,7 @@ export default function IvrSchedulePage() {
                               className="text-xs font-bold rounded-xl gap-1"
                               idleClassName="bg-white dark:bg-slate-800 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
                               iconClassName="w-3.5 h-3.5 shrink-0"
-                              title={`Reintentar llamada a ${c.nombre} (${c.telefono}) por Puerto 1`}
+                              title={`Reintentar llamada a ${c.nombre} (${c.telefono}) por Puerto 13`}
                             />
                             <Button
                               size="sm"

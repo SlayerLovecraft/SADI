@@ -64,14 +64,14 @@ export default function VisualGanttRoadmap({
       onSuccess: (res) => {
         const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday;
         toast({
-          title: '🟢 Llamada Exitosa y Registrada (Puerto 1)',
+          title: '🟢 Llamada Exitosa y Registrada (Puerto 13)',
           description: `${pat.nombre} contactado correctamente.${rem !== undefined ? ` Cupo diario restante: ${rem} / 500.` : ''}`,
         });
       },
       onFailure: (res) => {
         toast({
           title: 'Fallo al Contactar',
-          description: res?.message || `No se logró contactar a ${pat.nombre} por Puerto 1.`,
+          description: res?.message || `No se logró contactar a ${pat.nombre} por Puerto 13.`,
           variant: 'destructive',
         });
       },
@@ -498,7 +498,7 @@ export default function VisualGanttRoadmap({
                               className="h-6 px-1.5 rounded text-[10px] font-bold gap-1"
                               idleClassName="hover:bg-amber-300 text-amber-900"
                               iconClassName="w-3 h-3 shrink-0"
-                              title={`Llamar a ${pat.nombre} (${pat.telefono}) por Puerto 1`}
+                              title={`Llamar a ${pat.nombre} (${pat.telefono}) por Puerto 13`}
                             />
                           </div>
                         </div>
@@ -736,7 +736,7 @@ export default function VisualGanttRoadmap({
               <div className="flex items-center justify-between pt-2">
                 <LiveCallButton
                   callKey={selectedPatientModal.id}
-                  idleLabel="Emitir Llamada en Vivo al Paciente (Puerto 1)"
+                  idleLabel="Emitir Llamada en Vivo al Paciente (Puerto 13)"
                   testId="gantt-modal-call-btn"
                   onClick={() => handleCallPatient(selectedPatientModal)}
                   size="default"
@@ -794,7 +794,7 @@ export default function VisualGanttRoadmap({
                           className="text-xs font-bold rounded-xl gap-1"
                           idleClassName="text-blue-700 border-blue-200 hover:bg-blue-50"
                           iconClassName="w-3.5 h-3.5 shrink-0"
-                          title={`Llamar a ${p.nombre} (${p.telefono}) por Puerto 1`}
+                          title={`Llamar a ${p.nombre} (${p.telefono}) por Puerto 13`}
                         />
                       </div>
                     ))

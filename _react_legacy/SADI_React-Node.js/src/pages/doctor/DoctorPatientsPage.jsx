@@ -180,7 +180,7 @@ const DoctorPatientsPage = () => {
           nombre: patient.nombre || patient.name,
           documento: patient.documento || patient.document || patient.cc || '',
           programa3280: patient.program || 'Valoración Preventiva Res. 3280',
-          motivoLlamada: `Llamada Médica Puerto 1 · ${patient.curso_vida || 'Res. 3280'}`,
+          motivoLlamada: `Llamada Médica Puerto 13 · ${patient.curso_vida || 'Res. 3280'}`,
           cursoVida: patient.curso_vida || patient.grupo_vida || '',
           curso_vida: patient.curso_vida || patient.grupo_vida || '',
           birthdate: patient.fecha_nacimiento || patient.birthdate || null,
@@ -190,7 +190,7 @@ const DoctorPatientsPage = () => {
         antiVoicemailConfig: ivrScheduleService.getConfig(),
         onSuccess: (res) => {
           toast({
-            title: "🟢 Llamada exitosa registrada (Puerto 1)",
+            title: "🟢 Llamada exitosa registrada (Puerto 13)",
             description: `${patient.nombre || patient.name} atendido (${res.durationSeconds}s). Cupo diario restante: ${res.quota?.remainingToday ?? 500} / ${res.quota?.dailyCap ?? 500}.`,
           });
         },
@@ -403,7 +403,7 @@ const DoctorPatientsPage = () => {
                       onClick={() => handleCallPatient(patient)}
                       className="flex-1 h-auto py-2 px-3 font-bold text-xs rounded-xl shadow-sm gap-1.5"
                       idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
-                      title={patient.telefono || patient.phone ? `Llamar individualmente a ${patient.nombre || patient.name} por Puerto 1` : 'Sin teléfono registrado'}
+                      title={patient.telefono || patient.phone ? `Llamar individualmente a ${patient.nombre || patient.name} por Puerto 13` : 'Sin teléfono registrado'}
                     />
                     <Link
                       to="/doctor/clinical-records"

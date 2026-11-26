@@ -1313,7 +1313,7 @@ export default function DoctorsPage() {
                       <PhoneCall className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="font-bold text-xs text-slate-900 dark:text-white block">Permitir Llamadas en Vivo (GSM Puerto 1)</span>
+                      <span className="font-bold text-xs text-slate-900 dark:text-white block">Permitir Llamadas en Vivo (GSM Puerto 13)</span>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400 font-normal block leading-tight mt-0.5">
                         Habilita el botón de llamada individual y enlace con el Agente IA para sus pacientes.
                       </span>

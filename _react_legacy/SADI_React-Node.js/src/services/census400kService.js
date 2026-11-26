@@ -268,7 +268,7 @@ export const PROGRAMAS_3280 = [
       { mes: 8, label: 'Tamizaje Violencia Género', hito: 'Activación Código Rosa y Apoyo Psicosocial', edadTarget: '14 a 69 años (F)', cups: '890206' },
       { mes: 9, label: 'Asesoría Preconcepcional', hito: 'Evaluación Riesgo Gestacional y Ácido Fólico', edadTarget: '14 a 45 años (F)', cups: '890203' },
       { mes: 10, label: 'Tamizaje Osteoporosis y Caídas', hito: 'Densitometría y Calcio en Postmenopausia', edadTarget: '50 a 69 años (F)', cups: '881601' },
-      { mes: 11, label: 'Rescate de Mamografías Pendientes', hito: 'Llamada Asertiva Puerto 1 a Mujeres Sin Tamizaje', edadTarget: '50 a 69 años (F)', cups: '876801' },
+      { mes: 11, label: 'Rescate de Mamografías Pendientes', hito: 'Llamada Asertiva Puerto 13 a Mujeres Sin Tamizaje', edadTarget: '50 a 69 años (F)', cups: '876801' },
       { mes: 12, label: 'Consolidación Coberturas Cáncer', hito: 'Cumplimiento Indicadores Ruta Materno y Oncológica', edadTarget: '14 a 69 años (F)', cups: '890201' }
     ]
   }
@@ -363,7 +363,7 @@ export const GRUPOS_RIESGO_PRIORIZADOS = [
 export const CANALES_DISPONIBLES = [
   { id: 'sms', nombre: 'SMS', icon: 'MessageSquare', descripcion: 'Mensajería de texto OpenVox GSM masiva' },
   { id: 'email', nombre: 'EMAIL', icon: 'Mail', descripcion: 'Correo electrónico hospitalario con trazabilidad' },
-  { id: 'call', nombre: 'LLAMADA', icon: 'Phone', descripcion: 'Llamada automatizada Agente IA vía OpenVox Puerto 1' },
+  { id: 'call', nombre: 'LLAMADA', icon: 'Phone', descripcion: 'Llamada automatizada Agente IA vía OpenVox Puerto 13' },
   { id: 'whatsapp', nombre: 'WHATSAPP', icon: 'Send', descripcion: 'Mensaje interactivo vía canal WhatsApp verificado' }
 ];
 
@@ -756,7 +756,7 @@ export const census400kService = {
       edadTarget: milestone?.edadTarget || 'Edad acorde al curso de vida',
       ultimaConsulta: '2026-03-12 • Medicina General / Promoción y Prevención',
       proximaCita: '2026-05-20 • Control Programado IVR SADI',
-      notasEvolucion: `Paciente citado a través de la plataforma SADI de Demanda Inducida en el marco de la Resolución 3280 de 2018 para cumplir el hito obligatorio: "${milestone?.hito}". Presenta adherencia activa al programa institucional. Llamada programada e inamovible por canal telefónico (Puerto 1).`
+      notasEvolucion: `Paciente citado a través de la plataforma SADI de Demanda Inducida en el marco de la Resolución 3280 de 2018 para cumplir el hito obligatorio: "${milestone?.hito}". Presenta adherencia activa al programa institucional. Llamada programada e inamovible por canal telefónico (Puerto 13).`
     };
   }
 };

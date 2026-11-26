@@ -558,7 +558,7 @@ export const roadmapService = {
           pacienteNombre: log.paciente_nombre || log.patient_name || 'Paciente Particular',
           documento: log.documento || log.patient_document || 'CC 1234567890',
           telefono: log.telefono_destino || log.phone || '+573057120876',
-          canal: log.canal || 'Llamada Saliente GSM (Puerto 1)',
+          canal: log.canal || 'Llamada Saliente GSM (Puerto 13)',
           motivoContacto: log.motivo_contacto || 'Demanda Inducida Individual Res. 3280',
           resultado: isEfectiva ? 'Efectiva' : (log.resultado_contacto || 'No Contesta'),
           duracionSegundos: log.duracion_segundos || 65,
@@ -584,7 +584,7 @@ export const roadmapService = {
       const now = new Date().toISOString();
       const newEntry = {
         patient_id: callData.patientId || null,
-        canal: callData.canal || 'Llamada Saliente GSM (Puerto 1)',
+        canal: callData.canal || 'Llamada Saliente GSM (Puerto 13)',
         motivo_contacto: callData.motivoContacto || 'Demanda Inducida Individual Res. 3280',
         telefono_destino: callData.telefono,
         duracion_segundos: callData.duracionSegundos || 45,

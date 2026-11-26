@@ -248,7 +248,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
   const totalPages = Math.max(1, Math.ceil(filteredCount / itemsPerPage));
   const paginatedInteractions = interactions;
 
-  // Disparar llamada inmediata REAL por Puerto 1 con ciclo de vida completo y descuento en cupo de 500/día
+  // Disparar llamada inmediata REAL por Puerto 13 con ciclo de vida completo y descuento en cupo de 500/día
   const handleDirectCall = async (item) => {
     if (!item) return;
     // Verificar restricción de permisos del personal
@@ -289,7 +289,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
         const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
         const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
         toast({
-          title: "🟢 Llamada Exitosa y Registrada (Puerto 1)",
+          title: "🟢 Llamada Exitosa y Registrada (Puerto 13)",
           description: `${item.pacienteNombre} fue contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
         });
         if (onExecuteCallSuccess) onExecuteCallSuccess();
@@ -302,7 +302,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
         );
         toast({
           title: "Fallo al Contactar",
-          description: res?.message || `No se logró contactar a ${item.pacienteNombre} por Puerto 1.`,
+          description: res?.message || `No se logró contactar a ${item.pacienteNombre} por Puerto 13.`,
           variant: "destructive",
         });
       },
@@ -805,7 +805,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
 
                         <LiveCallButton
                           callKey={item.id}
-                          idleLabel="Llamar (P. 1)"
+                          idleLabel="Llamar (P. 13)"
                           testId="demanda-call-btn"
                           onClick={() => handleDirectCall(item)}
                           size="sm"
@@ -813,7 +813,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
                           className="h-7 px-2.5 rounded-xl font-bold text-[11px] gap-1 shadow-sm"
                           idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
                           iconClassName="w-3 h-3 shrink-0"
-                          title={`Llamar a ${item.pacienteNombre} (${item.telefono}) por Puerto 1`}
+                          title={`Llamar a ${item.pacienteNombre} (${item.telefono}) por Puerto 13`}
                         />
                       </div>
                     </td>
@@ -967,7 +967,7 @@ export default function MonthlyInteractionsListTable({ onExecuteCallSuccess }) {
               <div className="pt-2">
                 <LiveCallButton
                   callKey={selectedItemForModal.id}
-                  idleLabel="Ejecutar Llamada Ahora por GSM Puerto 1"
+                  idleLabel="Ejecutar Llamada Ahora por GSM Puerto 13"
                   testId="demanda-modal-call-btn"
                   onClick={() => handleDirectCall(selectedItemForModal)}
                   size="default"

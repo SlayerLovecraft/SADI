@@ -1,9 +1,9 @@
 // ==============================================================================
 // liveCallLifecycleService.js - MOTOR UNIFICADO DE CICLO DE VIDA DE LLAMADAS
-// Y CUPO DIARIO DE 500 LLAMADAS EXITOSAS (PUERTO 1 · +573106783338)
+// Y CUPO DIARIO DE 500 LLAMADAS EXITOSAS (PUERTO 13 · +573106783338)
 //
 // Estados exactos del botón para TODOS los botones de llamar del aplicativo:
-//   1. 'idle'    -> Etiqueta normal ("Llamar" / "Llamar (P. 1)")
+//   1. 'idle'    -> Etiqueta normal ("Llamar" / "Llamar (P. 13)")
 //   2. 'calling' -> Spinner de carga + "Llamando" (permanece hasta que contesten)
 //   3. 'in_call' -> "En Llamada..." (cuando el paciente contesta, hasta que cuelguen)
 //   4. 'ending'  -> "Finalizando Llamada" (exactamente 3 segundos al colgar con éxito;
@@ -369,7 +369,7 @@ export const liveCallLifecycleService = {
     const resolvedGsmPort = patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port;
     const resolvedCallerNumber = patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber;
     const resolvedPhoneNumberId = patientData.phoneNumberId || OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId;
-    const resolvedRouteMode = patientData.routeMode || 'vapi_issabel_port1';
+    const resolvedRouteMode = patientData.routeMode || 'vapi_issabel_port13';
 
     // Abrir / iniciar traza en la ventana independiente de Log y copiar snapshot inicial
     const traceId = callTraceLoggerService.startTrace({
@@ -491,7 +491,7 @@ export const liveCallLifecycleService = {
         triggerRes?.data?.error ||
         (triggerRes?.status === 401
           ? 'Llave VAPI_PRIVATE_KEY no autorizada (401) en Supabase.'
-          : 'No se pudo conectar la llamada por Puerto 1.');
+          : 'No se pudo conectar la llamada por Puerto 13.');
 
       callTraceLoggerService.logEvent(traceId, {
         level: 'ERROR',
@@ -649,7 +649,7 @@ export const liveCallLifecycleService = {
             level: statusChanged ? 'STEP' : 'POLL',
             stage: '5_SIP_RINGING',
             message: statusChanged
-              ? `Cambio de estado Vapi -> "${curSt}" (Poll #${pollCount}, troncal SIP Issabel -> OpenVox P.1).`
+              ? `Cambio de estado Vapi -> "${curSt}" (Poll #${pollCount}, troncal SIP Issabel -> OpenVox P.13).`
               : `Esperando contestación... Vapi="${curSt}" (Poll #${pollCount} · +${Math.round((Date.now() - pollStart) / 1000)}s).`,
             data: {
               vapiStatus: curSt,

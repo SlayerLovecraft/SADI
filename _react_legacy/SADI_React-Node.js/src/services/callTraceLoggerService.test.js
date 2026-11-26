@@ -68,7 +68,7 @@ describe('callTraceLoggerService', () => {
         hospitalId: 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8',
       },
       rawPhone: '3101234567',
-      gsmPort: 1,
+      gsmPort: 13,
       callerNumber: '+573106783338',
       phoneNumberId: '3e836f48-6110-410d-a340-fd625598b324',
       quotaSnapshot: {
@@ -102,7 +102,7 @@ describe('callTraceLoggerService', () => {
     callTraceLoggerService.logEvent(traceId, {
       level: 'STEP',
       stage: '5_SIP_RINGING',
-      message: 'Timbrando en Issabel -> OpenVox Puerto 1',
+      message: 'Timbrando en Issabel -> OpenVox Puerto 13',
       data: { vapiStatus: 'ringing' },
     });
 
@@ -123,7 +123,7 @@ describe('callTraceLoggerService', () => {
     expect(lastCopied).toContain('+573101234567');
     expect(lastCopied).toContain('call-vapi-12345');
     expect(lastCopied).toContain('sip-abc-999');
-    expect(lastCopied).toContain('Puerto 1 (+573106783338)');
+    expect(lastCopied).toContain('Puerto 13 (+573106783338)');
     expect(lastCopied).toContain('Disponibles 219/500');
     expect(lastCopied).toContain('SIP 503 Service Unavailable');
     expect(formatTraceForClipboard(finished.trace)).toEqual(lastCopied);

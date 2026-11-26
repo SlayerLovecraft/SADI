@@ -283,7 +283,7 @@ export default function Rias3280ManagementPage() {
       direccion: selectedPatient.direccion || 'Santiago de Cali, Valle del Cauca'
     };
 
-    // Llamada real por voz (Puerto 1) con máquina de estados completa y descuento exacto en cupo de 500/día
+    // Llamada real por voz (Puerto 13) con máquina de estados completa y descuento exacto en cupo de 500/día
     if (selectedChannel === 'call_ia') {
       await liveCallLifecycleService.executeLiveCall({
         targetKey: selectedPatient.id,
@@ -296,13 +296,13 @@ export default function Rias3280ManagementPage() {
               pacienteNombre: selectedPatient.nombre,
               documento: selectedPatient.documento,
               telefono: selectedPatient.telefono,
-              canal: 'Llamada Saliente GSM (Puerto 1)',
+              canal: 'Llamada Saliente GSM (Puerto 13)',
               motivoContacto: `${selectedProgram.id} - ${selectedProgram.nombre}`,
               resultado: 'Efectiva',
               duracionSegundos: res.durationSeconds || 1,
               aceptoCita: true,
-              resumenClinico: res.summary || `Paciente ${selectedPatient.nombre} contactado exitosamente por Puerto 1 para ${selectedProgram.nombre} (Resolución 3280).`,
-              transcripcion: res.transcript || `Llamada completada por Puerto 1 (${res.durationSeconds || 1}s). Guión aplicado: ${compileDynamicScript()}`
+              resumenClinico: res.summary || `Paciente ${selectedPatient.nombre} contactado exitosamente por Puerto 13 para ${selectedProgram.nombre} (Resolución 3280).`,
+              transcripcion: res.transcript || `Llamada completada por Puerto 13 (${res.durationSeconds || 1}s). Guión aplicado: ${compileDynamicScript()}`
             });
             await loadLogs();
           } catch (logErr) {
@@ -313,13 +313,13 @@ export default function Rias3280ManagementPage() {
           const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
           toast({
             title: "🟢 Llamada Individual Efectiva y Registrada",
-            description: `${selectedPatient.nombre} fue contactado correctamente por Puerto 1. Cupo diario restante: ${rem} / ${cap}.`
+            description: `${selectedPatient.nombre} fue contactado correctamente por Puerto 13. Cupo diario restante: ${rem} / ${cap}.`
           });
         },
         onFailure: (res) => {
           toast({
             title: "Fallo al Contactar",
-            description: res?.message || `No se logró contactar a ${selectedPatient.nombre} por Puerto 1.`,
+            description: res?.message || `No se logró contactar a ${selectedPatient.nombre} por Puerto 13.`,
             variant: "destructive"
           });
         }
@@ -644,7 +644,7 @@ export default function Rias3280ManagementPage() {
                       </label>
                       <div className="grid grid-cols-3 gap-2">
                         {[
-                          { id: 'call_ia', label: 'Llamada IA (Puerto 1)', icon: PhoneCall },
+                          { id: 'call_ia', label: 'Llamada IA (Puerto 13)', icon: PhoneCall },
                           { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
                           { id: 'sms', label: 'SMS', icon: Send }
                         ].map(ch => {
@@ -687,7 +687,7 @@ export default function Rias3280ManagementPage() {
                     {selectedChannel === 'call_ia' ? (
                       <LiveCallButton
                         callKey={selectedPatient?.id || 'rias-individual-dispatch'}
-                        idleLabel={`Llamar a ${selectedPatient?.nombre?.split(' ')[0] || 'Paciente'} (Puerto 1)`}
+                        idleLabel={`Llamar a ${selectedPatient?.nombre?.split(' ')[0] || 'Paciente'} (Puerto 13)`}
                         testId="rias-individual-call-btn"
                         onClick={handleDispatch}
                         disabled={!selectedProgram || !selectedPatient}

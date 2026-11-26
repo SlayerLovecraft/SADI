@@ -19,7 +19,7 @@ export const COMUNAS_LIST = ['Todas las Comunas'];
 export const BARRIOS_LIST = ['Todos los Barrios'];
 
 export const CANALES_CONFIG = [
-  { id: 'call', key: 'call', label: 'Llamadas Realizadas (Puerto 1)', color: '#059669', lightBg: 'bg-emerald-50', textColor: 'text-emerald-800' },
+  { id: 'call', key: 'call', label: 'Llamadas Realizadas (Puerto 13)', color: '#059669', lightBg: 'bg-emerald-50', textColor: 'text-emerald-800' },
   { id: 'whatsapp', key: 'whatsapp', label: 'Interacciones por WhatsApp', color: '#25D366', lightBg: 'bg-green-50', textColor: 'text-green-800' },
   { id: 'email', key: 'email', label: 'E-mails Enviados', color: '#4F46E5', lightBg: 'bg-indigo-50', textColor: 'text-indigo-800' },
   { id: 'sms', key: 'sms', label: 'SMS Enviados', color: '#0284C7', lightBg: 'bg-sky-50', textColor: 'text-sky-800' },
@@ -496,7 +496,7 @@ export const reportsAnalysisService = {
       const pctSms = totalFiltered > 0 ? Number(Math.max(0, 100 - pctCall - pctWhatsapp - pctEmail).toFixed(1)) : 0;
 
       const slices = [
-        { id: 'call', label: 'Llamada (Puerto 1)', canal: 'Llamada', count: countCall, percentage: pctCall, color: '#059669', icon: 'Phone' },
+        { id: 'call', label: 'Llamada (Puerto 13)', canal: 'Llamada', count: countCall, percentage: pctCall, color: '#059669', icon: 'Phone' },
         { id: 'whatsapp', label: 'WhatsApp', canal: 'WhatsApp', count: countWhatsapp, percentage: pctWhatsapp, color: '#25D366', icon: 'Send' },
         { id: 'email', label: 'E-mail', canal: 'E-mail', count: countEmail, percentage: pctEmail, color: '#4F46E5', icon: 'Mail' },
         { id: 'sms', label: 'SMS', canal: 'SMS', count: countSms, percentage: pctSms, color: '#0284C7', icon: 'MessageSquare' },
@@ -539,7 +539,7 @@ export const reportsAnalysisService = {
     const slices = [
       {
         id: 'call',
-        label: 'Llamada (Puerto 1)',
+        label: 'Llamada (Puerto 13)',
         canal: 'Llamada',
         count: countCall,
         percentage: pctCall,

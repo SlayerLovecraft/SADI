@@ -26,7 +26,7 @@ interface OutboundCallBody {
   phoneNumberId?: string | null;
   gsmPort?: number | null;
   callerNumber?: string | null;
-  routeMode?: "auto" | "vapi_issabel_port1" | "asterisk_preanswer" | null;
+  routeMode?: "auto" | "vapi_issabel_port13" | "asterisk_preanswer" | null;
   patientId?: string | null;
   hospitalId?: string | null;
   doctorId?: string | null;
@@ -37,8 +37,8 @@ interface OutboundCallBody {
   antiVoicemailConfig?: AntiVoicemailOptions;
 }
 
-const DEFAULT_PORT1_PHONE_NUMBER_ID = "3e836f48-6110-410d-a340-fd625598b324";
-const DEFAULT_PORT1_CALLER_NUMBER = "+573106783338";
+const DEFAULT_PORT13_PHONE_NUMBER_ID = "3e836f48-6110-410d-a340-fd625598b324";
+const DEFAULT_PORT13_CALLER_NUMBER = "+573106783338";
 
 const UNANSWERED_OR_FAILED_REASONS = new Set([
   "customer-did-not-answer",
@@ -432,14 +432,14 @@ Deno.serve(async (req) => {
     const targetPhoneNumberId =
       body.phoneNumberId ||
       Deno.env.get("VAPI_PHONE_NUMBER_ID") ||
-      DEFAULT_PORT1_PHONE_NUMBER_ID;
-    const targetGsmPort = Number(body.gsmPort || 1);
-    const targetCallerNumber = body.callerNumber || DEFAULT_PORT1_CALLER_NUMBER;
+      DEFAULT_PORT13_PHONE_NUMBER_ID;
+    const targetGsmPort = Number(body.gsmPort || 13);
+    const targetCallerNumber = body.callerNumber || DEFAULT_PORT13_CALLER_NUMBER;
 
     // Opción A: Puerta de Enlace Asterisk ARI externa (Early Media SIP 183)
     // SOLO se activa si el llamador solicita explícitamente routeMode === "asterisk_preanswer".
-    // En modo normal ("vapi_issabel_port1", "auto" o por defecto) TODAS las llamadas salen directo
-    // vía API de Vapi -> Issabel PBX (69.30.247.178) -> OpenVox Puerto 1 (+573106783338) con Vapi AMD nativo.
+    // En modo normal ("vapi_issabel_port13", "auto" o por defecto) TODAS las llamadas salen directo
+    // vía API de Vapi -> Issabel PBX (69.30.247.178) -> OpenVox Puerto 13 (+573106783338) con Vapi AMD nativo.
     const ariUrl = Deno.env.get("OPENVOX_BRIDGE_URL") || Deno.env.get("ASTERISK_ARI_URL") || (dbCfg?.ari_gateway_host ? String(dbCfg.ari_gateway_host) : "");
     const useAsteriskPreAnswer =
       body.routeMode === "asterisk_preanswer" &&
@@ -487,7 +487,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Opción B: Despacho directo vía API de Vapi -> Issabel PBX (OpenVox Puerto 1: +573106783338) con Voicemail Detection nativo + Webhook SADI
+    // Opción B: Despacho directo vía API de Vapi -> Issabel PBX (OpenVox Puerto 13: +573106783338) con Voicemail Detection nativo + Webhook SADI
     const vapiKey = Deno.env.get("VAPI_PRIVATE_KEY") || Deno.env.get("VAPI_API_KEY");
     const assistantId = Deno.env.get("VAPI_ASSISTANT_ID");
     const phoneNumberId = targetPhoneNumberId;
@@ -589,7 +589,7 @@ Deno.serve(async (req) => {
         assistantId,
         gsmPort: targetGsmPort,
         callerNumber: targetCallerNumber,
-        routeMode: body.routeMode || "vapi_issabel_port1",
+        routeMode: body.routeMode || "vapi_issabel_port13",
         isMinorABC,
         tiempoSaludo,
         webhookUrl,

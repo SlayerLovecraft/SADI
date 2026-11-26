@@ -143,13 +143,13 @@ export function buildAutoDiagnosis(trace) {
     return 'FALLO AL CONECTAR CON SUPABASE EDGE FUNCTION (HTTP 503): La función vapi-outbound-call no respondió o falló la red del navegador.';
   }
   if (reason.includes('sip-503') || reason.includes('503-service-unavailable') || msg.includes('503')) {
-    return 'FALLO EN TRONCAL SIP (Issabel 69.30.247.178 -> OpenVox 190.90.52.5): Vapi recibió SIP 503 Service Unavailable. Causas típicas: Puerto 1 sin señal GSM, SIM sin saldo/bloqueada, prefijo 901 sin regla en OpenVox o canal GSM ocupado.';
+    return 'FALLO EN TRONCAL SIP (Issabel 69.30.247.178 -> OpenVox 190.90.52.5): Vapi recibió SIP 503 Service Unavailable. Causas típicas: Puerto 13 sin señal GSM, SIM sin saldo/bloqueada, prefijo 913 sin regla en OpenVox o canal GSM ocupado.';
   }
   if (reason.includes('sip-403') || reason.includes('sip-401') || reason.includes('403-forbidden')) {
     return 'FALLO DE AUTENTICACIÓN SIP (401/403): Issabel PBX rechazó el INVITE entrante de Vapi (revisar IP/contexto VAPI_TRUNK en sip_additional.conf).';
   }
   if (reason.includes('sip-404') || reason.includes('404-not-found')) {
-    return 'FALLO DE RUTEO SIP (404 Not Found): Issabel o el OpenVox no encontró una extensión/regla coincidente para el destino marcado (revisar [desde-vapi] y prefijo 901).';
+    return 'FALLO DE RUTEO SIP (404 Not Found): Issabel o el OpenVox no encontró una extensión/regla coincidente para el destino marcado (revisar [desde-vapi] y prefijo 913).';
   }
   if (reason.includes('sip-486') || reason.includes('customer-busy')) {
     return 'LÍNEA OCUPADA (SIP 486 / customer-busy): El paciente rechazó la llamada o su línea estaba ocupada (o el canal GSM devolvió Busy).';
@@ -173,7 +173,7 @@ export function buildAutoDiagnosis(trace) {
     return 'EN LLAMADA ACTIVA: El paciente contestó y está hablando con el agente IA de Vapi.';
   }
   if (trace.vapiCallId) {
-    return `EN PROCESO (${trace.vapiStatus || 'calling'}): Vapi aceptó la llamada (${trace.vapiCallId}) y está marcando vía Issabel PBX -> OpenVox Puerto 1.`;
+    return `EN PROCESO (${trace.vapiStatus || 'calling'}): Vapi aceptó la llamada (${trace.vapiCallId}) y está marcando vía Issabel PBX -> OpenVox Puerto 13.`;
   }
   return 'EN PROCESO: Despachando solicitud desde SADI hacia Supabase Edge Function (vapi-outbound-call)...';
 }
@@ -211,10 +211,10 @@ export function formatTraceForClipboard(trace) {
     `Hospital ID       : ${trace.hospitalId || 'N/A'}`,
     '',
     '--- 2. RUTA DE SALIDA (VAPI -> ISSABEL -> OPENVOX) ---',
-    `Puerto GSM        : Puerto ${trace.gsmPort ?? 1} (${trace.callerNumber || '+573106783338'})`,
+    `Puerto GSM        : Puerto ${trace.gsmPort ?? 13} (${trace.callerNumber || '+573106783338'})`,
     `Vapi Phone ID     : ${trace.phoneNumberId || '3e836f48-6110-410d-a340-fd625598b324'}`,
     `Vapi Assistant ID : ${trace.assistantId || 'Edge Secret VAPI_ASSISTANT_ID'}`,
-    `Route Mode        : ${trace.routeMode || 'vapi_issabel_port1'}`,
+    `Route Mode        : ${trace.routeMode || 'vapi_issabel_port13'}`,
     `Edge Mode Resp.   : ${trace.dispatchMode || 'N/A'}`,
     `Anti-Buzon        : ${safeJsonCompact(trace.antiVoicemailSummary || {}, 240)}`,
     '',
@@ -636,7 +636,7 @@ function buildExternalWindowShellHtml() {
   <div id="diag-banner" class="diag-banner">Esperando inicio de llamada...</div>
   <div id="log-stream" class="log-stream"></div>
   <div class="footer-tip">
-    <span>Ventana independiente SADI · Puerto 1 (+573106783338)</span>
+    <span>Ventana independiente SADI · Puerto 13 (+573106783338)</span>
     <span id="event-count">0 eventos</span>
   </div>
 </body>
@@ -840,7 +840,7 @@ function renderExternalWindow() {
       </div>
       <div class="meta-card">
         <div class="meta-label">Ruta &amp; Cupo Hoy (500/día)</div>
-        <div class="meta-val">P.${escapeHtml(tr.gsmPort ?? 1)} (${escapeHtml(tr.callerNumber || '+573106783338')}) · Disp: ${escapeHtml(q.remainingToday ?? '?')}/${escapeHtml(q.dailyCap ?? 500)}</div>
+        <div class="meta-val">P.${escapeHtml(tr.gsmPort ?? 13)} (${escapeHtml(tr.callerNumber || '+573106783338')}) · Disp: ${escapeHtml(q.remainingToday ?? '?')}/${escapeHtml(q.dailyCap ?? 500)}</div>
       </div>
     `;
 
@@ -975,10 +975,10 @@ export const callTraceLoggerService = {
   startTrace({
     patientData = {},
     rawPhone = '',
-    gsmPort = 1,
+    gsmPort = 13,
     callerNumber = '+573106783338',
     phoneNumberId = '3e836f48-6110-410d-a340-fd625598b324',
-    routeMode = 'vapi_issabel_port1',
+    routeMode = 'vapi_issabel_port13',
     antiVoicemailConfig = null,
     quotaSnapshot = null,
     uiOrigin = '',

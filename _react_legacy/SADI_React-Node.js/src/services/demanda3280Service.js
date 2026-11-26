@@ -168,7 +168,7 @@ export const demanda3280Service = {
           diaNumero: assignedDay.dayNum,
           horaProgramada: assignedSlot.hora,
           timestampOrden: `${assignedDay.dateStr} ${assignedSlot.hora}`,
-          canal: 'Llamada (Puerto 1)',
+          canal: 'Llamada (Puerto 13)',
           canalId: 'call_ia',
           estado,
           intentos: estado === 'Confirmada' ? 1 : estado === 'Reagendada' ? 2 : 0,
@@ -418,7 +418,7 @@ export const demanda3280Service = {
         diaNumero: assignedDay.dayNum,
         horaProgramada: assignedSlot.hora,
         timestampOrden: `${assignedDay.dateStr} ${assignedSlot.hora}`,
-        canal: 'Llamada (Puerto 1)',
+        canal: 'Llamada (Puerto 13)',
         canalId: 'call_ia',
         estado: estado,
         intentos: estado === 'Confirmada' ? 1 : estado === 'Reagendada' ? 2 : 0,
@@ -463,7 +463,7 @@ export const demanda3280Service = {
           const canalLabel = camp.canal === 'SMS' ? 'SMS' 
             : camp.canal === 'EMAIL' ? 'E-mail' 
             : camp.canal === 'WHATSAPP' ? 'WhatsApp' 
-            : 'Llamada (Puerto 1)';
+            : 'Llamada (Puerto 13)';
 
           allInteractions.push({
             id: `inter-camp-${camp.id || cIdx}-${patient.id}-${pIdx}`,
@@ -529,7 +529,7 @@ export const demanda3280Service = {
           diaNumero: parseInt(logDateStr.split('-')[2]) || 1,
           horaProgramada: logTimeStr,
           timestampOrden: `${logDateStr} ${logTimeStr}`,
-          canal: log.canal || 'Llamada (Puerto 1)',
+          canal: log.canal || 'Llamada (Puerto 13)',
           canalId: 'call_ia',
           estado: log.resultado === 'Efectiva' ? 'Confirmada' : 'No Contesta',
           intentos: 1,

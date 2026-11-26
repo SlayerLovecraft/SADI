@@ -19,8 +19,8 @@ import {
 } from './antiVoicemailConfig';
 
 export const OPENVOX_INDIVIDUAL_PORT_CONFIG = {
-  port: 1,
-  label: 'Puerto 1',
+  port: 13,
+  label: 'Puerto 13',
   callerNumber: '+573106783338',
   vapiPhoneNumberId: '3e836f48-6110-410d-a340-fd625598b324',
   trunkName: 'Issabel PBX - NetGroup OpenVox',
@@ -467,7 +467,7 @@ ${atencionesSummary}
       import.meta.env.VITE_VAPI_PHONE_NUMBER_ID ||
       OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId;
 
-    // Camino principal seguro: Edge Function `vapi-outbound-call` (Puerto 1 vía Vapi + Issabel PBX con Vapi AMD activo)
+    // Camino principal seguro: Edge Function `vapi-outbound-call` (Puerto 13 vía Vapi + Issabel PBX con Vapi AMD activo)
     const edgeStartedAt = Date.now();
     let edgeException = null;
     try {
@@ -477,7 +477,7 @@ ${atencionesSummary}
           phoneNumberId: targetPhoneNumberId,
           gsmPort: patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port,
           callerNumber: patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber,
-          routeMode: patientData.routeMode || 'vapi_issabel_port1',
+          routeMode: patientData.routeMode || 'vapi_issabel_port13',
           patientId: patientData.patientId || patientData.id || null,
           hospitalId: patientData.hospitalId || patientData.hospital_id || null,
           doctorId: patientData.doctorId || patientData.doctor_id || null,

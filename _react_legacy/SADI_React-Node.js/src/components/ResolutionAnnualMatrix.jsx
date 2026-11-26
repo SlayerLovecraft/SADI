@@ -118,14 +118,14 @@ function ResolutionAnnualMatrix({
         const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
         const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
         toast({
-          title: '🟢 Llamada Exitosa y Registrada (Puerto 1)',
+          title: '🟢 Llamada Exitosa y Registrada (Puerto 13)',
           description: `${cItem.nombre} contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
         });
       },
       onFailure: (res) => {
         toast({
           title: 'Fallo al Contactar',
-          description: res?.message || `No se logró contactar a ${cItem.nombre} por Puerto 1.`,
+          description: res?.message || `No se logró contactar a ${cItem.nombre} por Puerto 13.`,
           variant: 'destructive',
         });
       },
@@ -2735,7 +2735,7 @@ function ResolutionAnnualMatrix({
                                   className="text-[11px] h-8 px-2.5 gap-1 rounded-xl font-bold shrink-0"
                                   idleClassName="bg-emerald-600 hover:bg-emerald-700 text-white"
                                   iconClassName="w-3.5 h-3.5 shrink-0"
-                                  title={`Llamar a ${cItem.nombre} (${cItem.telefono}) por Puerto 1`}
+                                  title={`Llamar a ${cItem.nombre} (${cItem.telefono}) por Puerto 13`}
                                 />
                                 <Button
                                   size="sm"

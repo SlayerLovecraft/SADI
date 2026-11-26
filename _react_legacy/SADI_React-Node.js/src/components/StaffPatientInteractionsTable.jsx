@@ -412,7 +412,7 @@ export default function StaffPatientInteractionsTable({
             </div>
             <div>
               <span className="text-[10px] text-gray-400 font-bold uppercase block">
-                Reproduciendo Audio de Agente IA · GSM Puerto 1
+                Reproduciendo Audio de Agente IA · GSM Puerto 13
               </span>
               <p className="text-xs font-bold text-gray-100">
                 Llamada con: {activeAudioPatient.nombre} · Coordinada por: {staffName}

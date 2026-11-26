@@ -594,7 +594,7 @@ const CampaignsPage = () => {
         const rem = res?.quota?.remaining_today ?? res?.quota?.remainingToday ?? dailyQuota.remainingToday;
         const cap = res?.quota?.daily_cap ?? res?.quota?.dailyCap ?? dailyQuota.dailyCap;
         toast({
-          title: "🟢 Llamada de Campaña Exitosa (Puerto 1)",
+          title: "🟢 Llamada de Campaña Exitosa (Puerto 13)",
           description: `${item.nombre} fue contactado correctamente. Cupo diario restante: ${rem} / ${cap}.`,
         });
       },
@@ -612,7 +612,7 @@ const CampaignsPage = () => {
         });
         toast({
           title: "Fallo al Contactar",
-          description: res?.message || `No se logró contactar a ${item.nombre} por Puerto 1.`,
+          description: res?.message || `No se logró contactar a ${item.nombre} por Puerto 13.`,
           variant: "destructive",
         });
       },
@@ -1239,7 +1239,7 @@ const CampaignsPage = () => {
                           className="text-xs font-bold rounded-xl gap-1"
                           idleClassName="bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60 hover:bg-blue-50 dark:hover:bg-slate-700"
                           iconClassName="w-3 h-3 shrink-0"
-                          title={`Llamar a ${item.nombre} (${item.telefono}) por Puerto 1`}
+                          title={`Llamar a ${item.nombre} (${item.telefono}) por Puerto 13`}
                         />
                       </div>
                     </div>
@@ -1288,7 +1288,7 @@ const CampaignsPage = () => {
                       className="text-xs font-bold rounded-xl gap-1"
                       idleClassName="bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60"
                       iconClassName="w-3.5 h-3.5 shrink-0"
-                      title={`Reintentar llamada a ${item.nombre} (${item.telefono}) por Puerto 1`}
+                      title={`Reintentar llamada a ${item.nombre} (${item.telefono}) por Puerto 13`}
                     />
                   </div>
                 ))}
@@ -1401,7 +1401,7 @@ const CampaignsPage = () => {
                   <div className="flex justify-between border-b border-slate-200 dark:border-slate-700 pb-1.5">
                     <span className="text-slate-500 dark:text-slate-400">Canales Autorizados:</span>
                     <strong className="text-slate-800 dark:text-slate-100">
-                      {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 1), WhatsApp'}
+                      {selectedCampaign?.canal || 'Llamada IA Vapi (Puerto 13), WhatsApp'}
                     </strong>
                   </div>
                   {selectedCampaign?.directriz_ia && (

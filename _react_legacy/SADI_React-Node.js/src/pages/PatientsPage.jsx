@@ -177,7 +177,7 @@ const PatientsPage = () => {
           nombre: patient.nombre,
           documento: patient.cc || patient.documento || '',
           programa3280: patient.programa || patient.program || 'Valoración Preventiva Res. 3280',
-          motivoLlamada: `Llamada Individual Puerto 1 · ${patient.curso_vida || 'Atención Preventiva'}`,
+          motivoLlamada: `Llamada Individual Puerto 13 · ${patient.curso_vida || 'Atención Preventiva'}`,
           cursoVida: patient.curso_vida || patient.grupo_vida || '',
           curso_vida: patient.curso_vida || patient.grupo_vida || '',
           curso_vida_key: patient.curso_vida_key || null,
@@ -188,7 +188,7 @@ const PatientsPage = () => {
         antiVoicemailConfig: ivrScheduleService.getConfig(),
         onSuccess: (res) => {
           toast({
-            title: "🟢 Llamada exitosa registrada (Puerto 1)",
+            title: "🟢 Llamada exitosa registrada (Puerto 13)",
             description: `${patient.nombre} atendido (${res.durationSeconds}s). Cupo diario restante: ${res.quota?.remainingToday ?? dailyQuota.remainingToday} / ${res.quota?.dailyCap ?? 500}.`,
           });
           loadPatients(false);
