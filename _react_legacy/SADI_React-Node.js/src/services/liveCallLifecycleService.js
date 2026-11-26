@@ -280,6 +280,7 @@ export const liveCallLifecycleService = {
     const patUuid = sanitizeUuid(patientId);
     const docUuid = sanitizeUuid(doctorId);
 
+    let rpcErrorMsg = null;
     try {
       const { data, error } = await runWithSupabaseAuthRecovery(
         supabase,
@@ -305,8 +306,12 @@ export const liveCallLifecycleService = {
         applyQuotaPayload(data.quota);
         return data;
       }
+      if (error) {
+        rpcErrorMsg = error.message || JSON.stringify(error);
+      }
     } catch (e) {
-      console.warn('Error registrando outcome de llamada en Supabase:', e?.message);
+      rpcErrorMsg = e?.message || String(e);
+      console.warn('Error registrando outcome de llamada en Supabase:', rpcErrorMsg);
     }
 
     // Actualización optimista si la llamada fue exitosa aunque haya fallado el RPC
@@ -320,7 +325,7 @@ export const liveCallLifecycleService = {
         used_today: nextUsed,
       });
     }
-    return { ok: false, quota: { ...quotaState } };
+    return { ok: false, error: rpcErrorMsg, quota: { ...quotaState } };
   },
 
   /**
@@ -364,8 +369,7 @@ export const liveCallLifecycleService = {
     const resolvedGsmPort = patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port;
     const resolvedCallerNumber = patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber;
     const resolvedPhoneNumberId = patientData.phoneNumberId || OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId;
-    const resolvedRouteMode =
-      patientData.routeMode || (effectiveAntiVmCfg?.earlyMediaPreAnswer ? 'auto' : 'vapi_issabel_port1');
+    const resolvedRouteMode = patientData.routeMode || 'vapi_issabel_port1';
 
     // Abrir / iniciar traza en la ventana independiente de Log y copiar snapshot inicial
     const traceId = callTraceLoggerService.startTrace({
@@ -523,7 +527,9 @@ export const liveCallLifecycleService = {
           endedMessage: errMsg,
           lastError: errMsg,
           rawErrorPayload: { status: triggerRes?.status, diagnostics: edgeDiag, data: triggerRes?.data },
-          dbRecordStatus: dbRes?.ok === false ? 'Error al registrar en BD' : 'Registrado como fallo (no descuenta cupo)',
+          dbRecordStatus: dbRes?.ok === false
+            ? `Error al registrar en BD${dbRes?.error ? `: ${dbRes.error}` : ''}`
+            : 'Registrado como fallo (no descuenta cupo)',
           quotaSnapshot: this.getQuotaSnapshot(),
         },
       });
@@ -774,7 +780,9 @@ export const liveCallLifecycleService = {
         durationSeconds: 0,
         transcriptPreview,
         rawErrorPayload: finalDiag && Object.keys(finalDiag).length > 0 ? finalDiag : null,
-        dbRecordStatus: dbFailOutcome?.ok === false ? 'Error registrando fallo en BD' : 'Registrado como fallo (no resta cupo)',
+        dbRecordStatus: dbFailOutcome?.ok === false
+          ? `Error registrando fallo en BD${dbFailOutcome?.error ? `: ${dbFailOutcome.error}` : ''}`
+          : 'Registrado como fallo (no resta cupo)',
         quotaSnapshot: this.getQuotaSnapshot(),
       },
     });

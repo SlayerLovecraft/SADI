@@ -458,8 +458,8 @@ ${atencionesSummary}
 
     const minorFirstMessageOverride = isMinorABC
       ? {
-          firstMessage: `${minorOpening} Le habla el asistente clínico del ${hospitalNombre} para coordinar la atención preventiva de ${nombreCompleto} bajo la ${programaVoz}. Por favor marque 1 si confirma la asistencia o 2 si desea reagendar.`
-        }
+        firstMessage: `${minorOpening} Le habla el asistente clínico del ${hospitalNombre} para coordinar la atención preventiva de ${nombreCompleto} bajo la ${programaVoz}. Por favor marque 1 si confirma la asistencia o 2 si desea reagendar.`
+      }
       : {};
 
     const targetPhoneNumberId =
@@ -477,7 +477,7 @@ ${atencionesSummary}
           phoneNumberId: targetPhoneNumberId,
           gsmPort: patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port,
           callerNumber: patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber,
-          routeMode: patientData.routeMode || (antiVoicemailCfg.earlyMediaPreAnswer ? 'auto' : 'vapi_issabel_port1'),
+          routeMode: patientData.routeMode || 'vapi_issabel_port1',
           patientId: patientData.patientId || patientData.id || null,
           hospitalId: patientData.hospitalId || patientData.hospital_id || null,
           doctorId: patientData.doctorId || patientData.doctor_id || null,
@@ -523,14 +523,14 @@ ${atencionesSummary}
           if (error.context && typeof error.context.clone === 'function') {
             rawText = await error.context.clone().text();
           }
-        } catch {}
+        } catch { }
         try {
           if (rawText) {
             parsedBody = JSON.parse(rawText);
           } else if (error.context && typeof error.context.json === 'function') {
             parsedBody = await error.context.json();
           }
-        } catch {}
+        } catch { }
         const status = parsedBody?.status || error.context?.status || 500;
         const msg =
           parsedBody?.data?.message ||
@@ -634,6 +634,20 @@ ${atencionesSummary}
           source: 'vapi_edge_status',
         };
       }
+      let edgeErrBody = null;
+      let edgeErrStatus = null;
+      if (error) {
+        try {
+          if (error.context && typeof error.context.clone === 'function') {
+            const rawErr = await error.context.clone().text();
+            try { edgeErrBody = JSON.parse(rawErr); } catch { edgeErrBody = { rawText: rawErr.slice(0, 400) }; }
+          } else if (error.context && typeof error.context.json === 'function') {
+            edgeErrBody = await error.context.json();
+          }
+          edgeErrStatus = edgeErrBody?.status || error.context?.status || null;
+        } catch {}
+      }
+
       // Fallback: consultar vapi_agent_sessions en Supabase por si el webhook ya cerró la llamada
       const { data: sessionRow } = await supabase
         .from('vapi_agent_sessions')
@@ -669,14 +683,25 @@ ${atencionesSummary}
         };
       }
 
+      const detailedErr =
+        edgeErrBody?.data?.message ||
+        edgeErrBody?.error ||
+        edgeErrBody?.message ||
+        data?.error ||
+        error?.message ||
+        'status-check-failed';
+
       return {
         ok: false,
+        status: edgeErrStatus || data?.status || 500,
         phase: 'ended',
         isSuccess: false,
         pollLatencyMs,
         source: 'vapi_edge_status_error',
-        endedReason: data?.error || error?.message || 'status-check-failed',
-        endedMessage: data?.error || error?.message || null,
+        endedReason: Array.isArray(detailedErr) ? detailedErr.join('; ') : String(detailedErr),
+        endedMessage: edgeErrStatus
+          ? `HTTP ${edgeErrStatus}: ${Array.isArray(detailedErr) ? detailedErr.join('; ') : String(detailedErr)}`
+          : String(detailedErr),
       };
     } catch (err) {
       return {

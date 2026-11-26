@@ -3063,7 +3063,7 @@ BEGIN
     SET estado_llamada = CASE WHEN v_was_already_success THEN estado_llamada ELSE v_estado END,
         duracion_segundos = CASE WHEN v_was_already_success THEN GREATEST(duracion_segundos, v_dur) ELSE v_dur END,
         deteccion_buzon = CASE WHEN v_was_already_success THEN FALSE ELSE v_is_voicemail END,
-        capa_deteccion = CASE WHEN v_is_success OR v_was_already_success THEN 'dtmf_human' WHEN v_is_voicemail THEN 'vapi_amd_post_answer' ELSE 'no_answer' END,
+        capa_deteccion = CASE WHEN v_is_success OR v_was_already_success THEN 'dtmf_human' WHEN v_is_voicemail THEN 'vapi_amd_post_answer' ELSE 'none' END,
         motivo_corte = COALESCE(NULLIF(p_ended_reason, ''), motivo_corte, v_estado),
         transcripcion_completa = COALESCE(NULLIF(p_transcript, ''), transcripcion_completa),
         resumen_ia = COALESCE(NULLIF(p_summary, ''), resumen_ia),
@@ -3083,7 +3083,7 @@ BEGIN
       v_call_id, p_patient_id, p_doctor_id, v_hosp, COALESCE(NULLIF(p_phone, ''), 'desconocido'),
       COALESCE(NULLIF(p_motivo, ''), 'Demanda Inducida Res. 3280'), v_estado, v_dur,
       NULLIF(p_transcript, ''), NULLIF(p_summary, ''), v_is_voicemail,
-      CASE WHEN v_is_success THEN 'dtmf_human' WHEN v_is_voicemail THEN 'vapi_amd_post_answer' ELSE 'no_answer' END,
+      CASE WHEN v_is_success THEN 'dtmf_human' WHEN v_is_voicemail THEN 'vapi_amd_post_answer' ELSE 'none' END,
       FALSE, CASE WHEN v_is_success THEN 200 ELSE 480 END, COALESCE(NULLIF(p_ended_reason, ''), v_estado),
       v_is_success, CASE WHEN v_is_success THEN v_dur * 12 ELSE 0 END, p_slot_tanda
     );

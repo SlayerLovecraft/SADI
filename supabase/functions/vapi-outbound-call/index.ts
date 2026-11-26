@@ -436,12 +436,14 @@ Deno.serve(async (req) => {
     const targetGsmPort = Number(body.gsmPort || 1);
     const targetCallerNumber = body.callerNumber || DEFAULT_PORT1_CALLER_NUMBER;
 
-    // Opción A: Puerta de Enlace Asterisk + OpenVox directo (Early Media SIP 183 Pre-Answer antes de 200 OK -> $0 carrier)
-    // Solo se usa cuando NO se solicita ruta Vapi+Issabel Puerto 1 y earlyMediaPreAnswer está habilitado.
+    // Opción A: Puerta de Enlace Asterisk ARI externa (Early Media SIP 183)
+    // SOLO se activa si el llamador solicita explícitamente routeMode === "asterisk_preanswer".
+    // En modo normal ("vapi_issabel_port1", "auto" o por defecto) TODAS las llamadas salen directo
+    // vía API de Vapi -> Issabel PBX (69.30.247.178) -> OpenVox Puerto 1 (+573106783338) con Vapi AMD nativo.
     const ariUrl = Deno.env.get("OPENVOX_BRIDGE_URL") || Deno.env.get("ASTERISK_ARI_URL") || (dbCfg?.ari_gateway_host ? String(dbCfg.ari_gateway_host) : "");
     const useAsteriskPreAnswer =
-      body.routeMode !== "vapi_issabel_port1" &&
-      Boolean(ariUrl && effectiveCfg.earlyMediaPreAnswer);
+      body.routeMode === "asterisk_preanswer" &&
+      Boolean(ariUrl);
 
     if (useAsteriskPreAnswer) {
       const ariSecret = Deno.env.get("ASTERISK_BRIDGE_SECRET") || "";
