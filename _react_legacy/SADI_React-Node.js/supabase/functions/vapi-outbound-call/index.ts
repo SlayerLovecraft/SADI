@@ -64,22 +64,45 @@ const UNANSWERED_OR_FAILED_REASONS = new Set([
 function classifyVapiLiveCall(vapiCall: Record<string, unknown>) {
   const rawStatus = String(vapiCall?.status || "queued").toLowerCase();
   const endedReason = String(vapiCall?.endedReason || "").toLowerCase();
-  const startedAt = vapiCall?.startedAt ? Date.parse(String(vapiCall.startedAt)) : NaN;
-  const endedAt = vapiCall?.endedAt ? Date.parse(String(vapiCall.endedAt)) : NaN;
+  const endedMessage = String(vapiCall?.endedMessage || vapiCall?.error || "").trim();
+  const createdAt = vapiCall?.createdAt ? String(vapiCall.createdAt) : null;
+  const updatedAt = vapiCall?.updatedAt ? String(vapiCall.updatedAt) : null;
+  const startedAtIso = vapiCall?.startedAt ? String(vapiCall.startedAt) : null;
+  const endedAtIso = vapiCall?.endedAt ? String(vapiCall.endedAt) : null;
+  const startedAt = startedAtIso ? Date.parse(startedAtIso) : NaN;
+  const endedAt = endedAtIso ? Date.parse(endedAtIso) : NaN;
   let durationSeconds = Number(vapiCall?.durationSeconds ?? 0);
   if ((!Number.isFinite(durationSeconds) || durationSeconds <= 0) && Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt > startedAt) {
     durationSeconds = Math.max(0, Math.round((endedAt - startedAt) / 1000));
   }
-  const transcript = String(
-    vapiCall?.transcript ||
-      (vapiCall?.artifact as Record<string, unknown> | undefined)?.transcript ||
-      "",
-  );
-  const summary = String(
-    vapiCall?.summary ||
-      (vapiCall?.analysis as Record<string, unknown> | undefined)?.summary ||
-      "",
-  );
+  const artifact = (vapiCall?.artifact || {}) as Record<string, unknown>;
+  const analysis = (vapiCall?.analysis || {}) as Record<string, unknown>;
+  const transport = (vapiCall?.transport || {}) as Record<string, unknown>;
+  const transcript = String(vapiCall?.transcript || artifact?.transcript || "");
+  const summary = String(vapiCall?.summary || analysis?.summary || "");
+
+  const diagnostics = {
+    createdAt,
+    updatedAt,
+    startedAt: startedAtIso,
+    endedAt: endedAtIso,
+    endedReasonRaw: vapiCall?.endedReason || null,
+    endedMessage: endedMessage || null,
+    phoneCallProvider: vapiCall?.phoneCallProvider || null,
+    phoneCallProviderId: vapiCall?.phoneCallProviderId || null,
+    phoneCallTransport: vapiCall?.phoneCallTransport || null,
+    sipCallId: transport?.sipCallId || transport?.callSid || vapiCall?.phoneCallProviderId || null,
+    phoneNumberId: vapiCall?.phoneNumberId || null,
+    assistantId: vapiCall?.assistantId || null,
+    customerNumber: (vapiCall?.customer as Record<string, unknown> | undefined)?.number || null,
+    cost: typeof vapiCall?.cost === "number" ? vapiCall.cost : null,
+    costBreakdown: vapiCall?.costBreakdown || null,
+    messagesCount: Array.isArray(vapiCall?.messages)
+      ? vapiCall.messages.length
+      : Array.isArray(artifact?.messages)
+        ? artifact.messages.length
+        : null,
+  };
 
   if (rawStatus === "queued" || rawStatus === "ringing") {
     return {
@@ -88,9 +111,11 @@ function classifyVapiLiveCall(vapiCall: Record<string, unknown>) {
       answered: false,
       isSuccess: false,
       endedReason,
+      endedMessage,
       durationSeconds: 0,
       transcript,
       summary,
+      diagnostics,
     };
   }
 
@@ -101,9 +126,11 @@ function classifyVapiLiveCall(vapiCall: Record<string, unknown>) {
       answered: true,
       isSuccess: false,
       endedReason,
+      endedMessage,
       durationSeconds,
       transcript,
       summary,
+      diagnostics,
     };
   }
 
@@ -125,9 +152,11 @@ function classifyVapiLiveCall(vapiCall: Record<string, unknown>) {
     answered: wasAnswered,
     isSuccess: wasAnswered && !failedByReason,
     endedReason,
+    endedMessage,
     durationSeconds: wasAnswered ? Math.max(1, durationSeconds) : 0,
     transcript,
     summary,
+    diagnostics,
   };
 }
 
@@ -269,6 +298,7 @@ Deno.serve(async (req) => {
         return jsonResponse(req, 500, { ok: false, error: "Falta VAPI_PRIVATE_KEY en Edge Functions." });
       }
 
+      const pollStartedAt = Date.now();
       const stRes = await fetch(`https://api.vapi.ai/call/${encodeURIComponent(callId)}`, {
         method: "GET",
         headers: {
@@ -276,11 +306,13 @@ Deno.serve(async (req) => {
           Accept: "application/json",
         },
       });
+      const vapiLatencyMs = Date.now() - pollStartedAt;
       const stData = (await stRes.json().catch(() => ({}))) as Record<string, unknown>;
       if (!stRes.ok) {
         return jsonResponse(req, stRes.status, {
           ok: false,
           status: stRes.status,
+          vapiLatencyMs,
           phase: "ended",
           isSuccess: false,
           error: stData?.message || "No se pudo consultar el estado de la llamada en Vapi",
@@ -292,6 +324,8 @@ Deno.serve(async (req) => {
       return jsonResponse(req, 200, {
         ok: true,
         callId,
+        status: stRes.status,
+        vapiLatencyMs,
         ...classified,
       });
     }
@@ -492,6 +526,7 @@ Deno.serve(async (req) => {
       },
     };
 
+    const vapiStartedAt = Date.now();
     const vapiRes = await fetch("https://api.vapi.ai/call/phone", {
       method: "POST",
       headers: {
@@ -500,16 +535,24 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify(vapiPayload),
     });
+    const vapiLatencyMs = Date.now() - vapiStartedAt;
 
-    const vapiData = await vapiRes.json().catch(() => ({}));
+    const vapiRawText = await vapiRes.text().catch(() => "");
+    let vapiData: Record<string, unknown> = {};
+    try {
+      vapiData = vapiRawText ? JSON.parse(vapiRawText) : {};
+    } catch {
+      vapiData = { rawText: vapiRawText.slice(0, 1000) };
+    }
 
     // Registrar sesión inicial si tenemos patient_id válido
+    let sessionInsertError: string | null = null;
     if (vapiRes.ok && body.patientId) {
-      await Promise.resolve(
+      const ins = await Promise.resolve(
         supabaseAdmin
           .from("vapi_agent_sessions")
           .insert({
-            vapi_call_id: vapiData?.id || null,
+            vapi_call_id: (vapiData as Record<string, unknown>)?.id || null,
             patient_id: body.patientId,
             doctor_id: body.doctorId || null,
             hospital_id: body.hospitalId || null,
@@ -525,7 +568,10 @@ Deno.serve(async (req) => {
               preAnswerRingTimeoutSec: effectiveCfg.preAnswerRingTimeoutSec,
             },
           } as any),
-      ).catch(() => null);
+      ).catch((e) => ({ error: { message: e?.message || "insert exception" } }));
+      if ((ins as { error?: { message?: string } } | null)?.error?.message) {
+        sessionInsertError = (ins as { error: { message: string } }).error.message;
+      }
     }
 
     return jsonResponse(req, vapiRes.ok ? 200 : vapiRes.status, {
@@ -533,6 +579,25 @@ Deno.serve(async (req) => {
       mode: "vapi_direct_with_amd",
       status: vapiRes.status,
       data: vapiData,
+      diagnostics: {
+        vapiHttpStatus: vapiRes.status,
+        vapiLatencyMs,
+        formattedPhone,
+        phoneNumberId,
+        assistantId,
+        gsmPort: targetGsmPort,
+        callerNumber: targetCallerNumber,
+        routeMode: body.routeMode || "vapi_issabel_port1",
+        isMinorABC,
+        tiempoSaludo,
+        webhookUrl,
+        sessionInsertError,
+        vapiCallId: vapiData?.id || null,
+        vapiInitialStatus: vapiData?.status || null,
+        phoneCallProvider: vapiData?.phoneCallProvider || null,
+        phoneCallProviderId: vapiData?.phoneCallProviderId || null,
+        phoneCallTransport: vapiData?.phoneCallTransport || null,
+      },
       voicemailProtection: {
         preAnswerSip183: false,
         postAnswerVapi: voicemailDetection,

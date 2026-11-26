@@ -468,6 +468,8 @@ ${atencionesSummary}
       OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId;
 
     // Camino principal seguro: Edge Function `vapi-outbound-call` (Puerto 1 vía Vapi + Issabel PBX con Vapi AMD activo)
+    const edgeStartedAt = Date.now();
+    let edgeException = null;
     try {
       const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
         body: {
@@ -500,19 +502,32 @@ ${atencionesSummary}
         }
       });
 
+      const edgeLatencyMs = Date.now() - edgeStartedAt;
+
       if (!error && data) {
         return {
           ok: Boolean(data.ok ?? true),
           status: data.status || 200,
           mode: data.mode || 'vapi_edge_function',
+          edgeLatencyMs,
+          formattedPhone,
+          diagnostics: data.diagnostics || null,
           voicemailProtection: data.voicemailProtection || { postAnswerVapi: voicemailDetection },
           data: data.data || data
         };
       }
       if (error) {
         let parsedBody = null;
+        let rawText = null;
         try {
-          if (error.context && typeof error.context.json === 'function') {
+          if (error.context && typeof error.context.clone === 'function') {
+            rawText = await error.context.clone().text();
+          }
+        } catch {}
+        try {
+          if (rawText) {
+            parsedBody = JSON.parse(rawText);
+          } else if (error.context && typeof error.context.json === 'function') {
             parsedBody = await error.context.json();
           }
         } catch {}
@@ -527,11 +542,19 @@ ${atencionesSummary}
           ok: false,
           status,
           mode: parsedBody?.mode || 'vapi_edge_function',
-          data: parsedBody?.data || { message: Array.isArray(msg) ? msg.join('; ') : String(msg) }
+          edgeLatencyMs,
+          formattedPhone,
+          diagnostics: parsedBody?.diagnostics || {
+            edgeErrorName: error.name || 'FunctionsError',
+            edgeErrorMessage: error.message || null,
+            rawText: rawText ? rawText.slice(0, 800) : null,
+          },
+          data: parsedBody?.data || { message: Array.isArray(msg) ? msg.join('; ') : String(msg), rawBody: parsedBody || rawText || null }
         };
       }
     } catch (edgeErr) {
-      console.warn('Edge Function vapi-outbound-call no disponible aún, verificando env local:', edgeErr?.message);
+      edgeException = edgeErr?.message || String(edgeErr);
+      console.warn('Edge Function vapi-outbound-call no disponible aún, verificando env local:', edgeException);
     }
 
     // Fallback exclusivo para entorno de desarrollo si se definió una variable de entorno local explícita
@@ -543,8 +566,13 @@ ${atencionesSummary}
       return {
         ok: false,
         status: 503,
+        edgeLatencyMs: Date.now() - edgeStartedAt,
+        formattedPhone,
+        diagnostics: { edgeException: edgeException || 'Sin respuesta de Edge Function' },
         data: {
-          message: 'Despliega la Edge Function `vapi-outbound-call` con tus secretos VAPI/ASTERISK para emitir llamadas reales con corte anti-buzón sin exponer llaves en el navegador.'
+          message: edgeException
+            ? `Error de red al invocar vapi-outbound-call: ${edgeException}`
+            : 'Despliega la Edge Function `vapi-outbound-call` con tus secretos VAPI/ASTERISK para emitir llamadas reales con corte anti-buzón sin exponer llaves en el navegador.'
         }
       };
     }
@@ -593,12 +621,18 @@ ${atencionesSummary}
     if (!callId) {
       return { ok: false, phase: 'ended', isSuccess: false, endedReason: 'missing-call-id' };
     }
+    const pollStartedAt = Date.now();
     try {
       const { data, error } = await supabase.functions.invoke('vapi-outbound-call', {
         body: { action: 'status', callId }
       });
+      const pollLatencyMs = Date.now() - pollStartedAt;
       if (!error && data && data.ok !== false) {
-        return data;
+        return {
+          ...data,
+          pollLatencyMs,
+          source: 'vapi_edge_status',
+        };
       }
       // Fallback: consultar vapi_agent_sessions en Supabase por si el webhook ya cerró la llamada
       const { data: sessionRow } = await supabase
@@ -610,10 +644,10 @@ ${atencionesSummary}
       if (sessionRow) {
         const est = String(sessionRow.estado_llamada || '').toLowerCase();
         if (est === 'en_curso' || est === 'calling' || est === 'ringing') {
-          return { ok: true, callId, phase: 'calling', vapiStatus: 'ringing', answered: false, isSuccess: false };
+          return { ok: true, callId, phase: 'calling', vapiStatus: 'ringing', answered: false, isSuccess: false, pollLatencyMs, source: 'supabase_session_fallback' };
         }
         if (est === 'en_llamada' || est === 'in_progress' || est === 'answered') {
-          return { ok: true, callId, phase: 'in_call', vapiStatus: 'in-progress', answered: true, isSuccess: false };
+          return { ok: true, callId, phase: 'in_call', vapiStatus: 'in-progress', answered: true, isSuccess: false, pollLatencyMs, source: 'supabase_session_fallback' };
         }
         const isSuccess =
           !sessionRow.deteccion_buzon &&
@@ -630,6 +664,8 @@ ${atencionesSummary}
           durationSeconds: Number(sessionRow.duracion_segundos || 0),
           transcript: sessionRow.transcripcion_completa || '',
           summary: sessionRow.resumen_ia || '',
+          pollLatencyMs,
+          source: 'supabase_session_fallback',
         };
       }
 
@@ -637,14 +673,20 @@ ${atencionesSummary}
         ok: false,
         phase: 'ended',
         isSuccess: false,
+        pollLatencyMs,
+        source: 'vapi_edge_status_error',
         endedReason: data?.error || error?.message || 'status-check-failed',
+        endedMessage: data?.error || error?.message || null,
       };
     } catch (err) {
       return {
         ok: false,
         phase: 'ended',
         isSuccess: false,
+        pollLatencyMs: Date.now() - pollStartedAt,
+        source: 'network_exception',
         endedReason: err?.message || 'network-error',
+        endedMessage: err?.message || 'network-error',
       };
     }
   },

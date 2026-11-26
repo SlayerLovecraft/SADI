@@ -8,6 +8,7 @@ import { ToastProvider } from "@/components/ui/toaster";
 
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import CallTraceFallbackDock from "@/components/CallTraceFallbackDock";
 
 // Auth Pages (Lazy-loaded)
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
@@ -287,6 +288,7 @@ function App() {
                 <Route path="*" element={<Navigate to="/login" replace />} />
               </Routes>
             </Suspense>
+            <CallTraceFallbackDock />
           </div>
         </BrowserRouter>
       </ToastProvider>

@@ -11,6 +11,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Loader2, PhoneCall, PhoneOff, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import { callTraceLoggerService } from '@/services/callTraceLoggerService';
 
 /**
  * Hook global para suscribirse al estado de llamadas activas y lanzar llamadas reales.
@@ -234,6 +235,22 @@ export default function LiveCallButton({
   const pres = getLiveCallPresentation(state.phase, idleLabel);
   const isDisabled = disabled || pres.isBusy;
 
+  const handleClick = useCallback(
+    (e) => {
+      if (isDisabled) return;
+      // Abrir ventana pequeña INDEPENDIENTE de log síncronamente dentro del clic del usuario
+      callTraceLoggerService.onCallButtonClicked({
+        buttonLabel: idleLabel,
+        title,
+        testId,
+      });
+      if (onClick) {
+        onClick(e);
+      }
+    },
+    [isDisabled, idleLabel, title, testId, onClick]
+  );
+
   return (
     <Button
       type="button"
@@ -242,7 +259,7 @@ export default function LiveCallButton({
       data-testid={testId}
       data-call-phase={state.phase}
       disabled={isDisabled}
-      onClick={onClick}
+      onClick={handleClick}
       title={title || pres.label}
       className={`${className} ${pres.isBusy ? pres.toneClass : idleClassName} transition-all`}
     >

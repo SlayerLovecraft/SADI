@@ -17,6 +17,7 @@ import { runWithSupabaseAuthRecovery } from '@/lib/utils';
 import { vapiIntegrationService, OPENVOX_INDIVIDUAL_PORT_CONFIG } from './vapiIntegrationService';
 import { ivrScheduleService } from './ivrScheduleService';
 import { DAILY_CALL_CAPACITY } from './callCapacityService';
+import { callTraceLoggerService } from './callTraceLoggerService';
 
 export const TERMINAL_HOLD_MS = 3000;
 const POLL_INTERVAL_MS = 1500;
@@ -55,7 +56,7 @@ function getColombiaTodayIso() {
     const m = parts.find((p) => p.type === 'month')?.value;
     const d = parts.find((p) => p.type === 'day')?.value;
     if (y && m && d) return `${y}-${m}-${d}`;
-  } catch {}
+  } catch { }
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -125,7 +126,7 @@ function notifyCallListeners() {
   callListeners.forEach((cb) => {
     try {
       cb(snapshot);
-    } catch {}
+    } catch { }
   });
 }
 
@@ -146,11 +147,11 @@ function notifyQuotaListeners() {
   quotaListeners.forEach((cb) => {
     try {
       cb(snap);
-    } catch {}
+    } catch { }
   });
   try {
     window.dispatchEvent(new CustomEvent('sadi:daily-quota-updated', { detail: snap }));
-  } catch {}
+  } catch { }
 }
 
 function applyQuotaPayload(raw) {
@@ -352,42 +353,134 @@ export const liveCallLifecycleService = {
       if (onStateChange) {
         try {
           onStateChange(st);
-        } catch {}
+        } catch { }
       }
       return st;
     };
 
     const cleanPhone = String(phoneNumber || '').trim();
+    const effectiveAntiVmCfg = antiVoicemailConfig || ivrScheduleService.getConfig();
+    const resolvedHospitalId = patientData.hospitalId || patientData.hospital_id || getStoredHospitalUuid();
+    const resolvedGsmPort = patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port;
+    const resolvedCallerNumber = patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber;
+    const resolvedPhoneNumberId = patientData.phoneNumberId || OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId;
+    const resolvedRouteMode =
+      patientData.routeMode || (effectiveAntiVmCfg?.earlyMediaPreAnswer ? 'auto' : 'vapi_issabel_port1');
+
+    // Abrir / iniciar traza en la ventana independiente de Log y copiar snapshot inicial
+    const traceId = callTraceLoggerService.startTrace({
+      patientData: { ...patientData, hospitalId: resolvedHospitalId },
+      rawPhone: cleanPhone,
+      gsmPort: resolvedGsmPort,
+      callerNumber: resolvedCallerNumber,
+      phoneNumberId: resolvedPhoneNumberId,
+      routeMode: resolvedRouteMode,
+      antiVoicemailConfig: effectiveAntiVmCfg,
+      quotaSnapshot: this.getQuotaSnapshot(),
+    });
+
     if (!cleanPhone || cleanPhone.toLowerCase().includes('sin tel')) {
+      callTraceLoggerService.logEvent(traceId, {
+        level: 'ERROR',
+        stage: '2_VALIDATION',
+        message: 'Validación fallida: el paciente no tiene teléfono válido registrado en BD.',
+        data: { rawPhone: cleanPhone || '(vacío)' },
+      });
+      await callTraceLoggerService.finishTrace(traceId, {
+        outcome: 'failed',
+        summaryMessage: 'Llamada cancelada antes de salir: paciente sin número de teléfono registrado.',
+        extraPatch: {
+          endedReason: 'no_phone',
+          endedMessage: 'El paciente no tiene teléfono registrado.',
+          lastError: 'Paciente sin teléfono registrado',
+          dbRecordStatus: 'No aplica (sin teléfono)',
+        },
+      });
       emitState('failed', { error: 'Paciente sin teléfono registrado' });
       await sleep(TERMINAL_HOLD_MS);
       emitState('idle');
-      const failRes = { ok: false, outcome: 'failed', reason: 'no_phone', message: 'El paciente no tiene teléfono registrado.' };
+      const failRes = { ok: false, outcome: 'failed', traceId, reason: 'no_phone', message: 'El paciente no tiene teléfono registrado.' };
       if (onFailure) onFailure(failRes);
       return failRes;
     }
 
+    const previewE164 = cleanPhone.startsWith('+')
+      ? cleanPhone
+      : cleanPhone.startsWith('57')
+      ? `+${cleanPhone}`
+      : `+57${cleanPhone}`;
+
+    callTraceLoggerService.updateTrace(traceId, { formattedPhone: previewE164 });
+    callTraceLoggerService.logEvent(traceId, {
+      level: 'STEP',
+      stage: '2_VALIDATION',
+      message: `Teléfono normalizado (${cleanPhone} -> ${previewE164}). Verificando cupo diario actual.`,
+      data: {
+        disponiblesHoy: quotaState.remainingToday,
+        topeDiario: quotaState.dailyCap,
+        res3280Hoy: quotaState.reservedResolucion,
+        campanasHoy: quotaState.reservedCampaigns,
+        exitosasHoy: quotaState.usedToday,
+      },
+    });
+
     // 1. Iniciar en estado de carga "Llamando" (permanece hasta que contesten o falle)
     emitState('calling', { callId: null, startedAt: Date.now() });
 
-    const effectiveAntiVmCfg = antiVoicemailConfig || ivrScheduleService.getConfig();
     const callPayload = {
       ...patientData,
       patientId: patientData.patientId || patientData.id || null,
-      hospitalId: patientData.hospitalId || patientData.hospital_id || getStoredHospitalUuid(),
-      gsmPort: patientData.gsmPort || OPENVOX_INDIVIDUAL_PORT_CONFIG.port,
-      callerNumber: patientData.callerNumber || OPENVOX_INDIVIDUAL_PORT_CONFIG.callerNumber,
-      phoneNumberId: patientData.phoneNumberId || OPENVOX_INDIVIDUAL_PORT_CONFIG.vapiPhoneNumberId,
+      hospitalId: resolvedHospitalId,
+      gsmPort: resolvedGsmPort,
+      callerNumber: resolvedCallerNumber,
+      phoneNumberId: resolvedPhoneNumberId,
+      routeMode: resolvedRouteMode,
     };
+
+    callTraceLoggerService.logEvent(traceId, {
+      level: 'STEP',
+      stage: '3_EDGE_REQUEST',
+      message: `Enviando POST a Supabase Edge Function (vapi-outbound-call) hacia ${previewE164} por Puerto ${resolvedGsmPort}.`,
+      data: {
+        routeMode: resolvedRouteMode,
+        phoneNumberId: resolvedPhoneNumberId,
+        callerNumber: resolvedCallerNumber,
+        patientId: callPayload.patientId,
+        motivo: callPayload.motivoLlamada || callPayload.programa3280 || 'Demanda Inducida Res. 3280',
+      },
+    });
 
     let triggerRes = null;
     try {
       triggerRes = await vapiIntegrationService.triggerLiveCall(cleanPhone, callPayload, effectiveAntiVmCfg);
     } catch (err) {
-      triggerRes = { ok: false, status: 500, data: { message: err?.message || 'Error de red' } };
+      triggerRes = {
+        ok: false,
+        status: 500,
+        edgeLatencyMs: 0,
+        data: { message: err?.message || 'Error de red' },
+        diagnostics: { clientException: err?.message || String(err) },
+      };
     }
 
-    const vapiCallId = triggerRes?.data?.id || triggerRes?.data?.callId || null;
+    const vapiCallId = triggerRes?.data?.id || triggerRes?.data?.callId || triggerRes?.diagnostics?.vapiCallId || null;
+    const edgeDiag = triggerRes?.diagnostics || {};
+
+    callTraceLoggerService.updateTrace(traceId, {
+      formattedPhone: triggerRes?.formattedPhone || edgeDiag.formattedPhone || previewE164,
+      dispatchMode: triggerRes?.mode || null,
+      edgeHttpStatus: triggerRes?.status ?? null,
+      edgeLatencyMs: triggerRes?.edgeLatencyMs ?? null,
+      vapiLatencyMs: edgeDiag.vapiLatencyMs ?? null,
+      assistantId: edgeDiag.assistantId || triggerRes?.data?.assistantId || null,
+      vapiCallId,
+      vapiStatus: triggerRes?.data?.status || edgeDiag.vapiInitialStatus || null,
+      vapiCreatedAt: triggerRes?.data?.createdAt || null,
+      phoneCallProvider: edgeDiag.phoneCallProvider || triggerRes?.data?.phoneCallProvider || null,
+      phoneCallProviderId: edgeDiag.phoneCallProviderId || triggerRes?.data?.phoneCallProviderId || null,
+      phoneCallTransport: edgeDiag.phoneCallTransport || triggerRes?.data?.phoneCallTransport || null,
+    });
+
     if (!triggerRes?.ok || !vapiCallId) {
       const errMsg =
         triggerRes?.data?.message ||
@@ -396,7 +489,20 @@ export const liveCallLifecycleService = {
           ? 'Llave VAPI_PRIVATE_KEY no autorizada (401) en Supabase.'
           : 'No se pudo conectar la llamada por Puerto 1.');
 
-      await this.recordOutcomeInDb({
+      callTraceLoggerService.logEvent(traceId, {
+        level: 'ERROR',
+        stage: '3_EDGE_REQUEST',
+        message: `Edge Function / Vapi rechazó el despacho (HTTP ${triggerRes?.status || 500}): ${errMsg}`,
+        data: {
+          httpStatus: triggerRes?.status || 500,
+          edgeLatencyMs: triggerRes?.edgeLatencyMs ?? null,
+          mode: triggerRes?.mode || null,
+          diagnostics: edgeDiag,
+          responseData: triggerRes?.data || null,
+        },
+      });
+
+      const dbRes = await this.recordOutcomeInDb({
         hospitalId: callPayload.hospitalId,
         patientId: callPayload.patientId,
         doctorId: callPayload.doctorId || null,
@@ -409,13 +515,42 @@ export const liveCallLifecycleService = {
         slotTanda: callPayload.slotTanda || null,
       });
 
+      await callTraceLoggerService.finishTrace(traceId, {
+        outcome: 'failed',
+        summaryMessage: `Fallo en despacho inicial (HTTP ${triggerRes?.status || 500}): ${errMsg}`,
+        extraPatch: {
+          endedReason: `dispatch-http-${triggerRes?.status || 500}`,
+          endedMessage: errMsg,
+          lastError: errMsg,
+          rawErrorPayload: { status: triggerRes?.status, diagnostics: edgeDiag, data: triggerRes?.data },
+          dbRecordStatus: dbRes?.ok === false ? 'Error al registrar en BD' : 'Registrado como fallo (no descuenta cupo)',
+          quotaSnapshot: this.getQuotaSnapshot(),
+        },
+      });
+
       emitState('failed', { error: errMsg });
       await sleep(TERMINAL_HOLD_MS);
       emitState('idle');
-      const failRes = { ok: false, outcome: 'failed', status: triggerRes?.status || 500, reason: errMsg, message: errMsg, data: triggerRes?.data };
+      const failRes = { ok: false, outcome: 'failed', traceId, status: triggerRes?.status || 500, reason: errMsg, message: errMsg, data: triggerRes?.data };
       if (onFailure) onFailure(failRes);
       return failRes;
     }
+
+    callTraceLoggerService.logEvent(traceId, {
+      level: 'OK',
+      stage: '4_VAPI_ACCEPTED',
+      message: `Vapi aceptó la llamada (HTTP ${triggerRes.status || 200} en ${triggerRes.edgeLatencyMs ?? '?'}ms). Call ID: ${vapiCallId}`,
+      data: {
+        vapiCallId,
+        initialStatus: triggerRes?.data?.status || 'queued',
+        vapiLatencyMs: edgeDiag.vapiLatencyMs ?? null,
+        provider: edgeDiag.phoneCallProvider || triggerRes?.data?.phoneCallProvider || null,
+        transport: edgeDiag.phoneCallTransport || triggerRes?.data?.phoneCallTransport || null,
+        sessionInsertError: edgeDiag.sessionInsertError || null,
+      },
+    });
+    // Actualizar portapapeles con el callId real de Vapi apenas llegue
+    callTraceLoggerService.copyTraceToClipboard(traceId);
 
     // 2. Llamada creada en Vapi -> mantener "Llamando" hasta que contesten ("En Llamada...") o cuelguen
     emitState('calling', { callId: vapiCallId });
@@ -423,20 +558,45 @@ export const liveCallLifecycleService = {
     const pollStart = Date.now();
     let wasAnswered = false;
     let consecutivePollErrors = 0;
+    let pollCount = 0;
+    let lastLoggedVapiStatus = triggerRes?.data?.status || 'queued';
     let finalStatusRes = null;
 
     while (Date.now() - pollStart < MAX_POLL_DURATION_MS) {
       await sleep(POLL_INTERVAL_MS);
+      pollCount += 1;
       const st = await vapiIntegrationService.getLiveCallStatus(vapiCallId);
+      const stDiag = st?.diagnostics || {};
+
+      callTraceLoggerService.updateTrace(traceId, {
+        pollCount,
+        vapiStatus: st?.vapiStatus || lastLoggedVapiStatus,
+        vapiCreatedAt: stDiag.createdAt || undefined,
+        vapiStartedAt: stDiag.startedAt || undefined,
+        vapiEndedAt: stDiag.endedAt || undefined,
+        phoneCallProvider: stDiag.phoneCallProvider || undefined,
+        phoneCallProviderId: stDiag.phoneCallProviderId || undefined,
+        phoneCallTransport: stDiag.phoneCallTransport || undefined,
+        sipCallId: stDiag.sipCallId || undefined,
+      });
 
       if (!st || st.ok === false) {
         consecutivePollErrors += 1;
+        callTraceLoggerService.logEvent(traceId, {
+          level: 'WARN',
+          stage: '5_SIP_RINGING',
+          message: `Poll #${pollCount} con error (${consecutivePollErrors}/3): ${st?.endedReason || 'sin respuesta'}`,
+          data: { source: st?.source, pollLatencyMs: st?.pollLatencyMs, endedMessage: st?.endedMessage },
+        });
         if (consecutivePollErrors >= 3) {
           finalStatusRes = {
             phase: 'ended',
+            vapiStatus: 'poll-error',
             isSuccess: wasAnswered,
             endedReason: st?.endedReason || 'poll-failed',
+            endedMessage: st?.endedMessage || '3 errores consecutivos consultando estado en Vapi',
             durationSeconds: wasAnswered ? Math.max(1, Math.round((Date.now() - pollStart) / 1000)) : 0,
+            diagnostics: stDiag,
           };
           break;
         }
@@ -445,20 +605,75 @@ export const liveCallLifecycleService = {
 
       consecutivePollErrors = 0;
 
-      if (st.phase === 'in_call' || st.answered === true && st.phase !== 'ended') {
+      if (st.phase === 'in_call' || (st.answered === true && st.phase !== 'ended')) {
         if (!wasAnswered) {
           wasAnswered = true;
+          lastLoggedVapiStatus = st.vapiStatus || 'in-progress';
           emitState('in_call', { callId: vapiCallId, answeredAt: Date.now() });
+          callTraceLoggerService.updateTrace(traceId, { currentPhase: 'in_call' });
+          callTraceLoggerService.logEvent(traceId, {
+            level: 'OK',
+            stage: '6_IN_CALL',
+            message: `¡Paciente contestó! Estado Vapi: ${st.vapiStatus || 'in-progress'} (Poll #${pollCount}).`,
+            data: {
+              startedAt: stDiag.startedAt || null,
+              provider: stDiag.phoneCallProvider || null,
+              sipCallId: stDiag.sipCallId || null,
+              vapiLatencyMs: st.vapiLatencyMs ?? null,
+            },
+          });
+          callTraceLoggerService.copyTraceToClipboard(traceId);
+        } else if (pollCount % 4 === 0) {
+          callTraceLoggerService.logEvent(traceId, {
+            level: 'POLL',
+            stage: '6_IN_CALL',
+            message: `En llamada activa (Poll #${pollCount} · status=${st.vapiStatus} · ${Math.round((Date.now() - pollStart) / 1000)}s transcurridos).`,
+            data: { pollLatencyMs: st.pollLatencyMs, messagesCount: stDiag.messagesCount },
+          });
         }
         continue;
       }
 
       if (st.phase === 'calling') {
+        const curSt = st.vapiStatus || 'queued';
+        const statusChanged = curSt !== lastLoggedVapiStatus;
+        if (statusChanged || pollCount === 1 || pollCount % 3 === 0) {
+          lastLoggedVapiStatus = curSt;
+          callTraceLoggerService.logEvent(traceId, {
+            level: statusChanged ? 'STEP' : 'POLL',
+            stage: '5_SIP_RINGING',
+            message: statusChanged
+              ? `Cambio de estado Vapi -> "${curSt}" (Poll #${pollCount}, troncal SIP Issabel -> OpenVox P.1).`
+              : `Esperando contestación... Vapi="${curSt}" (Poll #${pollCount} · +${Math.round((Date.now() - pollStart) / 1000)}s).`,
+            data: {
+              vapiStatus: curSt,
+              provider: stDiag.phoneCallProvider || null,
+              sipCallId: stDiag.sipCallId || null,
+              vapiLatencyMs: st.vapiLatencyMs ?? null,
+            },
+          });
+        }
         continue;
       }
 
       if (st.phase === 'ended') {
         finalStatusRes = st;
+        callTraceLoggerService.logEvent(traceId, {
+          level: st.isSuccess ? 'OK' : 'WARN',
+          stage: st.isSuccess ? '7_DB_RECORD' : '9_FAILED',
+          message: `Vapi reportó fin de llamada (Poll #${pollCount}): endedReason="${st.endedReason || 'N/A'}" | duration=${st.durationSeconds || 0}s.`,
+          data: {
+            vapiStatus: st.vapiStatus,
+            answered: st.answered,
+            isSuccess: st.isSuccess,
+            endedReason: st.endedReason || null,
+            endedMessage: st.endedMessage || stDiag.endedMessage || null,
+            cost: stDiag.cost ?? null,
+            sipCallId: stDiag.sipCallId || null,
+            startedAt: stDiag.startedAt || null,
+            endedAt: stDiag.endedAt || null,
+          },
+        });
         break;
       }
     }
@@ -466,13 +681,19 @@ export const liveCallLifecycleService = {
     if (!finalStatusRes) {
       finalStatusRes = {
         phase: 'ended',
+        vapiStatus: 'timeout',
         isSuccess: wasAnswered,
         endedReason: wasAnswered ? 'max-duration-reached' : 'timeout-no-answer',
+        endedMessage: 'Se alcanzó el tiempo máximo de monitoreo en el cliente.',
         durationSeconds: wasAnswered ? Math.max(1, Math.round((Date.now() - pollStart) / 1000)) : 0,
       };
     }
 
     const succeeded = Boolean(finalStatusRes.isSuccess);
+    const finalDiag = finalStatusRes.diagnostics || {};
+    const transcriptPreview = finalStatusRes.transcript
+      ? String(finalStatusRes.transcript).replace(/\s+/g, ' ').slice(0, 260)
+      : null;
 
     if (succeeded) {
       // 3A. Contestaron y colgaron -> 3 segundos "Finalizando Llamada" + contabiliza y resta 1 a los 500/día
@@ -494,10 +715,26 @@ export const liveCallLifecycleService = {
         }),
         sleep(TERMINAL_HOLD_MS),
       ]);
+
+      await callTraceLoggerService.finishTrace(traceId, {
+        outcome: 'success',
+        summaryMessage: `Llamada completada con éxito (${finalStatusRes.durationSeconds || 1}s). Cupo actualizado: ${this.getQuotaSnapshot().remainingToday}/${this.getQuotaSnapshot().dailyCap} disponibles.`,
+        extraPatch: {
+          vapiStatus: finalStatusRes.vapiStatus || 'ended',
+          endedReason: finalStatusRes.endedReason || 'completed',
+          endedMessage: finalStatusRes.endedMessage || finalDiag.endedMessage || null,
+          durationSeconds: finalStatusRes.durationSeconds || 1,
+          transcriptPreview,
+          dbRecordStatus: dbOutcome?.ok === false ? 'Optimista local (RPC falló)' : 'OK en Supabase (-1 al cupo diario)',
+          quotaSnapshot: this.getQuotaSnapshot(),
+        },
+      });
+
       emitState('idle');
       const okRes = {
         ok: true,
         outcome: 'success',
+        traceId,
         callId: vapiCallId,
         durationSeconds: finalStatusRes.durationSeconds || 1,
         transcript: finalStatusRes.transcript || '',
@@ -510,7 +747,7 @@ export const liveCallLifecycleService = {
 
     // 3B. No contestó / buzón / ocupado / error -> 3 segundos "Fallo al Contactar" (NO resta de 500 exitosas)
     emitState('failed', { callId: vapiCallId, error: finalStatusRes.endedReason || 'no-answer' });
-    await Promise.all([
+    const [dbFailOutcome] = await Promise.all([
       this.recordOutcomeInDb({
         hospitalId: callPayload.hospitalId,
         patientId: callPayload.patientId,
@@ -527,10 +764,26 @@ export const liveCallLifecycleService = {
       }),
       sleep(TERMINAL_HOLD_MS),
     ]);
+
+    await callTraceLoggerService.finishTrace(traceId, {
+      outcome: 'failed',
+      extraPatch: {
+        vapiStatus: finalStatusRes.vapiStatus || 'ended',
+        endedReason: finalStatusRes.endedReason || 'customer-did-not-answer',
+        endedMessage: finalStatusRes.endedMessage || finalDiag.endedMessage || null,
+        durationSeconds: 0,
+        transcriptPreview,
+        rawErrorPayload: finalDiag && Object.keys(finalDiag).length > 0 ? finalDiag : null,
+        dbRecordStatus: dbFailOutcome?.ok === false ? 'Error registrando fallo en BD' : 'Registrado como fallo (no resta cupo)',
+        quotaSnapshot: this.getQuotaSnapshot(),
+      },
+    });
+
     emitState('idle');
     const failRes = {
       ok: false,
       outcome: 'failed',
+      traceId,
       callId: vapiCallId,
       reason: finalStatusRes.endedReason || 'customer-did-not-answer',
       message: 'No se logró contactar al paciente (sin respuesta o buzón de voz).',
