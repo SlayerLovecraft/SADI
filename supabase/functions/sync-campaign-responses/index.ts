@@ -407,6 +407,74 @@ Deno.serve(async (req) => {
       }
     }
 
+    // (D) Leer respuestas reales por correo electrónico vía IMAP (sadi@apropiatic.com.co)
+    let syncedEmailReplies = 0;
+    let inboundEmailScanned = 0;
+    if (bridgeBase) {
+      try {
+        const mailRes = await fetch(`${bridgeBase}/sadi/email-inbox`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(bridgeSecret ? { "x-sadi-bridge-secret": bridgeSecret } : {}),
+          },
+          body: JSON.stringify({ limit: 50 }),
+        });
+        const mailJson = (await mailRes.json().catch(() => ({}))) as Record<string, any>;
+        const mailMsgs = mailRes.ok && Array.isArray(mailJson.messages) ? mailJson.messages : [];
+        inboundEmailScanned = mailMsgs.length;
+
+        if (mailMsgs.length > 0) {
+          const { data: emailTraceRows } = await supabaseAdmin
+            .from("campaign_channel_traceability")
+            .select("*")
+            .eq("channel", "email")
+            .gte("sent_at", lookbackIso)
+            .order("sent_at", { ascending: false })
+            .limit(250);
+
+          const chronologicalEmails = [...mailMsgs].reverse();
+          for (const inMail of chronologicalEmails) {
+            const senderEmail = String(inMail.fromEmail || "").trim().toLowerCase();
+            const replyText = String(inMail.message || "").trim();
+            if (!senderEmail || !replyText) continue;
+
+            const mailIso = String(inMail.receivedAtIso || nowIso);
+            const mailTs = Date.parse(mailIso);
+            const inboundUid = `imap-${inMail.uid}`;
+
+            const matchingEmail = (emailTraceRows || []).find((row: any) => {
+              const rowEmail = String(row.contact_destination || "").trim().toLowerCase();
+              if (rowEmail !== senderEmail) return false;
+              const sentTs = Date.parse(String(row.sent_at || ""));
+              return !Number.isFinite(sentTs) || !Number.isFinite(mailTs) || mailTs >= sentTs - 5 * 60 * 1000;
+            });
+
+            if (!matchingEmail || matchingEmail.inbound_msg_id === inboundUid) continue;
+
+            const cls = classifyAttendanceResponse(replyText, { isTranscript: false });
+            await supabaseAdmin
+              .from("campaign_channel_traceability")
+              .update({
+                response_status: cls.status,
+                response_raw: replyText.slice(0, 280),
+                inbound_msg_id: inboundUid,
+                received_at: mailIso,
+                responded_at: cls.status !== "pendiente" ? mailIso : matchingEmail.responded_at,
+                updated_at: nowIso,
+              } as any)
+              .eq("id", matchingEmail.id);
+
+            matchingEmail.inbound_msg_id = inboundUid;
+            matchingEmail.response_status = cls.status;
+            syncedEmailReplies += 1;
+          }
+        }
+      } catch (e) {
+        console.warn("No se pudo consultar inbox IMAP:", e);
+      }
+    }
+
     // Retornar registros consolidados (filtrados por documento si estamos en Pruebas en Local)
     let outQuery = supabaseAdmin
       .from("campaign_channel_traceability")
@@ -430,7 +498,9 @@ Deno.serve(async (req) => {
       ok: true,
       syncedSmsReplies,
       syncedCalls,
+      syncedEmailReplies,
       inboundSmsScanned: inboundSmsList.length,
+      inboundEmailScanned,
       totalRecords: (records || []).length,
       records: records || [],
     });

@@ -9,12 +9,17 @@ para abortar la llamada con $0 COP de cobro del carrier y notifica a SADI webhoo
 """
 
 from dataclasses import dataclass, field
+from email import message_from_bytes
+from email.header import decode_header
 from email.message import EmailMessage
+from email.utils import parseaddr, parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
+import imaplib
 import json
 import math
 import os
+import re
 import smtplib
 import socket
 import ssl
@@ -783,6 +788,92 @@ def run_bridge_http_server():
         except Exception as exc:
             return 502, {"ok": False, "provider": "smtp", "error": f"Error SMTP ({smtp_host}:{smtp_port}): {exc}"}
 
+    def _decode_mime_header(raw_val: str) -> str:
+        parts = []
+        for chunk, enc in decode_header(str(raw_val or "")):
+            if isinstance(chunk, bytes):
+                parts.append(chunk.decode(enc or "utf-8", errors="ignore"))
+            else:
+                parts.append(str(chunk))
+        return "".join(parts).strip()
+
+    def _extract_reply_top_text(raw_body: str) -> str:
+        lines = []
+        for ln in str(raw_body or "").replace("\r\n", "\n").split("\n"):
+            s = ln.strip()
+            if s.startswith(">"):
+                break
+            if re.match(r"^(el\s+.+escribi[oó]:|on\s+.+wrote:|---+\s*original\s+message|de:\s+.+sadi@)", s, re.IGNORECASE):
+                break
+            lines.append(ln)
+        return "\n".join(lines).strip()
+
+    def _fetch_imap_email_inbox(limit: int = 40) -> list[dict]:
+        imap_host = str(os.environ.get("IMAP_HOST") or os.environ.get("SMTP_HOST") or "").strip()
+        imap_port = int(os.environ.get("IMAP_PORT") or "993")
+        imap_user = str(os.environ.get("IMAP_USER") or os.environ.get("SMTP_USER") or "").strip()
+        imap_pass = str(os.environ.get("IMAP_PASS") or os.environ.get("SMTP_PASS") or "").strip()
+        if not imap_host or not imap_user or not imap_pass:
+            return []
+        safe_limit = max(1, min(100, int(limit or 40)))
+        results = []
+        try:
+            with imaplib.IMAP4_SSL(imap_host, imap_port, timeout=12) as srv:
+                srv.login(imap_user, imap_pass)
+                st, _ = srv.select("INBOX", readonly=True)
+                if st != "OK":
+                    return []
+                st_s, data = srv.uid("search", None, "ALL")
+                if st_s != "OK" or not data or not data[0]:
+                    return []
+                uids = data[0].split()[-safe_limit:]
+                for uid_b in reversed(uids):
+                    uid_str = uid_b.decode("ascii", errors="ignore")
+                    st_f, msg_data = srv.uid("fetch", uid_b, "(RFC822)")
+                    if st_f != "OK" or not msg_data or not isinstance(msg_data[0], tuple):
+                        continue
+                    parsed = message_from_bytes(msg_data[0][1])
+                    _, from_addr = parseaddr(parsed.get("From", ""))
+                    from_addr = (from_addr or "").strip().lower()
+                    if not from_addr or from_addr == imap_user.lower():
+                        continue
+                    subject = _decode_mime_header(parsed.get("Subject", ""))
+                    date_hdr = parsed.get("Date", "")
+                    received_iso = ""
+                    try:
+                        dt = parsedate_to_datetime(date_hdr)
+                        if dt is not None:
+                            received_iso = dt.isoformat()
+                    except Exception:
+                        received_iso = ""
+                    body_text = ""
+                    if parsed.is_multipart():
+                        for part in parsed.walk():
+                            ctype = part.get_content_type()
+                            disp = str(part.get("Content-Disposition") or "").lower()
+                            if ctype == "text/plain" and "attachment" not in disp:
+                                payload_b = part.get_payload(decode=True)
+                                if payload_b:
+                                    charset = part.get_content_charset() or "utf-8"
+                                    body_text = payload_b.decode(charset, errors="ignore")
+                                    break
+                    else:
+                        payload_b = parsed.get_payload(decode=True)
+                        if payload_b:
+                            charset = parsed.get_content_charset() or "utf-8"
+                            body_text = payload_b.decode(charset, errors="ignore")
+                    clean_reply = _extract_reply_top_text(body_text)
+                    results.append({
+                        "uid": uid_str,
+                        "fromEmail": from_addr,
+                        "subject": subject,
+                        "receivedAtIso": received_iso,
+                        "message": clean_reply[:600],
+                    })
+        except Exception:
+            return []
+        return results
+
     class BridgeHandler(BaseHTTPRequestHandler):
         def _send(self, code: int, body: dict):
             raw = json.dumps(body).encode("utf-8")
@@ -806,11 +897,14 @@ def run_bridge_http_server():
             if self.path == "/sadi/email-status":
                 has_resend = bool(os.environ.get("RESEND_API_KEY", "").strip())
                 has_smtp = bool(os.environ.get("SMTP_HOST", "").strip() and os.environ.get("SMTP_USER", "").strip() and os.environ.get("SMTP_PASS", "").strip())
+                has_imap = bool((os.environ.get("IMAP_HOST") or os.environ.get("SMTP_HOST") or "").strip() and (os.environ.get("IMAP_USER") or os.environ.get("SMTP_USER") or "").strip() and (os.environ.get("IMAP_PASS") or os.environ.get("SMTP_PASS") or "").strip())
                 self._send(200, {
                     "ok": True,
                     "configured": has_resend or has_smtp,
+                    "imapConfigured": has_imap,
                     "provider": "resend" if has_resend else ("smtp" if has_smtp else None),
                     "smtpHost": os.environ.get("SMTP_HOST", "").strip() or None,
+                    "fromEmail": (os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER") or "").strip() or None,
                 })
                 return
             self._send(404, {"error": "Not found"})
@@ -823,6 +917,12 @@ def run_bridge_http_server():
             length = int(self.headers.get("Content-Length", "0"))
             raw = self.rfile.read(length).decode("utf-8", errors="ignore")
             data = json.loads(raw or "{}")
+
+            if self.path == "/sadi/email-inbox":
+                limit = int(data.get("limit") or 40)
+                messages = _fetch_imap_email_inbox(limit=limit)
+                self._send(200, {"ok": True, "count": len(messages), "messages": messages})
+                return
 
             if self.path == "/sadi/openvox-sms-inbox":
                 limit = int(data.get("limit") or 100)
