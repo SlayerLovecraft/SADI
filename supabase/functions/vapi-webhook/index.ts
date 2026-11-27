@@ -7,6 +7,7 @@ import {
   matchColombianVoicemailPhrase,
 } from "../_shared/voicemailClassifier.ts";
 import { dispatchOpenVoxSmsWithFailover } from "../_shared/openvoxSms.ts";
+import { classifyAttendanceResponse } from "../_shared/attendanceClassifier.ts";
 
 const requireEnv = (key: string) => {
   const v = Deno.env.get(key);
@@ -289,6 +290,28 @@ Deno.serve(async (req) => {
               sip_codigo_respuesta: isSuccessCall ? 200 : 480,
               facturable_ips: Boolean(isSuccessCall),
             } as any),
+        ).catch(() => null);
+      }
+
+      // Actualizar trazabilidad de respuesta de campaña para llamadas IA
+      if (callId) {
+        const attendance = isSuccessCall && transcript
+          ? classifyAttendanceResponse(transcript, { isTranscript: true })
+          : { status: "pendiente" as const, matchedExcerpt: "" };
+        const nowIso = new Date().toISOString();
+        await Promise.resolve(
+          supabaseAdmin
+            .from("campaign_channel_traceability")
+            .update({
+              delivery_status: isSuccessCall ? "delivered" : (classification.isVoicemail ? "voicemail" : "failed"),
+              response_status: attendance.status,
+              response_raw: attendance.matchedExcerpt || summary || null,
+              received_at: isSuccessCall ? nowIso : null,
+              responded_at: attendance.status !== "pendiente" ? nowIso : null,
+              updated_at: nowIso,
+            } as any)
+            .eq("channel", "call")
+            .eq("external_ref_id", String(callId)),
         ).catch(() => null);
       }
 

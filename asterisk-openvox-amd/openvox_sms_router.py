@@ -11,7 +11,9 @@ from dataclasses import dataclass, field
 import base64
 import json
 import os
+import sqlite3
 import subprocess
+import tempfile
 import threading
 import time
 from typing import Dict, List, Optional, Protocol
@@ -356,6 +358,75 @@ class OpenVoxSshTransport:
             return True
         except Exception:
             return False
+
+    def fetch_inbound_sms(self, limit: int = 100, port: Optional[int] = None) -> List[dict]:
+        """
+        Lee el buzón real de SMS entrantes del Gateway OpenVox (`/data/log/smsinbox.db`)
+        sin modificar ni borrar filas en el equipo, normalizando teléfono y hora CO.
+        """
+        if not self.ssh_host:
+            return []
+        safe_limit = max(1, min(300, int(limit or 100)))
+        env = os.environ.copy()
+        env["SSHPASS"] = self.ssh_pass
+        cmd = [
+            "sshpass", "-e",
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "HostKeyAlgorithms=+ssh-rsa",
+            "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa",
+            "-o", "ConnectTimeout=6",
+            "-p", str(self.ssh_port),
+            f"{self.ssh_user}@{self.ssh_host}",
+            "cat /data/log/smsinbox.db",
+        ]
+        tmp_path = None
+        try:
+            proc = subprocess.run(cmd, capture_output=True, timeout=18.0, env=env)
+            if proc.returncode != 0 or not proc.stdout:
+                return []
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+                tf.write(proc.stdout)
+                tmp_path = tf.name
+            con = sqlite3.connect(tmp_path)
+            cur = con.cursor()
+            if port is not None:
+                rows = cur.execute(
+                    "SELECT id, port, phonenumber, time, message, flag FROM sms WHERE port = ? ORDER BY id DESC LIMIT ?",
+                    (str(port), safe_limit),
+                ).fetchall()
+            else:
+                rows = cur.execute(
+                    "SELECT id, port, phonenumber, time, message, flag FROM sms ORDER BY id DESC LIMIT ?",
+                    (safe_limit,),
+                ).fetchall()
+            con.close()
+            out: List[dict] = []
+            for row in rows:
+                msg_id, p_val, phone_val, time_val, text_val, flag_val = row
+                raw_time = str(time_val or "").strip()
+                iso_time = raw_time
+                if len(raw_time) == 19 and raw_time[4] == "/" and raw_time[7] == "/":
+                    iso_time = f"{raw_time[:4]}-{raw_time[5:7]}-{raw_time[8:10]}T{raw_time[11:19]}-05:00"
+                out.append({
+                    "id": int(msg_id),
+                    "port": str(p_val or ""),
+                    "phonenumber": str(phone_val or "").strip(),
+                    "time": raw_time,
+                    "receivedAtIso": iso_time,
+                    "message": str(text_val or ""),
+                    "flag": int(flag_val or 0),
+                })
+            return out
+        except Exception:
+            return []
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except Exception:
+                    pass
 
 
 @dataclass

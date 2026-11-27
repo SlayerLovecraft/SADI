@@ -16,6 +16,7 @@
 import { supabase } from '@/lib/supabase';
 import { getLocalSinglePatientDoc } from '@/lib/localSinglePatientSandbox';
 import { vapiIntegrationService } from '@/services/vapiIntegrationService';
+import { campaignTraceabilityService } from '@/services/campaignTraceabilityService';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_HOSPITAL_ID = 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
@@ -425,6 +426,25 @@ async function invokeEmailDispatch(payload) {
       if (localResp.ok) {
         const localData = await localResp.json();
         if (localData && (localData.enviados > 0 || !localData.missingConfig)) {
+          // Registrar trazabilidad para envíos por relay local Vite
+          for (const r of localData.results || []) {
+            if (r?.ok) {
+              const recMatch = (payload.recipients || []).find(
+                (p) => String(p.email || '').trim().toLowerCase() === String(r.email || '').trim().toLowerCase()
+              );
+              campaignTraceabilityService.recordLocalDispatchRow({
+                hospitalId: payload.hospitalId,
+                campaignId: payload.campaignId,
+                campaignName: payload.campaignName,
+                patientId: recMatch?.patient_id || null,
+                patientName: r.name || recMatch?.name || 'Paciente',
+                patientDocument: recMatch?.document || '',
+                contactDestination: r.email || recMatch?.email || '',
+                channel: 'email',
+                externalRefId: r.messageId || null,
+              });
+            }
+          }
           return localData;
         }
       }

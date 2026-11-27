@@ -824,6 +824,15 @@ def run_bridge_http_server():
             raw = self.rfile.read(length).decode("utf-8", errors="ignore")
             data = json.loads(raw or "{}")
 
+            if self.path == "/sadi/openvox-sms-inbox":
+                limit = int(data.get("limit") or 100)
+                port_filter = data.get("port")
+                port_int = int(port_filter) if port_filter not in (None, "") else None
+                fetcher = getattr(sms_transport, "fetch_inbound_sms", None)
+                messages = fetcher(limit=limit, port=port_int) if callable(fetcher) else []
+                self._send(200, {"ok": True, "count": len(messages), "messages": messages})
+                return
+
             if self.path == "/sadi/openvox-sms-send":
                 phone = str(data.get("phoneNumber", "")).strip()
                 msg_body = str(data.get("message", "")).strip()

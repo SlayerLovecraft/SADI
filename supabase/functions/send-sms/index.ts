@@ -294,6 +294,28 @@ export const handleSendSms = async (req: Request) => {
             ).catch(() => null);
           }
 
+          // Registrar en trazabilidad omnicanal de campañas (estado inicial: pendiente)
+          const nowIso = new Date().toISOString();
+          await Promise.resolve(
+            supabaseAdmin
+              .from("campaign_channel_traceability")
+              .insert({
+                hospital_id: hospitalId,
+                campaign_id: campaignIdRaw || `sms_direct_${dateTag}`,
+                campaign_name: campaignName,
+                patient_id: patId,
+                patient_name: patName,
+                patient_document: String(rec?.document || rec?.documento || rec?.cc || ""),
+                contact_destination: toPhone,
+                channel: "sms",
+                delivery_status: "delivered",
+                response_status: "pendiente",
+                external_ref_id: gw.gatewayMessageId || idemKey,
+                sent_at: nowIso,
+                received_at: nowIso,
+              } as any),
+          ).catch(() => null);
+
           results.push({
             patientId: patId,
             name: patName,

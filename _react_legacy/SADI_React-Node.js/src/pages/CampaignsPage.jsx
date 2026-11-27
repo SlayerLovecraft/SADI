@@ -45,6 +45,7 @@ import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
 import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
 import CampaignMessageComposer from '@/components/CampaignMessageComposer';
+import CampaignTraceabilityPanels from '@/components/CampaignTraceabilityPanels';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
 import {
   validateCampaignCallCapacity,
@@ -1165,6 +1166,12 @@ const CampaignsPage = () => {
                 </Button>
               </div>
             </div>
+
+            {/* 4 PANELES DE TRAZABILIDAD DE RESPUESTAS (SMS, LLAMADAS, CORREOS, WHATSAPP) + EXCEL */}
+            <CampaignTraceabilityPanels
+              campaigns={visibleCampaigns}
+              hospitalId={hospitalId}
+            />
 
             {/* SELECTOR DE LOS 2 PAQUETES DE CAMPAÑAS */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-sm transition-colors">

@@ -548,11 +548,14 @@ Deno.serve(async (req) => {
     const serverBlock: Record<string, unknown> = { url: webhookUrl };
     if (webhookSecret) serverBlock.secret = webhookSecret;
 
-    // Si la llamada proviene de una Campaña Activa, heredamos el modelo y herramientas reales
-    // del asistente en Vapi e inyectamos los detalles y propósito exactos de la campaña en el
-    // system prompt para que el diálogo gire específicamente sobre esa campaña.
+    // Si la llamada proviene de una Campaña Activa, REEMPLAZAMOS el prompt base por un
+    // prompt 100% exclusivo de campaña (sin validación de dirección, sin telemonitoreo ni
+    // consultas preventivas ajenas) y retiramos herramientas ajenas (ej. actualizar_direccion_paciente).
     let campaignModelOverride: Record<string, unknown> | undefined = undefined;
     if (hasCampaignDialogue) {
+      let modelProvider = "openai";
+      let modelName = "gpt-5.6-terra";
+      let modelTemp: number | undefined = undefined;
       try {
         const asstCtrl = new AbortController();
         const asstTimer = setTimeout(() => asstCtrl.abort(), 4500);
@@ -567,53 +570,75 @@ Deno.serve(async (req) => {
           const liveModel = liveAssistant?.model && typeof liveAssistant.model === "object"
             ? liveAssistant.model
             : null;
-          const existingMessages = Array.isArray(liveModel?.messages) ? liveModel.messages : [];
-          const baseSystemPrompt = String(
-            existingMessages.find((m: any) => m?.role === "system")?.content || "",
-          ).trim();
-
-          const canalesTexto = campCanales.length > 0 ? campCanales.join(", ") : "Llamada telefónica, SMS y Correo electrónico";
-          const campaignDirectiveBlock = [
-            "==============================================================================",
-            "# CAMPAÑA ACTIVA EN CURSO (PRIORIDAD MÁXIMA PARA EL DIÁLOGO DE ESTA LLAMADA)",
-            "==============================================================================",
-            "Esta llamada corresponde a una campaña específica lanzada para el paciente.",
-            "DEBES construir el diálogo del PASO 2 y responder cualquier pregunta usando EXACTAMENTE los detalles de esta campaña:",
-            `- Nombre de la Campaña: ${phoneticSafe(campNombre || "Campaña Preventiva SADI")}`,
-            `- Propósito y Directriz de la Campaña: ${phoneticSafe(campProposito || "Comunicar la jornada preventiva programada y confirmar la asistencia del paciente.")}`,
-            `- Sede / Lugar de Atención: ${campSede || "Hospital Central SADI"}`,
-            `- Fecha Programada: ${campFecha || "Hoy"}`,
-            `- Canales activos en esta campaña: ${canalesTexto}`,
-            campSmsTexto ? `- Mensaje SMS exacto enviado al paciente: "${phoneticSafe(campSmsTexto)}"` : "",
-            campEmailAsunto ? `- Asunto del Correo enviado al paciente: "${phoneticSafe(campEmailAsunto)}"` : "",
-            campEmailTexto ? `- Detalle del Correo enviado al paciente: "${phoneticSafe(campEmailTexto)}"` : "",
-            "",
-            "INSTRUCCIONES OBLIGATORIAS PARA EL DIÁLOGO DE CAMPAÑA:",
-            "1. Mantén el PASO 1 (saludo cordial, validación de identidad del paciente y autorización de datos con marcación 1 o 2).",
-            "2. En el PASO 2, explica de forma clara, natural y concisa el PROPÓSITO EXACTO de esta campaña, mencionando el nombre de la campaña, los detalles principales descritos arriba, la sede y la fecha programada. Si también se enviaron SMS o correo electrónico, indícale brevemente que ya le llegó o le estará llegando esa misma información por mensaje de texto y correo.",
-            "3. Pídele confirmar su participación/asistencia marcando 1 (o diciendo sí) o marcando 2 si requiere reprogramar.",
-            "4. Si el paciente hace preguntas sobre la campaña (de qué trata, dónde es, cuándo es, qué debe hacer), respóndele usando los detalles exactos de esta campaña arriba listados, sin inventar información clínica ni diagnósticos.",
-            "5. Conserva el PASO 3 (confirmación de dirección) y el PASO 4 (despedida institucional ejecutando endCall).",
-            "==============================================================================",
-          ].filter(Boolean).join("\n");
-
-          const mergedSystemContent = baseSystemPrompt
-            ? `${baseSystemPrompt}\n\n${campaignDirectiveBlock}`
-            : campaignDirectiveBlock;
-
-          if (liveModel?.provider && liveModel?.model) {
-            campaignModelOverride = {
-              ...liveModel,
-              messages: [
-                { role: "system", content: mergedSystemContent },
-                ...existingMessages.filter((m: any) => m?.role !== "system"),
-              ],
-            };
-          }
+          if (liveModel?.provider) modelProvider = String(liveModel.provider);
+          if (liveModel?.model) modelName = String(liveModel.model);
+          if (typeof liveModel?.temperature === "number") modelTemp = liveModel.temperature;
         }
       } catch (asstErr) {
-        console.warn("No se pudo enriquecer system prompt con campaña en Vapi:", asstErr);
+        console.warn("No se pudo leer modelo vivo del asistente Vapi, usando valores por defecto:", asstErr);
       }
+
+      const canalesTexto = campCanales.length > 0 ? campCanales.join(", ") : "Llamada telefónica, SMS y Correo electrónico";
+      const campaignOnlySystemPrompt = [
+        "# IDENTIDAD Y LÍMITE ESTRICTO DE CAMPAÑA",
+        "Eres el asistente virtual oficial de voz de SADI (pronunciado /SA-di/) en convenio con {{hospital_nombre}}.",
+        "Hablas en español colombiano cordial, profesional, respetuoso, conciso y natural, tratando siempre de \"usted\".",
+        "Pronuncia siempre SADI claramente como /SA-di/. Si el texto de la campaña menciona 3280, pronúncialo como \"resolución treintaidos ochenta, del dos mil dieciocho\". Pronuncia los últimos 3 dígitos del documento en dos paquetes (ej. 518 -> \"cinco dieciocho\").",
+        "",
+        "==============================================================================",
+        "# PROHIBICIÓN ABSOLUTA (LIMITACIONES ESTRICTAS DE ESTA LLAMADA)",
+        "==============================================================================",
+        "Esta llamada está enfocada ÚNICA Y EXCLUSIVAMENTE en la campaña detallada abajo.",
+        "ESTÁ ESTRICTAMENTE PROHIBIDO salirte de esta campaña:",
+        "- NO preguntes, valides ni menciones dirección de vivienda o residencia.",
+        "- NO menciones equipos de telemonitoreo casero ni brigadas domiciliarias.",
+        "- NO hables de consultas preventivas genéricas, tamizajes ni de la Resolución 3280 a menos que esté escrito explícitamente en los detalles de ESTA campaña.",
+        "- NO hagas encuestas de satisfacción, NO des diagnósticos ni formules medicamentos.",
+        "- En cuanto el paciente confirme o rechace su asistencia a esta campaña (y se resuelva cualquier duda exclusivamente sobre esta campaña), DESPÍDETE DE INMEDIATO y ejecuta endCall.",
+        "",
+        "==============================================================================",
+        "# DETALLES EXCLUSIVOS DE LA CAMPAÑA ACTIVA",
+        "==============================================================================",
+        `- Paciente: {{name}} (documento terminado en {{cedula_ultimos_3}})`,
+        `- Saludo según hora: {{saludo_hora}}`,
+        `- Nombre de la Campaña: ${phoneticSafe(campNombre || "Campaña SADI")}`,
+        `- Propósito y Detalles de la Campaña: ${phoneticSafe(campProposito || "Informar al paciente sobre la campaña programada y confirmar su asistencia.")}`,
+        `- Sede / Lugar: ${campSede || "Hospital Central SADI"}`,
+        `- Fecha Programada: ${campFecha || "Hoy"}`,
+        `- Canales de esta campaña: ${canalesTexto}`,
+        campSmsTexto ? `- Texto de referencia del SMS enviado: "${phoneticSafe(campSmsTexto)}"` : "",
+        campEmailAsunto ? `- Asunto de referencia del Correo: "${phoneticSafe(campEmailAsunto)}"` : "",
+        campEmailTexto ? `- Detalle de referencia del Correo: "${phoneticSafe(campEmailTexto)}"` : "",
+        "",
+        "==============================================================================",
+        "# PROTOCOLO EXACTO EN 3 PASOS (NADA MÁS)",
+        "==============================================================================",
+        "### PASO 1: Saludo y Confirmación Rápida del Titular",
+        "Saluda cordialmente con {{saludo_hora}}, preséntate de parte de SADI y {{hospital_nombre}}, y confirma si hablas directamente con {{name}} (puede responder con su voz o marcando 1 si es usted, o 2 si no es usted).",
+        "- Si dice que NO es el titular (o marca 2): di \"Disculpe la molestia, que tenga un buen día.\" y ejecuta endCall de inmediato.",
+        "- Si confirma que SÍ es {{name}} (o marca 1): avanza de inmediato al PASO 2.",
+        "",
+        "### PASO 2: Comunicar Únicamente la Campaña y Confirmar Asistencia",
+        "Explica de manera clara, natural y fiel el PROPÓSITO y DETALLES EXACTOS de la campaña indicados arriba (nombre de la campaña, motivo/detalles, sede y fecha).",
+        "Pregunta claramente si confirma su asistencia: indique que puede responder con su voz (\"sí\", \"acepto\", \"puedo ir\" / \"no\", \"no puedo\") o marcar 1 si confirma asistencia, o 2 si no puede asistir.",
+        "- Si el paciente hace una pregunta sobre la campaña (lugar, fecha, propósito o detalles), respóndele únicamente con la información exacta de esta campaña.",
+        "- Si presiona 1 o responde afirmativamente (sí, acepto, puedo ir, confirmo): di \"Perfecto, su asistencia ha quedado confirmada.\" y pasa INMEDIATAMENTE al PASO 3.",
+        "- Si presiona 2 o responde negativamente (no, no puedo, cancelar, reprogramar): di \"Entendido, hemos registrado que no puede asistir en esta oportunidad.\" y pasa INMEDIATAMENTE al PASO 3.",
+        "",
+        "### PASO 3: Cierre Inmediato y Colgado Obligatorio",
+        "Di únicamente una despedida breve y cordial: \"Muchas gracias por su tiempo, {{name}}. Su respuesta ha quedado registrada. Que tenga un excelente día.\"",
+        "REGLA OBLIGATORIA: Ejecuta la herramienta endCall INMEDIATAMENTE después de despedirte. NO agregues ninguna otra pregunta.",
+        "",
+        "# REGLA ANTI-BUZÓN",
+        "Si detectas buzón de voz, contestador automático o mensaje de operadora telefónica, ejecuta endCall de inmediato en silencio.",
+      ].filter(Boolean).join("\n");
+
+      campaignModelOverride = {
+        provider: modelProvider,
+        model: modelName,
+        ...(modelTemp !== undefined ? { temperature: modelTemp } : {}),
+        messages: [{ role: "system", content: campaignOnlySystemPrompt }],
+      };
     }
 
     const effectiveMotivo = hasCampaignDialogue
@@ -629,7 +654,7 @@ Deno.serve(async (req) => {
       },
       assistantOverrides: {
         ...baseOverrides,
-        ...(campaignModelOverride ? { model: campaignModelOverride } : {}),
+        ...(campaignModelOverride ? { model: campaignModelOverride, endCallFunctionEnabled: true } : {}),
         ...(resolvedFirstMessage ? { firstMessage: resolvedFirstMessage } : {}),
         voicemailDetection,
         voicemailMessage,
@@ -704,6 +729,29 @@ Deno.serve(async (req) => {
       ).catch((e) => ({ error: { message: e?.message || "insert exception" } }));
       if ((ins as { error?: { message?: string } } | null)?.error?.message) {
         sessionInsertError = (ins as { error: { message: string } }).error.message;
+      }
+
+      // Registrar trazabilidad omnicanal de llamada de campaña (estado inicial: pendiente)
+      if (hasCampaignDialogue) {
+        const vapiCallIdStr = String((vapiData as Record<string, unknown>)?.id || "").trim() || null;
+        await Promise.resolve(
+          supabaseAdmin
+            .from("campaign_channel_traceability")
+            .insert({
+              hospital_id: body.hospitalId || null,
+              campaign_id: String(campaignCtx?.campaignId || `camp_call_${Date.now()}`),
+              campaign_name: campNombre || effectiveMotivo,
+              patient_id: body.patientId || null,
+              patient_name: patientFullName,
+              patient_document: String(mergedPatientData.documento || mergedPatientData.document || ""),
+              contact_destination: formattedPhone,
+              channel: "call",
+              delivery_status: "initiated",
+              response_status: "pendiente",
+              external_ref_id: vapiCallIdStr,
+              sent_at: new Date().toISOString(),
+            } as any),
+        ).catch(() => null);
       }
     }
 

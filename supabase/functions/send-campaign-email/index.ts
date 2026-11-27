@@ -291,6 +291,18 @@ Deno.serve(async (req) => {
         .replaceAll("{sede}", sede)
         .replaceAll("{fecha}", fecha);
 
+      const traceId = crypto.randomUUID();
+      const confirmBaseUrl = supabaseUrl
+        ? `${supabaseUrl.replace(/\/$/, "")}/functions/v1/sync-campaign-responses`
+        : "";
+      const confirmButtonsHtml = confirmBaseUrl
+        ? `<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;">
+            <div style="font-size:12px;color:#475569;margin-bottom:10px;font-weight:600;">Confirme su asistencia con un clic:</div>
+            <a href="${confirmBaseUrl}?action=confirm&traceId=${traceId}" style="display:inline-block;margin:4px 6px;padding:10px 18px;background:#059669;color:#ffffff;text-decoration:none;border-radius:10px;font-size:13px;font-weight:700;">✓ Confirmo Asistencia</a>
+            <a href="${confirmBaseUrl}?action=decline&traceId=${traceId}" style="display:inline-block;margin:4px 6px;padding:10px 18px;background:#e11d48;color:#ffffff;text-decoration:none;border-radius:10px;font-size:13px;font-weight:700;">✕ No Puedo Asistir</a>
+          </div>`
+        : "";
+
       const htmlBody = buildClinicalEmailHtml({
         patientName: patName,
         campaignName,
@@ -299,7 +311,7 @@ Deno.serve(async (req) => {
         sede,
         fecha,
         exactBody: Boolean(body.exactBody ?? true),
-      });
+      }).replace("</div>\n    <div style=\"padding:14px 24px;", `${confirmButtonsHtml}\n    </div>\n    <div style="padding:14px 24px;`);
 
       const sendRes = await sendSingleEmail({
         to: toEmail,
@@ -313,6 +325,27 @@ Deno.serve(async (req) => {
 
       if (sendRes.ok) {
         enviados += 1;
+        const nowIso = new Date().toISOString();
+        if (supabaseAdmin) {
+          await Promise.resolve(
+            supabaseAdmin.from("campaign_channel_traceability").insert({
+              id: traceId,
+              hospital_id: hospitalId,
+              campaign_id: String(body.campaignId || `email_${fecha}`),
+              campaign_name: campaignName,
+              patient_id: patId,
+              patient_name: patName,
+              patient_document: String(rec?.document || rec?.documento || rec?.cc || ""),
+              contact_destination: toEmail,
+              channel: "email",
+              delivery_status: "delivered",
+              response_status: "pendiente",
+              external_ref_id: sendRes.messageId || traceId,
+              sent_at: nowIso,
+              received_at: nowIso,
+            } as any),
+          ).catch(() => null);
+        }
         if (patId && supabaseAdmin) {
           await Promise.resolve(
             supabaseAdmin.from("interactions").insert({
