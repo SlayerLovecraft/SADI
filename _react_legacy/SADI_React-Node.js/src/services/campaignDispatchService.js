@@ -222,8 +222,11 @@ function buildCampaignSmsText(campaign, todayIso) {
   const nombre = String(campaign?.nombre || 'Jornada Preventiva Res. 3280').trim();
   const sede = String(campaign?.lugar || 'Hospital Central SADI').split('·')[0].trim();
   const custom = String(campaign?.mensaje_sms || '').trim();
-  if (custom) return custom;
-  return `SADI Res. 3280: Hola {nombre}, te invitamos a "${nombre}" (${todayIso}) en ${sede}. Responde SI para confirmar tu asistencia.`;
+  const base = custom || `SADI Res. 3280: Hola {nombre}, te invitamos a "${nombre}" (${todayIso}) en ${sede}. Responde SI para confirmar tu asistencia.`;
+  return base
+    .replaceAll('{campana}', nombre)
+    .replaceAll('{sede}', sede)
+    .replaceAll('{fecha}', todayIso);
 }
 
 function buildCampaignEmailPayload(campaign, todayIso) {

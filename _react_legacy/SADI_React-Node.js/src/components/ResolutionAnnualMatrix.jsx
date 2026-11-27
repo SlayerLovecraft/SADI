@@ -20,6 +20,7 @@ import { GRUPOS_RIESGO_CATALOG } from '@/services/gruposRiesgoCatalog';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
 import { CURSOS_VIDA_PALETTE, GRUPOS_RIESGO_PALETTE } from '@/services/clinicalPalettes';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
+import CampaignMessageComposer from '@/components/CampaignMessageComposer';
 import { CursoVidaBadge, GruposRiesgoBadges } from '@/components/PatientClinicalBadges';
 import {
   validateCampaignCallCapacity,
@@ -221,6 +222,9 @@ function ResolutionAnnualMatrix({
   const [maxRetries, setMaxRetries] = useState(3);
   const [sedeLugar, setSedeLugar] = useState(CALI_IPS_SEDES[0]);
   const [promptDirectriz, setPromptDirectriz] = useState('');
+  const [campaignSmsMessage, setCampaignSmsMessage] = useState('');
+  const [campaignEmailSubject, setCampaignEmailSubject] = useState('');
+  const [campaignEmailBody, setCampaignEmailBody] = useState('');
 
   // PASO 4: Filtro de Ubicación DIVIPOLA Santiago de Cali (Cascada Rural / Urbano)
   const [ubicacionZona, setUbicacionZona] = useState('todas'); // 'todas' | 'Rural' | 'Urbana'
@@ -816,6 +820,15 @@ function ResolutionAnnualMatrix({
         ? `Llamar a los pacientes del curso ${item.nombre} programados en ${monthName} ${activeYear} para valoración preventiva Res. 3280 en Santiago de Cali (${sedeLugar}).`
         : `Llamar a los pacientes del grupo de riesgo "${item.nombre}" en ${monthName} ${activeYear} para control prioritario en Santiago de Cali (${sedeLugar}).`
     );
+    setCampaignSmsMessage(
+      `SADI Res. 3280: Hola {nombre}, te invitamos a tu jornada de ${item.nombre} ({fecha}) en {sede}. Responde SI para confirmar tu asistencia.`
+    );
+    setCampaignEmailSubject(
+      `Invitación Atención Preventiva SADI · ${item.nombre} (${monthName} ${activeYear})`
+    );
+    setCampaignEmailBody(
+      `Hola {paciente},\n\nDesde el Hospital Central SADI te invitamos a tu atención preventiva del programa "${item.nombre}" bajo la Resolución 3280 de 2018.\n\nSede: {sede}\nFecha programada: {fecha}\n\nPor favor confirma tu asistencia respondiendo a este correo o al SMS enviado.`
+    );
 
     setModalMode(mode);
     setIsModalOpen(true);
@@ -1009,6 +1022,9 @@ function ResolutionAnnualMatrix({
         resumen: locationFilterSummary,
       },
       directriz_ia: promptDirectriz,
+      mensaje_sms: campaignSmsMessage.trim(),
+      asunto_email: campaignEmailSubject.trim(),
+      mensaje_email: campaignEmailBody.trim(),
       estado: 'programada',
       fecha_creacion: new Date().toISOString(),
       config_frecuencia: { ...campaignSchedule, selectedDates: effectiveScheduleDates },
@@ -2097,6 +2113,17 @@ function ResolutionAnnualMatrix({
                       </div>
                     </div>
 
+                    {/* REDACTOR DEL CONTENIDO DEL MENSAJE (SMS Y CORREO E-MAIL) */}
+                    <CampaignMessageComposer
+                      channels={selectedChannels}
+                      smsMessage={campaignSmsMessage}
+                      onSmsMessageChange={setCampaignSmsMessage}
+                      emailSubject={campaignEmailSubject}
+                      onEmailSubjectChange={setCampaignEmailSubject}
+                      emailBody={campaignEmailBody}
+                      onEmailBodyChange={setCampaignEmailBody}
+                    />
+
                     {/* Regla automática de inasistencia */}
                     <div className="p-4 bg-cyan-50/70 dark:bg-cyan-950/35 border border-cyan-200 dark:border-cyan-800/60 rounded-2xl text-xs flex items-start gap-3">
                       <BellRing className="w-5 h-5 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
@@ -2513,6 +2540,24 @@ function ResolutionAnnualMatrix({
                         <span className="text-slate-500 dark:text-slate-400">IPS asignada:</span>
                         <strong className="text-slate-900 dark:text-white text-right">{sedeLugar}</strong>
                       </div>
+                    </div>
+
+                    {/* Redacción directa / revisión final del mensaje SMS y Correo antes de lanzar */}
+                    <div className="space-y-2">
+                      <div className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                        Contenido del Mensaje a Enviar (SMS y Correo)
+                      </div>
+                      <CampaignMessageComposer
+                        compact
+                        channels={selectedChannels}
+                        onToggleChannel={(chKey) => setSelectedChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                        smsMessage={campaignSmsMessage}
+                        onSmsMessageChange={setCampaignSmsMessage}
+                        emailSubject={campaignEmailSubject}
+                        onEmailSubjectChange={setCampaignEmailSubject}
+                        emailBody={campaignEmailBody}
+                        onEmailBodyChange={setCampaignEmailBody}
+                      />
                     </div>
                   </div>
                 )}

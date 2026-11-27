@@ -9,7 +9,7 @@ import {
   Calendar, Layers, ShieldAlert, Settings, RotateCw, CheckCircle2,
   PhoneCall, UserX, ChevronRight, FileSpreadsheet, Eye, Play, Sparkles,
   Search, Filter, RotateCcw, Building2, CalendarRange, HeartPulse,
-  Info, ExternalLink, ArrowRight
+  Info, ExternalLink, ArrowRight, Mail, MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/use-toast';
@@ -44,6 +44,7 @@ import {
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
 import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import CampaignSchedulingCalendar from '@/components/CampaignSchedulingCalendar';
+import CampaignMessageComposer from '@/components/CampaignMessageComposer';
 import { getCursoVidaIcon, getGrupoRiesgoIcon } from '@/components/CursosVidaIcons';
 import {
   validateCampaignCallCapacity,
@@ -91,9 +92,11 @@ const CampaignsPage = () => {
   // Modales
   const [showRelaunchDialog, setShowRelaunchDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showCreateCampaignModal, setShowCreateCampaignModal] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
 
-  // Estados para Relanzamiento de Campaña (Solo Fechas, Días, Semanas, Lugares y Frecuencia)
+  // Estados para Relanzamiento de Campaña (Fechas, Lugares, Frecuencia + Mensajes SMS/Correo)
   const [relaunchSchedule, setRelaunchSchedule] = useState({
     frequency: 'diario',
     config: {},
@@ -104,6 +107,30 @@ const CampaignsPage = () => {
   const [relaunchFranjas, setRelaunchFranjas] = useState(['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
   const [relaunchRetryUntilAnswer, setRelaunchRetryUntilAnswer] = useState(true);
   const [relaunchMaxRetries, setRelaunchMaxRetries] = useState(3);
+  const [relaunchChannels, setRelaunchChannels] = useState({ call: true, sms: true, email: true });
+  const [relaunchSmsMessage, setRelaunchSmsMessage] = useState('');
+  const [relaunchEmailSubject, setRelaunchEmailSubject] = useState('');
+  const [relaunchEmailBody, setRelaunchEmailBody] = useState('');
+
+  // Estados para Editor Rápido de Mensajes de una Campaña Existente
+  const [msgEditChannels, setMsgEditChannels] = useState({ call: true, sms: true, email: true });
+  const [msgEditSms, setMsgEditSms] = useState('');
+  const [msgEditEmailSubject, setMsgEditEmailSubject] = useState('');
+  const [msgEditEmailBody, setMsgEditEmailBody] = useState('');
+
+  // Estados para Crear Nueva Campaña con Mensaje directamente desde Campañas
+  const [newCampName, setNewCampName] = useState('');
+  const [newCampPackage, setNewCampPackage] = useState('curso_vida');
+  const [newCampDate, setNewCampDate] = useState(() => campaignDispatchService.getColombiaTodayIso());
+  const [newCampLugar, setNewCampLugar] = useState(CALI_IPS_SEDES[0]);
+  const [newCampChannels, setNewCampChannels] = useState({ call: true, sms: true, email: true });
+  const [newCampSms, setNewCampSms] = useState(
+    'SADI Res. 3280: Hola {nombre}, te invitamos a "{campana}" ({fecha}) en {sede}. Responde SI para confirmar tu asistencia.'
+  );
+  const [newCampEmailSubject, setNewCampEmailSubject] = useState('Invitación Atención Preventiva SADI · {campana}');
+  const [newCampEmailBody, setNewCampEmailBody] = useState(
+    'Hola {paciente},\n\nDesde el Hospital Central SADI te invitamos a tu jornada preventiva "{campana}" bajo la Resolución 3280 de 2018.\n\nSede: {sede}\nFecha: {fecha}\n\nPor favor confirma tu asistencia respondiendo a este correo o al SMS enviado.'
+  );
 
   // Estados de Tandas Diarias (24 Intervalos de 30 min)
   const [scheduleData, setScheduleData] = useState(null);
@@ -355,7 +382,189 @@ const CampaignsPage = () => {
     setRelaunchFranjas(campaign.horarios || ['08:30 AM', '09:00 AM', '10:00 AM', '02:00 PM', '04:00 PM']);
     setRelaunchRetryUntilAnswer(campaign.reintentos ? true : true);
     setRelaunchMaxRetries(campaign.reintentos || 3);
+    const ch = campaignDispatchService.extractCampaignChannels(campaign);
+    setRelaunchChannels({ call: ch.call, sms: ch.sms || true, email: ch.email || true });
+    setRelaunchSmsMessage(
+      campaign.mensaje_sms ||
+      `SADI Res. 3280: Hola {nombre}, te invitamos a "${campaign.nombre || 'tu jornada preventiva'}" ({fecha}) en {sede}. Responde SI para confirmar.`
+    );
+    setRelaunchEmailSubject(
+      campaign.asunto_email || `Invitación Atención Preventiva SADI · ${campaign.nombre || 'Res. 3280'}`
+    );
+    setRelaunchEmailBody(
+      campaign.mensaje_email ||
+      `Hola {paciente},\n\nDesde el Hospital Central SADI te recordamos tu programación en "${campaign.nombre || 'Demanda Inducida Res. 3280'}".\n\nSede: {sede}\nFecha: {fecha}\n\nPor favor confirma tu asistencia respondiendo a este correo o al SMS enviado.`
+    );
     setShowRelaunchDialog(true);
+  };
+
+  // Abrir Editor de Mensaje de una Campaña Existente
+  const handleOpenMessageModal = (campaign) => {
+    setSelectedCampaign(campaign);
+    const ch = campaignDispatchService.extractCampaignChannels(campaign);
+    setMsgEditChannels({ call: ch.call, sms: ch.sms, email: ch.email });
+    setMsgEditSms(
+      campaign.mensaje_sms ||
+      `SADI Res. 3280: Hola {nombre}, te invitamos a "${campaign.nombre || 'tu jornada preventiva'}" ({fecha}) en {sede}. Responde SI para confirmar.`
+    );
+    setMsgEditEmailSubject(
+      campaign.asunto_email || `Invitación Atención Preventiva SADI · ${campaign.nombre || 'Res. 3280'}`
+    );
+    setMsgEditEmailBody(
+      campaign.mensaje_email ||
+      `Hola {paciente},\n\nDesde el Hospital Central SADI te recordamos tu atención preventiva en "${campaign.nombre || 'Resolución 3280'}".\n\nSede: {sede}\nFecha: {fecha}\n\nPor favor confirma tu asistencia.`
+    );
+    setShowMessageModal(true);
+  };
+
+  const handleSaveCampaignMessage = async (emitAfterSave = false) => {
+    if (!selectedCampaign) return;
+    try {
+      setSubmitting(true);
+      const updatedFields = {
+        canales_detalle: { ...(selectedCampaign.canales_detalle || {}), ...msgEditChannels },
+        canal: Object.keys(msgEditChannels).filter((k) => msgEditChannels[k]).join(', '),
+        mensaje_sms: msgEditSms.trim(),
+        asunto_email: msgEditEmailSubject.trim(),
+        mensaje_email: msgEditEmailBody.trim(),
+      };
+      const updatedCampaign = { ...selectedCampaign, ...updatedFields };
+
+      try {
+        const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+        const idx = localData.findIndex((c) => c.id === selectedCampaign.id);
+        if (idx >= 0) {
+          localData[idx] = updatedCampaign;
+        } else {
+          localData.unshift(updatedCampaign);
+        }
+        localStorage.setItem('sadi_campaigns_v2', JSON.stringify(localData));
+        window.dispatchEvent(new Event('sadi:campaigns-updated'));
+      } catch (e) {
+        console.warn('No se pudo persistir mensaje en localStorage:', e);
+      }
+
+      setCampaigns((prev) => prev.map((c) => (c.id === selectedCampaign.id ? updatedCampaign : c)));
+      setShowMessageModal(false);
+
+      if (emitAfterSave) {
+        await handleSendNow(updatedCampaign);
+      } else {
+        toast({
+          title: "✅ Mensaje de Campaña Guardado",
+          description: `El contenido de SMS y Correo para "${updatedCampaign.nombre}" fue actualizado.`,
+        });
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Crear nueva campaña rápida con redactor de mensaje directamente desde la sección de Campañas
+  const handleCreateQuickCampaign = async () => {
+    const cleanName = newCampName.trim();
+    if (!cleanName) {
+      toast({
+        title: "Nombre requerido",
+        description: "Ingresa un nombre para la campaña antes de guardarla.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!newCampChannels.sms && !newCampChannels.email && !newCampChannels.call) {
+      toast({
+        title: "Canal requerido",
+        description: "Activa al menos un canal (SMS o Correo E-mail).",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      setSubmitting(true);
+      const targetDate = newCampDate || campaignDispatchService.getColombiaTodayIso();
+
+      // Resolver destinatarios actuales (en modo prueba local devuelve el único paciente CC 1006010518)
+      const patRes = await patientService.getPaginated({
+        hospitalId: hospitalId || null,
+        page: 1,
+        pageSize: 100,
+      }).catch(() => ({ data: [], totalCount: 0 }));
+      const patRows = Array.isArray(patRes?.data) ? patRes.data : [];
+      const assignedList = patRows.map((p) => ({
+        id: p.patient_id || p.id,
+        patient_id: p.patient_id || p.id,
+        nombre: p.nombre || p.name,
+        documento: p.cc || p.documento || p.document || '',
+        telefono: p.telefono || p.phone || '',
+        email: p.email || null,
+        curso_vida: p.curso_vida || p.grupo_vida || '',
+      }));
+
+      const newCampaign = {
+        id: `camp_${Date.now()}`,
+        tipo_origen: newCampPackage,
+        origen_nombre: newCampPackage === 'grupo_riesgo' ? 'Grupos de Riesgo Priorizados' : 'Cursos de Vida Res. 3280',
+        nombre: cleanName,
+        lugar: newCampLugar,
+        canal: Object.keys(newCampChannels).filter((k) => newCampChannels[k]).join(', '),
+        canales_detalle: newCampChannels,
+        mensaje_sms: newCampSms.trim(),
+        asunto_email: newCampEmailSubject.trim(),
+        mensaje_email: newCampEmailBody.trim(),
+        fecha_programada: targetDate,
+        fechas_ejecucion: [targetDate],
+        config_frecuencia: { frequency: 'unica', selectedDates: [targetDate], summary: `Fecha única (${targetDate})` },
+        horarios: ['08:00 AM'],
+        reintentos: 3,
+        estado: 'programada',
+        fecha_creacion: new Date().toISOString(),
+        pacientes_asignados: Number(patRes?.totalCount || assignedList.length || 1),
+        pacientes_ids: assignedList.map((p) => p.id),
+        pacientes_detalle: assignedList,
+        enviados: 0,
+        entregados: 0,
+        fallidos: 0,
+      };
+
+      try {
+        const localData = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+        localData.unshift(newCampaign);
+        localStorage.setItem('sadi_campaigns_v2', JSON.stringify(localData));
+        window.dispatchEvent(new Event('sadi:campaigns-updated'));
+      } catch (e) {
+        console.error('Error guardando nueva campaña:', e);
+      }
+
+      setShowCreateCampaignModal(false);
+      setNewCampName('');
+
+      if (campaignDispatchService.isCampaignStartingToday(newCampaign) && (newCampChannels.sms || newCampChannels.email)) {
+        toast({
+          title: "🚀 Campaña Creada para HOY · Enviando SMS y Correos...",
+          description: `Despachando "${newCampaign.nombre}" a ${assignedList.length || 1} paciente(s).`,
+        });
+        const disp = await campaignDispatchService.dispatchCampaignChannelsNow(newCampaign, {
+          hospitalId,
+          force: false,
+        });
+        const smsSent = Number(disp?.sms?.enviados || 0);
+        const emailSent = Number(disp?.email?.enviados || 0);
+        toast({
+          title: disp?.success ? "✅ Campaña de HOY Despachada" : "⚠️ Campaña Guardada con Alertas de Envío",
+          description: `SMS (P. 13): ${smsSent} enviado(s) | Correo: ${disp?.email?.missingConfig ? 'falta configurar SMTP/Resend' : `${emailSent} enviado(s)`}.`,
+          variant: disp?.success ? "default" : "destructive",
+        });
+      } else {
+        toast({
+          title: "✅ Campaña Programada con Mensaje",
+          description: `"${newCampaign.nombre}" agendada para el ${targetDate}.`,
+        });
+      }
+
+      await loadCampaigns(hospitalId);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Confirmar Relanzamiento (Solo se editan fechas, días, semanas, lugares y frecuencia)
@@ -392,6 +601,11 @@ const CampaignsPage = () => {
         fecha_programada: relaunchSchedule.selectedDates[0] || new Date().toISOString().split('T')[0],
         horarios: relaunchFranjas,
         reintentos: relaunchRetryUntilAnswer ? relaunchMaxRetries : 0,
+        canales_detalle: { ...(selectedCampaign.canales_detalle || {}), ...relaunchChannels },
+        canal: Object.keys(relaunchChannels).filter((k) => relaunchChannels[k]).join(', '),
+        mensaje_sms: relaunchSmsMessage.trim(),
+        asunto_email: relaunchEmailSubject.trim(),
+        mensaje_email: relaunchEmailBody.trim(),
         estado: 'programada',
         enviados: 0,
         entregados: 0,
@@ -887,7 +1101,19 @@ const CampaignsPage = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  data-testid="btn-nueva-campana-mensaje"
+                  onClick={() => {
+                    setNewCampDate(campaignDispatchService.getColombiaTodayIso());
+                    setShowCreateCampaignModal(true);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl gap-1.5 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Nueva Campaña con Mensaje
+                </Button>
                 <Button
                   variant="outline"
                   data-testid="btn-ir-al-cronograma"
@@ -1090,10 +1316,33 @@ const CampaignsPage = () => {
                             </span>
                           </div>
 
-                          {/* Directriz IA si existe */}
-                          {campaign.directriz_ia && (
-                            <div className="bg-blue-50/50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/50 text-[11px] text-slate-700 dark:text-slate-300 italic line-clamp-2">
-                              "{campaign.directriz_ia}"
+                          {/* Directriz IA / Contenido del Mensaje SMS y Correo */}
+                          {(campaign.mensaje_sms || campaign.asunto_email || campaign.mensaje_email || campaign.directriz_ia) && (
+                            <div className="space-y-1.5">
+                              {campaign.mensaje_sms && (
+                                <div className="bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-[11px] text-emerald-950 dark:text-emerald-200">
+                                  <span className="font-extrabold uppercase text-[9.5px] tracking-wider inline-flex items-center gap-1 mr-1.5 text-emerald-700 dark:text-emerald-400">
+                                    <MessageSquare className="w-3 h-3" /> SMS:
+                                  </span>
+                                  <span className="line-clamp-2">{campaign.mensaje_sms}</span>
+                                </div>
+                              )}
+                              {(campaign.asunto_email || campaign.mensaje_email) && (
+                                <div className="bg-blue-50/60 dark:bg-blue-950/30 p-2.5 rounded-xl border border-blue-200/80 dark:border-blue-900/50 text-[11px] text-blue-950 dark:text-blue-200">
+                                  <span className="font-extrabold uppercase text-[9.5px] tracking-wider inline-flex items-center gap-1 mr-1.5 text-blue-700 dark:text-blue-400">
+                                    <Mail className="w-3 h-3" /> Correo:
+                                  </span>
+                                  <span className="font-bold">{campaign.asunto_email || 'Sin asunto'}</span>
+                                  {campaign.mensaje_email && (
+                                    <div className="text-[10.5px] opacity-85 line-clamp-2 mt-0.5">{campaign.mensaje_email}</div>
+                                  )}
+                                </div>
+                              )}
+                              {!campaign.mensaje_sms && !campaign.mensaje_email && campaign.directriz_ia && (
+                                <div className="bg-blue-50/50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/50 text-[11px] text-slate-700 dark:text-slate-300 italic line-clamp-2">
+                                  "{campaign.directriz_ia}"
+                                </div>
+                              )}
                             </div>
                           )}
 
@@ -1123,33 +1372,45 @@ const CampaignsPage = () => {
                         </div>
                       </div>
 
-                      {/* ACCIONES: RELANZAR CAMPAÑA DESTACADO */}
+                      {/* ACCIONES: RELANZAR, EDITAR MENSAJE Y EMITIR */}
                       <div className="mt-5 pt-3 border-t border-gray-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                        {/* BOTÓN PRINCIPAL DE RELANZAR */}
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => handleOpenRelaunchModal(campaign)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
-                          disabled={submitting}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Relanzar Campaña
-                        </Button>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleOpenRelaunchModal(campaign)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs gap-1.5"
+                            disabled={submitting}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Relanzar
+                          </Button>
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            data-testid="btn-editar-mensaje-campana"
+                            onClick={() => handleOpenMessageModal(campaign)}
+                            className="bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-700 text-xs font-bold rounded-xl border-indigo-200 dark:border-indigo-800/60 gap-1"
+                            disabled={submitting}
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                            Editar Mensaje
+                          </Button>
+                        </div>
 
                         <div className="flex items-center gap-1.5">
-                          {(effectiveEstado === 'Programada' || effectiveEstado === 'No Enviada') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSendNow(campaign)}
-                              className="bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 text-xs font-bold rounded-xl border-blue-200 dark:border-blue-800/60"
-                              disabled={submitting}
-                            >
-                              <Send className="h-3.5 w-3.5 mr-1" />
-                              Emitir Ahora
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSendNow(campaign)}
+                            className="bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 text-xs font-bold rounded-xl border-blue-200 dark:border-blue-800/60"
+                            disabled={submitting}
+                          >
+                            <Send className="h-3.5 w-3.5 mr-1" />
+                            Emitir Ahora
+                          </Button>
 
                           <Button
                             type="button"
@@ -1582,6 +1843,23 @@ const CampaignsPage = () => {
                     </div>
                   )}
                 </div>
+                {/* 5. CONTENIDO DEL MENSAJE (SMS Y CORREO) */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                    5. Canales y Contenido del Mensaje (SMS y Correo E-mail)
+                  </Label>
+                  <CampaignMessageComposer
+                    compact
+                    channels={relaunchChannels}
+                    onToggleChannel={(chKey) => setRelaunchChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                    smsMessage={relaunchSmsMessage}
+                    onSmsMessageChange={setRelaunchSmsMessage}
+                    emailSubject={relaunchEmailSubject}
+                    onEmailSubjectChange={setRelaunchEmailSubject}
+                    emailBody={relaunchEmailBody}
+                    onEmailBodyChange={setRelaunchEmailBody}
+                  />
+                </div>
               </div>
 
               <DialogFooter className="p-6 pt-0">
@@ -1599,6 +1877,161 @@ const CampaignsPage = () => {
                 >
                   {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
                   Confirmar y Relanzar Campaña
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* MODAL EDITAR CONTENIDO DEL MENSAJE (SMS Y CORREO) */}
+        {showMessageModal && selectedCampaign && (
+          <Dialog open={showMessageModal} onOpenChange={setShowMessageModal}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
+              <div className="bg-gradient-to-r from-indigo-900 to-slate-900 p-5 text-white rounded-t-2xl">
+                <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                  <Edit className="w-5 h-5 text-indigo-300" />
+                  Redactar / Editar Mensaje de Campaña
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-300 mt-1">
+                  {selectedCampaign.nombre} · Edita el texto del SMS (Puerto 13) y el Correo Electrónico que recibirán los pacientes.
+                </DialogDescription>
+              </div>
+              <div className="p-5">
+                <CampaignMessageComposer
+                  channels={msgEditChannels}
+                  onToggleChannel={(chKey) => setMsgEditChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                  smsMessage={msgEditSms}
+                  onSmsMessageChange={setMsgEditSms}
+                  emailSubject={msgEditEmailSubject}
+                  onEmailSubjectChange={setMsgEditEmailSubject}
+                  emailBody={msgEditEmailBody}
+                  onEmailBodyChange={setMsgEditEmailBody}
+                />
+              </div>
+              <DialogFooter className="p-5 pt-0 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowMessageModal(false)}
+                  className="text-xs rounded-xl"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleSaveCampaignMessage(false)}
+                  disabled={submitting}
+                  className="text-xs font-bold rounded-xl border-indigo-300 text-indigo-700 dark:text-indigo-300"
+                >
+                  Guardar Cambios
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => handleSaveCampaignMessage(true)}
+                  disabled={submitting}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl gap-1.5"
+                >
+                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Guardar y Emitir Ahora
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* MODAL CREAR NUEVA CAMPAÑA CON MENSAJE DIRECTAMENTE EN CAMPAÑAS */}
+        {showCreateCampaignModal && (
+          <Dialog open={showCreateCampaignModal} onOpenChange={setShowCreateCampaignModal}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 rounded-2xl">
+              <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 p-5 text-white rounded-t-2xl">
+                <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-emerald-300" />
+                  Nueva Campaña con Mensaje (SMS y Correo)
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-300 mt-1">
+                  Si la fecha de arranque es HOY ({campaignDispatchService.getColombiaTodayIso()}), los SMS (Puerto 13) y Correos se disparan automáticamente al guardar.
+                </DialogDescription>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-xs font-bold">Nombre de la Campaña</Label>
+                    <input
+                      type="text"
+                      data-testid="quick-camp-name-input"
+                      value={newCampName}
+                      onChange={(e) => setNewCampName(e.target.value)}
+                      placeholder="Ej: Jornada Preventiva Juventud · Prueba Hoy"
+                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold">Paquete de Campaña</Label>
+                    <select
+                      value={newCampPackage}
+                      onChange={(e) => setNewCampPackage(e.target.value)}
+                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                    >
+                      <option value="curso_vida">Paquete: Cursos de Vida</option>
+                      <option value="grupo_riesgo">Paquete: Grupos de Riesgo</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold">Fecha de Arranque</Label>
+                    <input
+                      type="date"
+                      data-testid="quick-camp-date-input"
+                      value={newCampDate}
+                      onChange={(e) => setNewCampDate(e.target.value)}
+                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label className="text-xs font-bold">Sede / Lugar de Atención</Label>
+                    <select
+                      value={newCampLugar}
+                      onChange={(e) => setNewCampLugar(e.target.value)}
+                      className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                    >
+                      {CALI_IPS_SEDES.map((sede) => (
+                        <option key={sede} value={sede}>{sede}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <CampaignMessageComposer
+                  channels={newCampChannels}
+                  onToggleChannel={(chKey) => setNewCampChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                  smsMessage={newCampSms}
+                  onSmsMessageChange={setNewCampSms}
+                  emailSubject={newCampEmailSubject}
+                  onEmailSubjectChange={setNewCampEmailSubject}
+                  emailBody={newCampEmailBody}
+                  onEmailBodyChange={setNewCampEmailBody}
+                />
+              </div>
+              <DialogFooter className="p-5 pt-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowCreateCampaignModal(false)}
+                  className="text-xs rounded-xl"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  data-testid="btn-confirmar-nueva-campana"
+                  onClick={handleCreateQuickCampaign}
+                  disabled={submitting}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl gap-1.5"
+                >
+                  {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  {newCampDate === campaignDispatchService.getColombiaTodayIso()
+                    ? 'Guardar y Lanzar Hoy (SMS / Correo)'
+                    : 'Programar Campaña'}
                 </Button>
               </DialogFooter>
             </DialogContent>
