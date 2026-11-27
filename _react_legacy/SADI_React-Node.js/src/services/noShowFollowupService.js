@@ -8,6 +8,7 @@
 // ==============================================================================
 
 import { supabase } from '@/lib/supabase';
+import { campaignDispatchService } from './campaignDispatchService';
 
 export const NOSHOW_POLICY = {
   sms1DelayDays: 3,
@@ -100,29 +101,31 @@ export const noShowFollowupService = {
       followupRow.motivo_cita
     );
 
+    let realSmsRes = null;
+    if (followupRow.patient_phone) {
+      realSmsRes = await campaignDispatchService.sendIndividualSms({
+        patientId: followupRow.patient_id,
+        name: followupRow.patient_name,
+        document: followupRow.patient_document || '',
+        phone: followupRow.patient_phone,
+        message: msgs.sms1,
+        hospitalId: followupRow.hospital_id || null,
+        forceResend: true,
+      }).catch((e) => ({ success: false, error: e?.message }));
+    }
+
+    const smsTag = realSmsRes?.success
+      ? `SMS #1 (+3d) REAL enviado por Puerto ${realSmsRes.winningPort || 13} (ID: ${realSmsRes.gatewayMessageId || 'OK'})`
+      : `SMS #1 (+3d) registrado${realSmsRes?.error ? ` (aviso gateway: ${realSmsRes.error})` : ''}`;
+
     const { data, error } = await supabase.rpc('update_noshow_followup_step', {
       p_id: followupRow.id,
       p_action: 'send_sms_1',
-      p_notas: notas || `SMS #1 (+3d) despachado: "${msgs.sms1.slice(0, 120)}..."`,
+      p_notas: notas || `${smsTag}: "${msgs.sms1.slice(0, 120)}..."`,
     });
     if (error) return { success: false, error: error.message };
 
-    // Registrar traza real en interactions (best-effort sin romper el flujo)
-    try {
-      await supabase.from('interactions').insert([
-        {
-          hospital_id: followupRow.hospital_id || null,
-          patient_id: followupRow.patient_id,
-          tipo: 'sms',
-          estado: 'enviado',
-          mensaje: msgs.sms1,
-        },
-      ]);
-    } catch {
-      // No bloquear si el esquema difiere
-    }
-
-    return { success: true, data, messageSent: msgs.sms1 };
+    return { success: true, data, messageSent: msgs.sms1, realSms: realSmsRes };
   },
 
   async markPatientResponded(followupRow, { notas = null } = {}) {
@@ -144,36 +147,40 @@ export const noShowFollowupService = {
       followupRow.motivo_cita
     );
 
+    const [realSmsRes, realEmailRes] = await Promise.all([
+      followupRow.patient_phone
+        ? campaignDispatchService.sendIndividualSms({
+            patientId: followupRow.patient_id,
+            name: followupRow.patient_name,
+            document: followupRow.patient_document || '',
+            phone: followupRow.patient_phone,
+            message: msgs.sms2,
+            hospitalId: followupRow.hospital_id || null,
+            forceResend: true,
+          }).catch((e) => ({ success: false, error: e?.message }))
+        : Promise.resolve(null),
+      followupRow.patient_email
+        ? campaignDispatchService.sendIndividualEmail({
+            patientId: followupRow.patient_id,
+            name: followupRow.patient_name,
+            document: followupRow.patient_document || '',
+            email: followupRow.patient_email,
+            subject: msgs.emailSubject,
+            textBody: msgs.emailBody,
+            hospitalId: followupRow.hospital_id || null,
+          }).catch((e) => ({ success: false, error: e?.message }))
+        : Promise.resolve(null),
+    ]);
+
     const { data, error } = await supabase.rpc('update_noshow_followup_step', {
       p_id: followupRow.id,
       p_action: 'send_insistencia_2',
       p_notas:
         notas ||
-        `Insistencia (+2d tras SMS #1): 2° SMS y E-Mail enviados (${followupRow.patient_email || 'sin correo registrado, SMS confirmado'}).`,
+        `Insistencia (+2d tras SMS #1): 2° SMS (${realSmsRes?.success ? `OK P.${realSmsRes.winningPort || 13}` : 'registrado'}) y E-Mail (${realEmailRes?.success ? 'OK' : (followupRow.patient_email || 'sin correo')}).`,
     });
     if (error) return { success: false, error: error.message };
 
-    try {
-      await supabase.from('interactions').insert([
-        {
-          hospital_id: followupRow.hospital_id || null,
-          patient_id: followupRow.patient_id,
-          tipo: 'sms',
-          estado: 'enviado',
-          mensaje: msgs.sms2,
-        },
-        {
-          hospital_id: followupRow.hospital_id || null,
-          patient_id: followupRow.patient_id,
-          tipo: 'email',
-          estado: 'enviado',
-          mensaje: `${msgs.emailSubject} — ${msgs.emailBody}`,
-        },
-      ]);
-    } catch {
-      // No bloquear
-    }
-
-    return { success: true, data, smsSent: msgs.sms2, emailSubject: msgs.emailSubject };
+    return { success: true, data, smsSent: msgs.sms2, emailSubject: msgs.emailSubject, realSms: realSmsRes, realEmail: realEmailRes };
   },
 };

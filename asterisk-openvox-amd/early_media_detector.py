@@ -9,22 +9,26 @@ para abortar la llamada con $0 COP de cobro del carrier y notifica a SADI webhoo
 """
 
 from dataclasses import dataclass, field
+from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
 import math
 import os
+import smtplib
 import socket
+import ssl
 import struct
 import threading
 import time
 import unicodedata
 from typing import Callable, Optional
+from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 import base64
 
-from openvox_sms_router import OpenVoxHttpAndCliTransport, OpenVoxSmsRouter
+from openvox_sms_router import OpenVoxHttpAndCliTransport, OpenVoxSmsRouter, OpenVoxSshTransport
 
 # ------------------------------------------------------------------------------
 # TABLA DE DECODIFICACIÓN G.711 MU-LAW (ITU-T G.711) -> PCM16 LINEAL
@@ -686,14 +690,98 @@ def run_bridge_http_server():
 
     # Inicializar router SMS OpenVox multi-puerto (Puertos 1..32, sin Twilio)
     ports_env = os.environ.get("OPENVOX_SMS_PORTS", "")
-    configured_ports = [int(p.strip()) for p in ports_env.split(",") if p.strip().isdigit()] or list(range(1, 33))
-    sms_transport = OpenVoxHttpAndCliTransport(
-        gateway_host=os.environ.get("OPENVOX_GATEWAY_HOST", ""),
-        api_user=os.environ.get("OPENVOX_API_USER", "admin"),
-        api_pass=os.environ.get("OPENVOX_API_PASSWORD", ""),
-        use_asterisk_cli=os.environ.get("OPENVOX_USE_ASTERISK_CLI", "false").lower() == "true",
-    )
-    sms_router = OpenVoxSmsRouter(transport=sms_transport, ports=configured_ports)
+    configured_ports = [int(p.strip()) for p in ports_env.split(",") if p.strip().isdigit()] or [13] + [p for p in range(1, 33) if p != 13]
+    use_ssh_cli = os.environ.get("OPENVOX_USE_SSH_CLI", "false").lower() == "true"
+    if use_ssh_cli:
+        sms_transport = OpenVoxSshTransport(
+            ssh_host=os.environ.get("OPENVOX_SSH_HOST") or os.environ.get("OPENVOX_GATEWAY_HOST", "190.90.52.5"),
+            ssh_port=int(os.environ.get("OPENVOX_SSH_PORT", "12345")),
+            ssh_user=os.environ.get("OPENVOX_SSH_USER") or os.environ.get("OPENVOX_API_USER", "admin"),
+            ssh_pass=os.environ.get("OPENVOX_SSH_PASSWORD") or os.environ.get("OPENVOX_API_PASSWORD", ""),
+            status_poll_sec=float(os.environ.get("OPENVOX_SMS_POLL_SEC", "12.0")),
+        )
+    else:
+        sms_transport = OpenVoxHttpAndCliTransport(
+            gateway_host=os.environ.get("OPENVOX_GATEWAY_HOST", ""),
+            api_user=os.environ.get("OPENVOX_API_USER", "admin"),
+            api_pass=os.environ.get("OPENVOX_API_PASSWORD", ""),
+            use_asterisk_cli=os.environ.get("OPENVOX_USE_ASTERISK_CLI", "false").lower() == "true",
+        )
+    sms_router = OpenVoxSmsRouter(transport=sms_transport, ports=configured_ports, attempt_timeout_sec=18.0)
+
+    def _dispatch_email_smtp_or_resend(payload: dict) -> tuple[int, dict]:
+        to_email = str(payload.get("to") or "").strip()
+        subject = str(payload.get("subject") or "Notificación SADI Res. 3280").strip()
+        text_body = str(payload.get("text") or "").strip()
+        html_body = str(payload.get("html") or "").strip()
+        if not to_email or "@" not in to_email:
+            return 400, {"ok": False, "error": "Correo destino inválido"}
+
+        override = payload.get("smtpOverride") if isinstance(payload.get("smtpOverride"), dict) else {}
+        resend_key = str(override.get("resendApiKey") or os.environ.get("RESEND_API_KEY") or "").strip()
+        if resend_key:
+            from_addr = str(payload.get("fromEmail") or override.get("fromEmail") or os.environ.get("EMAIL_FROM") or "SADI Salud <onboarding@resend.dev>").strip()
+            body_json = json.dumps({
+                "from": from_addr,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body or f"<pre>{text_body}</pre>",
+                "text": text_body or subject,
+            }).encode("utf-8")
+            req = urlrequest.Request(
+                "https://api.resend.com/emails",
+                data=body_json,
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urlrequest.urlopen(req, timeout=15) as r:
+                    resp_d = json.loads(r.read().decode("utf-8", errors="ignore") or "{}")
+                    return 200, {"ok": True, "provider": "resend", "messageId": resp_d.get("id")}
+            except urlerror.HTTPError as he:
+                err_txt = he.read().decode("utf-8", errors="ignore")[:300]
+                return 502, {"ok": False, "provider": "resend", "error": f"Resend HTTP {he.code}: {err_txt}"}
+            except Exception as exc:
+                return 502, {"ok": False, "provider": "resend", "error": str(exc)}
+
+        smtp_host = str(override.get("host") or os.environ.get("SMTP_HOST") or "").strip()
+        smtp_port = int(override.get("port") or os.environ.get("SMTP_PORT") or "587")
+        smtp_user = str(override.get("user") or os.environ.get("SMTP_USER") or "").strip()
+        smtp_pass = str(override.get("pass") or os.environ.get("SMTP_PASS") or "").strip()
+        from_email = str(payload.get("fromEmail") or override.get("fromEmail") or os.environ.get("SMTP_FROM") or smtp_user or "notificaciones@sadi.apropiatic.com.co").strip()
+        from_name = str(payload.get("fromName") or os.environ.get("SMTP_FROM_NAME") or "SADI · Demanda Inducida Res. 3280").strip()
+
+        if not smtp_host or not smtp_user or not smtp_pass:
+            return 503, {
+                "ok": False,
+                "missingConfig": True,
+                "error": "SMTP/Resend no configurado (faltan SMTP_HOST, SMTP_USER, SMTP_PASS o RESEND_API_KEY).",
+            }
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = f"{from_name} <{from_email}>" if "<" not in from_email else from_email
+        msg["To"] = to_email
+        msg.set_content(text_body or subject)
+        if html_body:
+            msg.add_alternative(html_body, subtype="html")
+
+        try:
+            ctx = ssl.create_default_context()
+            if smtp_port == 465:
+                with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15, context=ctx) as srv:
+                    srv.login(smtp_user, smtp_pass)
+                    srv.send_message(msg)
+            else:
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
+                    srv.ehlo()
+                    srv.starttls(context=ctx)
+                    srv.ehlo()
+                    srv.login(smtp_user, smtp_pass)
+                    srv.send_message(msg)
+            return 200, {"ok": True, "provider": "smtp", "smtpHost": smtp_host, "messageId": msg.get("Message-ID") or f"smtp-{int(time.time()*1000)}"}
+        except Exception as exc:
+            return 502, {"ok": False, "provider": "smtp", "error": f"Error SMTP ({smtp_host}:{smtp_port}): {exc}"}
 
     class BridgeHandler(BaseHTTPRequestHandler):
         def _send(self, code: int, body: dict):
@@ -713,6 +801,16 @@ def run_bridge_http_server():
                 self._send(200, {
                     "ok": True,
                     "ports": {str(k): {"registered": v.registered, "rssi": v.signal_rssi, "operator": v.operator} for k, v in statuses.items()},
+                })
+                return
+            if self.path == "/sadi/email-status":
+                has_resend = bool(os.environ.get("RESEND_API_KEY", "").strip())
+                has_smtp = bool(os.environ.get("SMTP_HOST", "").strip() and os.environ.get("SMTP_USER", "").strip() and os.environ.get("SMTP_PASS", "").strip())
+                self._send(200, {
+                    "ok": True,
+                    "configured": has_resend or has_smtp,
+                    "provider": "resend" if has_resend else ("smtp" if has_smtp else None),
+                    "smtpHost": os.environ.get("SMTP_HOST", "").strip() or None,
                 })
                 return
             self._send(404, {"error": "Not found"})
@@ -753,6 +851,11 @@ def run_bridge_http_server():
                     "attempts": rep.attempts,
                     "errorReason": rep.error_reason,
                 })
+                return
+
+            if self.path == "/sadi/send-email":
+                code, resp = _dispatch_email_smtp_or_resend(data)
+                self._send(code, resp)
                 return
 
             if self.path == "/sadi/preanswer-call":

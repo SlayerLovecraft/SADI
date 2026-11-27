@@ -32,6 +32,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { campaignService } from '@/services/campaignService';
+import { campaignDispatchService } from '@/services/campaignDispatchService';
 import { templateService } from '@/services/templateService';
 import { segmentService } from '@/services/segmentService';
 import { supabase } from '@/lib/supabase';
@@ -212,6 +213,27 @@ const CampaignsPage = () => {
       }
 
       setCampaigns(combined);
+
+      // Disparar automáticamente SMS y Correos de campañas que arrancan HOY (idempotente por día)
+      campaignDispatchService.runDueCampaignsForToday(combined, { hospitalId: hId }).then((reports) => {
+        if (!Array.isArray(reports) || reports.length === 0) return;
+        const totalSms = reports.reduce((acc, r) => acc + Number(r?.sms?.enviados || 0), 0);
+        const totalEmail = reports.reduce((acc, r) => acc + Number(r?.email?.enviados || 0), 0);
+        const anyMissingEmailCfg = reports.some((r) => Boolean(r?.email?.missingConfig));
+        toast({
+          title: `🚀 Despacho Automático de Campañas de Hoy (${reports.length})`,
+          description: `SMS enviados (P. 13): ${totalSms} | Correos enviados: ${totalEmail}${anyMissingEmailCfg ? ' (configura SMTP/Resend para correo)' : ''}.`,
+        });
+        try {
+          const refreshedLocal = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+          if (Array.isArray(refreshedLocal)) {
+            setCampaigns((prev) => {
+              const byId = new Map(refreshedLocal.map((c) => [c.id, c]));
+              return prev.map((c) => byId.get(c.id) || c);
+            });
+          }
+        } catch { /* ignore */ }
+      }).catch(() => {});
     } catch (error) {
       console.error('Error en loadCampaigns:', error);
     }
@@ -387,10 +409,30 @@ const CampaignsPage = () => {
         console.error('Error guardando relanzamiento en localStorage:', e);
       }
 
-      toast({
-        title: "🚀 Campaña Relanzada con Éxito",
-        description: `Se programó para ${relaunchSchedule.selectedDates.length} fecha(s) en ${relaunchLugar}.`,
-      });
+      // Si el relanzamiento arranca HOY, disparar SMS y Correos correspondientes automáticamente
+      if (campaignDispatchService.isCampaignStartingToday(relanchedCampaign)) {
+        const ch = campaignDispatchService.extractCampaignChannels(relanchedCampaign);
+        if (ch.sms || ch.email) {
+          const disp = await campaignDispatchService.dispatchCampaignChannelsNow(relanchedCampaign, {
+            hospitalId,
+            force: false,
+          });
+          toast({
+            title: disp?.success ? "🚀 Campaña Relanzada y Despachada Hoy" : "🚀 Campaña Relanzada (Aviso de Envío)",
+            description: `SMS (P. 13): ${disp?.sms?.enviados || 0} enviado(s) | Correos: ${disp?.email?.enviados || 0} enviado(s)${disp?.email?.missingConfig ? ' (falta configurar SMTP/Resend)' : ''}.`,
+          });
+        } else {
+          toast({
+            title: "🚀 Campaña Relanzada con Éxito",
+            description: `Se programó para ${relaunchSchedule.selectedDates.length} fecha(s) en ${relaunchLugar}.`,
+          });
+        }
+      } else {
+        toast({
+          title: "🚀 Campaña Relanzada con Éxito",
+          description: `Se programó para ${relaunchSchedule.selectedDates.length} fecha(s) en ${relaunchLugar}.`,
+        });
+      }
 
       setShowRelaunchDialog(false);
       setSelectedCampaign(null);
@@ -463,6 +505,41 @@ const CampaignsPage = () => {
     }
     try {
       setSubmitting(true);
+      const channels = campaignDispatchService.extractCampaignChannels(campaign);
+      const isLocalCamp = String(campaign?.id || '').startsWith('camp_');
+
+      // Campañas del Cronograma (camp_*) o campañas con SMS/Email habilitados -> despacho directo real Puerto 13 + Correo
+      if (isLocalCamp || channels.sms || channels.email) {
+        const disp = await campaignDispatchService.dispatchCampaignChannelsNow(campaign, {
+          hospitalId,
+          force: true,
+        });
+
+        const smsSent = Number(disp?.sms?.enviados || 0);
+        const smsFail = Number(disp?.sms?.fallidos || 0);
+        const emailSent = Number(disp?.email?.enviados || 0);
+        const emailFail = Number(disp?.email?.fallidos || 0);
+        const emailMissingCfg = Boolean(disp?.email?.missingConfig);
+
+        const parts = [];
+        if (channels.sms) parts.push(`SMS (P. 13): ${smsSent} enviado(s)${smsFail ? `, ${smsFail} fallido(s)` : ''}`);
+        if (channels.email) {
+          parts.push(
+            emailMissingCfg
+              ? 'Correo: falta configurar SMTP/Resend'
+              : `Correo: ${emailSent} enviado(s)${emailFail ? `, ${emailFail} fallido(s)` : ''}`
+          );
+        }
+
+        toast({
+          title: disp?.success ? "✅ Campaña Emitida (SMS / Correo)" : "⚠️ Resultado de Emisión",
+          description: parts.length > 0 ? parts.join(' | ') : (disp?.error || 'Sin canales SMS/Correo seleccionados.'),
+          variant: disp?.success ? "default" : "destructive",
+        });
+        await loadCampaigns(hospitalId);
+        return;
+      }
+
       const result = await campaignService.sendNow(campaign.id);
 
       if (result.success) {
@@ -481,7 +558,7 @@ const CampaignsPage = () => {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Ocurrió un error al enviar la campaña",
+        description: error?.message || "Ocurrió un error al enviar la campaña",
         variant: "destructive"
       });
     } finally {

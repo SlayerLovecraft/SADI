@@ -1,5 +1,6 @@
 // @/lib/supabase.js
 import { createClient } from '@supabase/supabase-js'
+import { wrapSupabaseForLocalSinglePatient } from './localSinglePatientSandbox'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -32,7 +33,7 @@ const createTimeoutFetch = (baseFetch, timeoutMs) => {
 const supabaseFetch =
   typeof fetch === 'function' ? createTimeoutFetch(fetch, 15000) : undefined;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+const rawSupabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: supabaseFetch ? { fetch: supabaseFetch } : undefined,
   auth: {
     persistSession: true,
@@ -42,6 +43,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     schema: 'public'
   }
 })
+
+export const supabase = wrapSupabaseForLocalSinglePatient(rawSupabase)
 
 // Función de prueba de conexión
 export const testConnection = async () => {

@@ -177,11 +177,166 @@ export const handleSendSms = async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    const reqBody = (await req.json().catch(() => ({}))) as Record<string, any>;
+
+    // -------------------------------------------------------------------------
+    // MODO DIRECTO / CAMPAÑA LOCAL O INDIVIDUAL (OpenVox Puerto 13 con failover)
+    // Permite disparar SMS reales al arrancar campañas creadas en Cronograma (camp_*)
+    // o envíos individuales desde Demanda Res. 3280 / Inasistentes.
+    // -------------------------------------------------------------------------
+    if (reqBody?.mode === "direct" || Array.isArray(reqBody?.recipients)) {
+      const bridgeConfigured = Boolean(
+        (Deno.env.get("OPENVOX_BRIDGE_URL") || Deno.env.get("ASTERISK_ARI_URL") || "").trim(),
+      );
+      if (!bridgeConfigured) {
+        return jsonResponse(req, 503, {
+          success: false,
+          error: "OPENVOX_BRIDGE_URL no configurado en Supabase Edge Function Secrets.",
+        });
+      }
+
+      const rawRecipients = Array.isArray(reqBody.recipients) ? reqBody.recipients : [];
+      const onlyDoc = String(reqBody.onlyDocument || "").trim();
+      const baseMessage = String(reqBody.message || "").trim();
+      const campaignName = String(reqBody.campaignName || "Campaña SADI Res. 3280").trim();
+      const campaignIdRaw = String(reqBody.campaignId || "").trim();
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const safeCampaignUuid = uuidRe.test(campaignIdRaw) ? campaignIdRaw : null;
+      const hospitalId = uuidRe.test(String(reqBody.hospitalId || "")) ? String(reqBody.hospitalId) : null;
+      const preferredPorts = Array.isArray(reqBody.preferredPorts) && reqBody.preferredPorts.length > 0
+        ? reqBody.preferredPorts.map((p: unknown) => Number(p)).filter((n: number) => n >= 1 && n <= 32)
+        : [13];
+      const forceResend = Boolean(reqBody.forceResend);
+      const dateTag = String(reqBody.dateTag || new Date().toISOString().slice(0, 10));
+
+      if (!baseMessage) {
+        return jsonResponse(req, 400, { success: false, error: "message es requerido" });
+      }
+      if (rawRecipients.length === 0) {
+        return jsonResponse(req, 400, { success: false, error: "recipients es requerido (al menos 1 destinatario)" });
+      }
+
+      const maxDirect = Math.max(1, Math.min(200, Number(Deno.env.get("CAMPAIGN_SEND_MAX") || "200")));
+      const scopedRecipients = onlyDoc
+        ? rawRecipients.filter((r: any) => String(r?.document || r?.documento || r?.cc || "").trim() === onlyDoc)
+        : rawRecipients;
+      const targetList = scopedRecipients.slice(0, maxDirect);
+
+      let enviados = 0;
+      let entregados = 0;
+      let fallidos = 0;
+      let omitidos = 0;
+      const results: Record<string, unknown>[] = [];
+
+      for (const rec of targetList) {
+        const patId = uuidRe.test(String(rec?.patient_id || rec?.patientId || rec?.id || ""))
+          ? String(rec?.patient_id || rec?.patientId || rec?.id)
+          : null;
+        const patName = String(rec?.name || rec?.nombre || "Paciente").trim();
+        const firstName = patName.split(/\s+/)[0] || "Paciente";
+        const toPhone = normalizePhoneE164(String(rec?.phone || rec?.telefono || ""));
+
+        if (!toPhone) {
+          omitidos += 1;
+          results.push({ patientId: patId, name: patName, ok: false, status: "skipped_no_phone", error: "Sin teléfono válido" });
+          continue;
+        }
+
+        const personalizedBody = String(rec?.message || baseMessage)
+          .replaceAll("{paciente}", patName)
+          .replaceAll("{nombre}", firstName)
+          .replaceAll("{campana}", campaignName);
+
+        const idemKey = forceResend
+          ? `direct-${campaignIdRaw || "indiv"}-${patId || toPhone}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+          : `camp-auto-${campaignIdRaw || "direct"}-${dateTag}-${patId || toPhone}`;
+
+        const gw = await dispatchOpenVoxSmsWithFailover({
+          supabaseAdmin,
+          phoneNumber: toPhone,
+          message: personalizedBody,
+          idempotencyKey: idemKey,
+          patientId: patId,
+          campaignId: safeCampaignUuid,
+          hospitalId,
+          preferredPorts,
+        });
+
+        if (gw.ok) {
+          enviados += 1;
+          entregados += 1;
+
+          // Trazabilidad en interactions + incremento conteo_canales.sms (best-effort)
+          if (patId) {
+            await Promise.resolve(
+              supabaseAdmin.from("interactions").insert({
+                hospital_id: hospitalId,
+                patient_id: patId,
+                tipo: "sms",
+                estado: "enviado",
+                mensaje: personalizedBody,
+              } as any),
+            ).catch(() => null);
+
+            await Promise.resolve(
+              supabaseAdmin
+                .from("patients")
+                .select("conteo_canales")
+                .eq("patient_id", patId)
+                .maybeSingle()
+                .then(async ({ data: pRow }) => {
+                  const prev = (pRow as any)?.conteo_canales && typeof (pRow as any).conteo_canales === "object"
+                    ? (pRow as any).conteo_canales
+                    : { sms: 0, call: 0, email: 0, whatsapp: 0 };
+                  const next = { ...prev, sms: Number(prev.sms || 0) + 1 };
+                  await supabaseAdmin.from("patients").update({ conteo_canales: next } as any).eq("patient_id", patId);
+                }),
+            ).catch(() => null);
+          }
+
+          results.push({
+            patientId: patId,
+            name: patName,
+            phone: toPhone,
+            ok: true,
+            status: gw.status,
+            winningPort: gw.winningPort,
+            gatewayMessageId: gw.gatewayMessageId,
+          });
+        } else {
+          fallidos += 1;
+          results.push({
+            patientId: patId,
+            name: patName,
+            phone: toPhone,
+            ok: false,
+            status: gw.status,
+            portsAttempted: gw.portsAttempted,
+            purgedPorts: gw.purgedPorts,
+            error: gw.errorReason || "Error enviando SMS por OpenVox",
+          });
+        }
+      }
+
+      return jsonResponse(req, 200, {
+        success: enviados > 0 || (fallidos === 0 && targetList.length === 0),
+        mode: "direct",
+        campaignId: campaignIdRaw || null,
+        destinatarios: targetList.length,
+        procesados: targetList.length,
+        enviados,
+        entregados,
+        fallidos,
+        omitidos,
+        results,
+      });
+    }
+
     const caller = getCallerFromRequest(req);
     if (!caller?.callerId) return jsonResponse(req, 401, { error: "Unauthorized" });
     const callerId = caller.callerId;
 
-    const { campaignId } = (await req.json().catch(() => ({}))) as { campaignId?: string };
+    const { campaignId, onlyDocument } = reqBody as { campaignId?: string; onlyDocument?: string };
     if (!campaignId) return jsonResponse(req, 400, { error: "campaignId es requerido" });
 
     const resolveHospitalIdForCaller = async () => {
@@ -255,10 +410,16 @@ export const handleSendSms = async (req: Request) => {
       }
     }
 
-    const { data: patients, error: patientsError } = await supabaseAdmin
+    let patientsQuery = supabaseAdmin
       .from("patients")
-      .select("patient_id, name, phone, birthdate, sex, city, program, sms_opt_in")
+      .select("patient_id, name, phone, document, birthdate, sex, city, program, sms_opt_in")
       .eq("hospital_id", segmentRow.hospital_id);
+
+    if (onlyDocument && String(onlyDocument).trim()) {
+      patientsQuery = patientsQuery.eq("document", String(onlyDocument).trim());
+    }
+
+    const { data: patients, error: patientsError } = await patientsQuery;
 
     if (patientsError) return jsonResponse(req, 500, { error: patientsError.message });
 

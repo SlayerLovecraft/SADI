@@ -44,6 +44,7 @@ import {
 import { NOSHOW_POLICY } from '@/services/noShowFollowupService';
 import { demanda3280Service } from '@/services/demanda3280Service';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import { campaignDispatchService } from '@/services/campaignDispatchService';
 import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -214,7 +215,7 @@ function ResolutionAnnualMatrix({
     call: true,
     whatsapp: true,
     sms: true,
-    email: false,
+    email: true,
   });
   const [retryUntilAnswer, setRetryUntilAnswer] = useState(true);
   const [maxRetries, setMaxRetries] = useState(3);
@@ -910,8 +911,8 @@ function ResolutionAnnualMatrix({
     ]
   );
 
-  // Guardar y Lanzar Campaña
-  const handleLaunchCampaign = () => {
+  // Guardar y Lanzar Campaña (si arranca HOY, despacha automáticamente SMS y Correos correspondientes)
+  const handleLaunchCampaign = async () => {
     let effectiveCrossCursos = crossSegmentSelection;
     if (doctorAccess.restricted) {
       if (doctorAccess.keys.length === 0) {
@@ -966,9 +967,11 @@ function ResolutionAnnualMatrix({
       const riesgos = getPatientGruposRiesgo(p);
       return {
         id: p.id,
+        patient_id: p.patient_id || p.id,
         nombre: p.nombre,
         documento: p.documento || p.cc,
         telefono: p.telefono,
+        email: p.email || null,
         edad: p.edad,
         curso_vida: cv.nombre,
         cursoVidaId: cv.id,
@@ -1030,6 +1033,7 @@ function ResolutionAnnualMatrix({
       pacientes_detalle: assignedPatientsList,
       enviados: 0,
       entregados: 0,
+      fecha_programada: firstDate || null,
     };
 
     try {
@@ -1041,14 +1045,64 @@ function ResolutionAnnualMatrix({
       console.error('Error guardando campaña:', e);
     }
 
+    setIsModalOpen(false);
+
+    const startsToday = campaignDispatchService.isCampaignStartingToday(newCampaign);
+    if (startsToday && (selectedChannels.sms || selectedChannels.email)) {
+      toast({
+        title: '🚀 Campaña Arranca HOY · Despachando SMS y Correos...',
+        description: `Enviando comunicaciones automáticas para "${newCampaign.nombre}" (${assignedPatientsList.length || effectiveTargetCount} paciente(s)).`,
+      });
+      try {
+        const dispatchReport = await campaignDispatchService.dispatchCampaignChannelsNow(newCampaign, {
+          hospitalId: safeHospitalUuid(user),
+          force: false,
+        });
+        const smsSent = Number(dispatchReport?.sms?.enviados || 0);
+        const smsFail = Number(dispatchReport?.sms?.fallidos || 0);
+        const emailSent = Number(dispatchReport?.email?.enviados || 0);
+        const emailFail = Number(dispatchReport?.email?.fallidos || 0);
+        const emailMissingCfg = Boolean(dispatchReport?.email?.missingConfig);
+
+        const parts = [];
+        if (selectedChannels.sms) {
+          parts.push(`SMS (P. 13): ${smsSent} enviado(s)${smsFail > 0 ? `, ${smsFail} fallido(s)` : ''}`);
+        }
+        if (selectedChannels.email) {
+          parts.push(
+            emailMissingCfg
+              ? 'Correo: falta configurar SMTP/Resend en servidor'
+              : `Correo: ${emailSent} enviado(s)${emailFail > 0 ? `, ${emailFail} fallido(s)` : ''}`
+          );
+        }
+
+        // Refrescar campañas en memoria tras actualizar contadores en localStorage
+        try {
+          const refreshed = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+          if (Array.isArray(refreshed)) setExistingCampaigns(refreshed);
+        } catch { /* ignore */ }
+
+        toast({
+          title: dispatchReport?.success ? '✅ Campaña de HOY Despachada' : '⚠️ Campaña Guardada con Alertas de Envío',
+          description: `"${newCampaign.nombre}" · ${parts.join(' | ')}.`,
+          variant: dispatchReport?.success ? 'default' : 'destructive',
+        });
+      } catch (err) {
+        toast({
+          title: '⚠️ Campaña guardada, error en envío automático',
+          description: err?.message || 'No se pudo completar el despacho automático de SMS/Correo.',
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
+
     toast({
       title: 'Campaña Programada con Control de Aforo (500/día)',
       description: liveCapacityCheck.hasOverflow
         ? `"${newCampaign.nombre}" agendada en ${locationFilterSummary}: ${liveCapacityCheck.voiceAssignedTotal.toLocaleString('es-CO')} llamadas IA + ${liveCapacityCheck.smsOverflowTotal.toLocaleString('es-CO')} respaldos SMS (R1-04).`
         : `"${newCampaign.nombre}" agendada en ${locationFilterSummary} dentro del límite real de ${DAILY_CALL_CAPACITY} llamadas IA/día.`,
     });
-
-    setIsModalOpen(false);
   };
 
   // Renderizado reutilizable de una fila del calendario unificado (Curso de Vida o Grupo de Riesgo)

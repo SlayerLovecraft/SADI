@@ -485,20 +485,36 @@ export const roadmapService = {
 
   /**
    * Obtiene el Roadmap de Llamadas Individuales o Particulares
+   * Enriquece SIEMPRE con datos reales de public.patients (nombre, cédula, curso_vida, grupos_riesgo)
+   * y unifica ai_contact_evidence + vapi_agent_sessions para que los LOGs muestren al paciente exacto.
    */
   async getIndividualCallsRoadmap(hospitalId = DEFAULT_HOSPITAL_ID, year = new Date().getFullYear(), month = new Date().getMonth() + 1) {
     try {
-      // 1. Consultar evidencias de contacto en Supabase
-      const { data: dbLogs, error } = await supabase
-        .from('ai_contact_evidence')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // 1. Consultar evidencias de contacto y sesiones Vapi reales en Supabase
+      const [evRes, vapiRes] = await Promise.all([
+        supabase
+          .from('ai_contact_evidence')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(300),
+        supabase
+          .from('vapi_agent_sessions')
+          .select('id, vapi_call_id, patient_id, hospital_id, telefono_llamado, motivo_llamada, estado_llamada, duracion_segundos, transcripcion_completa, resumen_ia, deteccion_buzon, motivo_corte, created_at, updated_at')
+          .order('created_at', { ascending: false })
+          .limit(300),
+      ]);
 
-      if (error) {
-        console.warn('Error consultando ai_contact_evidence:', error);
+      if (evRes.error) {
+        console.warn('Error consultando ai_contact_evidence:', evRes.error);
+      }
+      if (vapiRes.error) {
+        console.warn('Error consultando vapi_agent_sessions:', vapiRes.error);
       }
 
-      // 2. Consultar registros locales por si se ejecutaron llamadas recientes
+      const dbLogs = Array.isArray(evRes.data) ? evRes.data : [];
+      const vapiSessions = Array.isArray(vapiRes.data) ? vapiRes.data : [];
+
+      // 2. Consultar registros locales por si se ejecutaron llamadas/SMS recientes
       let localLogs = [];
       try {
         const stored = localStorage.getItem('sadi_individual_calls_log');
@@ -509,27 +525,119 @@ export const roadmapService = {
         console.warn('Error leyendo localLogs:', e);
       }
 
-      // 3. Unificar registros evitando duplicados por ID
-      const unified = [...localLogs, ...(dbLogs || [])];
+      // 3. Enriquecer evidencias con el motivo real de vapi_agent_sessions y agregar sesiones Vapi sin evidencia gemela
+      const matchedSessionIds = new Set();
+      const enrichedDbLogs = dbLogs.map((ev) => {
+        const evTs = ev.created_at ? new Date(ev.created_at).getTime() : 0;
+        const matchSess = vapiSessions.find((s) => {
+          if (ev.patient_id && s.patient_id && String(ev.patient_id) !== String(s.patient_id)) return false;
+          const sTs = s.created_at ? new Date(s.created_at).getTime() : 0;
+          return Math.abs(evTs - sTs) <= 10 * 60 * 1000;
+        });
+        if (matchSess) matchedSessionIds.add(matchSess.id);
+        const rawMotivo = String(ev.motivo_contacto || '').trim();
+        const isGenericMotivo = !rawMotivo || rawMotivo === 'recordatorio_demanda_3280';
+        return {
+          ...ev,
+          motivo_contacto: (isGenericMotivo && matchSess?.motivo_llamada) ? matchSess.motivo_llamada : (rawMotivo || matchSess?.motivo_llamada || 'Demanda Inducida Individual Res. 3280'),
+          resumen_clinico_ia: (ev.resumen_clinico_ia && ev.resumen_clinico_ia !== 'Contacto telefónico procesado')
+            ? ev.resumen_clinico_ia
+            : (matchSess?.resumen_ia || ev.resumen_clinico_ia),
+          transcripcion_dialogo: (ev.transcripcion_dialogo && (!Array.isArray(ev.transcripcion_dialogo) || ev.transcripcion_dialogo.length > 0))
+            ? ev.transcripcion_dialogo
+            : (matchSess?.transcripcion_completa || ev.transcripcion_dialogo),
+        };
+      });
+
+      const unmatchedVapiAsLogs = vapiSessions
+        .filter((s) => !matchedSessionIds.has(s.id))
+        .map((s) => {
+          const st = String(s.estado_llamada || '').toLowerCase();
+          const ok = ['completada', 'completed', 'exitosa', 'answered'].includes(st);
+          return {
+            id: `vapi_${s.id}`,
+            patient_id: s.patient_id || null,
+            canal: 'Llamada Saliente GSM (Puerto 13)',
+            motivo_contacto: s.motivo_llamada || 'Demanda Inducida Individual Res. 3280',
+            telefono_destino: s.telefono_llamado || '',
+            duracion_segundos: Number(s.duracion_segundos || 0),
+            resultado_contacto: ok ? 'Efectiva' : (st === 'buzon_cortado' ? 'Buzón Cortado' : (st === 'en_curso' ? 'En Curso' : 'No Contesta')),
+            paciente_acepto_cita: ok,
+            resumen_clinico_ia: s.resumen_ia || (ok ? 'Llamada atendida correctamente por el paciente.' : `Sin contacto efectivo (${s.motivo_corte || st || 'no_contesta'}).`),
+            transcripcion_dialogo: s.transcripcion_completa || (ok ? 'Conversación completada.' : `Resultado técnico: ${s.motivo_corte || st || 'sin respuesta'}.`),
+            created_at: s.created_at,
+          };
+        });
+
+      // 4. Unificar registros evitando duplicados por ID o mismo paciente+teléfono en ventana de 30s
+      const unified = [...enrichedDbLogs, ...unmatchedVapiAsLogs, ...localLogs];
       const seen = new Set();
       const unique = [];
 
       for (const item of unified) {
-        const key = item.id || `${item.telefono_destino}_${item.created_at}`;
+        const key = item.id || `${item.patient_id || ''}_${item.telefono_destino}_${item.created_at}`;
         if (!seen.has(key)) {
           seen.add(key);
           unique.push(item);
         }
       }
 
-      // 4. Filtrar por el año y mes seleccionado
-      const filtered = unique.filter(log => {
+      // 5. Filtrar por año/mes (si se especifica)
+      const filtered = unique.filter((log) => {
         if (!log.created_at) return true;
         const d = new Date(log.created_at);
         return d.getFullYear() === Number(year) && (d.getMonth() + 1) === Number(month);
       });
 
-      // 5. Mapear en formato limpio
+      // 6. Consultar en lote la tabla real public.patients por patient_id y/o teléfono
+      const patientIds = [...new Set(filtered.map((l) => l.patient_id).filter(Boolean))];
+      const phonesRaw = [...new Set(filtered.map((l) => String(l.telefono_destino || l.phone || '').trim()).filter(Boolean))];
+      const patientsById = new Map();
+      const patientsByPhone = new Map();
+
+      const normPhone10 = (ph) => {
+        const d = String(ph || '').replace(/\D+/g, '');
+        return d.length >= 10 ? d.slice(-10) : d;
+      };
+
+      if (patientIds.length > 0) {
+        const { data: patRows } = await supabase
+          .from('patients')
+          .select('patient_id, name, document, tipo_documento, phone, email, curso_vida, grupo_riesgo, grupos_riesgo, birthdate, sex, program')
+          .in('patient_id', patientIds);
+        for (const p of patRows || []) {
+          patientsById.set(String(p.patient_id), p);
+          const p10 = normPhone10(p.phone);
+          if (p10) patientsByPhone.set(p10, p);
+        }
+      }
+
+      // Fallback de búsqueda por teléfono para logs legacy sin patient_id
+      const missingPhoneLogs = filtered.filter((l) => !l.patient_id || !patientsById.has(String(l.patient_id)));
+      if (missingPhoneLogs.length > 0 && phonesRaw.length > 0) {
+        const candidatePhones = [];
+        for (const ph of phonesRaw) {
+          const p10 = normPhone10(ph);
+          if (p10 && !patientsByPhone.has(p10)) {
+            candidatePhones.push(ph, `+57${p10}`, p10);
+          }
+        }
+        if (candidatePhones.length > 0) {
+          const { data: phRows } = await supabase
+            .from('patients')
+            .select('patient_id, name, document, tipo_documento, phone, email, curso_vida, grupo_riesgo, grupos_riesgo, birthdate, sex, program')
+            .in('phone', [...new Set(candidatePhones)].slice(0, 100));
+          for (const p of phRows || []) {
+            patientsById.set(String(p.patient_id), p);
+            const p10 = normPhone10(p.phone);
+            if (p10) patientsByPhone.set(p10, p);
+          }
+        }
+      }
+
+      // 7. Ordenar más reciente primero y mapear con datos REALES del paciente
+      filtered.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
       return filtered.map((log, idx) => {
         const createdDate = log.created_at ? new Date(log.created_at) : new Date();
         const fechaHoraFormateada = createdDate.toLocaleString('es-CO', {
@@ -542,32 +650,53 @@ export const roadmapService = {
           hour12: true
         });
 
+        const pat = (log.patient_id && patientsById.get(String(log.patient_id)))
+          || patientsByPhone.get(normPhone10(log.telefono_destino || log.phone))
+          || null;
+
         const isEfectiva = log.resultado_contacto === 'Efectiva' ||
           log.resultado_contacto === 'contactado_exitoso' ||
+          log.resultado_contacto === 'Enviado' ||
           log.paciente_acepto_cita === true ||
           log.paciente_confirmo_sintomas === true;
 
+        const resolvedCurso = pat?.curso_vida || log.curso_vida || log.cursoVida || null;
+        const resolvedGrupos = Array.isArray(pat?.grupos_riesgo) && pat.grupos_riesgo.length > 0
+          ? pat.grupos_riesgo
+          : (Array.isArray(log.grupos_riesgo) ? log.grupos_riesgo : (pat?.grupo_riesgo ? [pat.grupo_riesgo] : []));
+        const resolvedGrupo = pat?.grupo_riesgo || resolvedGrupos[0] || log.grupo_riesgo || null;
+        const resolvedDoc = pat?.document
+          ? `${pat.tipo_documento || 'CC'} ${pat.document}`
+          : (log.documento || log.patient_document || 'Sin documento');
+
         return {
           id: log.id || `indiv_${idx}`,
-          patient_id: log.patient_id || null,
-          curso_vida: log.curso_vida || null,
+          patient_id: pat?.patient_id || log.patient_id || null,
+          curso_vida: resolvedCurso,
+          cursoVida: resolvedCurso,
+          grupo_riesgo: resolvedGrupo,
+          grupoRiesgo: resolvedGrupo,
+          grupos_riesgo: resolvedGrupos,
+          gruposRiesgo: resolvedGrupos,
+          birthdate: pat?.birthdate || null,
           fechaHora: fechaHoraFormateada,
           rawDate: createdDate,
           diaNumero: createdDate.getDate(),
           hora: createdDate.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true }),
-          pacienteNombre: log.paciente_nombre || log.patient_name || 'Paciente Particular',
-          documento: log.documento || log.patient_document || 'CC 1234567890',
-          telefono: log.telefono_destino || log.phone || '+573057120876',
+          pacienteNombre: pat?.name || log.paciente_nombre || log.patient_name || 'Paciente no identificado',
+          documento: resolvedDoc,
+          telefono: log.telefono_destino || pat?.phone || log.phone || 'Sin teléfono',
+          email: pat?.email || null,
           canal: log.canal || 'Llamada Saliente GSM (Puerto 13)',
           motivoContacto: log.motivo_contacto || 'Demanda Inducida Individual Res. 3280',
-          resultado: isEfectiva ? 'Efectiva' : (log.resultado_contacto || 'No Contesta'),
-          duracionSegundos: log.duracion_segundos || 65,
-          resumenClinico: log.resumen_clinico_ia || 'Paciente atendió llamada del Agente IA y confirmó datos de atención preventiva.',
+          resultado: log.resultado_contacto === 'Enviado' ? 'Enviado' : (isEfectiva ? 'Efectiva' : (log.resultado_contacto || 'No Contesta')),
+          duracionSegundos: Number(log.duracion_segundos ?? 0),
+          resumenClinico: log.resumen_clinico_ia || 'Contacto procesado por el motor SADI.',
           transcripcion: typeof log.transcripcion_dialogo === 'string'
             ? log.transcripcion_dialogo
-            : Array.isArray(log.transcripcion_dialogo)
+            : Array.isArray(log.transcripcion_dialogo) && log.transcripcion_dialogo.length > 0
               ? log.transcripcion_dialogo.map(m => `${m.role || m.speaker || 'Agente'}: ${m.message || m.text || ''}`).join('\n')
-              : 'Agente: Buenas tardes. Le informamos que autoriza el tratamiento de sus datos de salud... Paciente: De acuerdo, confirmo mi asistencia.'
+              : 'Sin transcripción registrada para este contacto.'
         };
       });
     } catch (e) {

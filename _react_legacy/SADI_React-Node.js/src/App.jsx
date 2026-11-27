@@ -9,6 +9,7 @@ import { ToastProvider } from "@/components/ui/toaster";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import CallTraceFallbackDock from "@/components/CallTraceFallbackDock";
+import LocalSandboxBanner from "@/components/LocalSandboxBanner";
 
 // Auth Pages (Lazy-loaded)
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
@@ -57,6 +58,7 @@ function App() {
             <title>SADI - Sistema de Ayuda para Demanda Integrado</title>
           </Helmet>
           <div className="min-h-screen bg-gray-50">
+            <LocalSandboxBanner />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 {/* ============================================ */}

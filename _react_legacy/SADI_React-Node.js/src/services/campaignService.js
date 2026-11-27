@@ -1,5 +1,6 @@
 // src/services/campaignService.js
 import { supabase } from '@/lib/supabase.js';
+import { getLocalSinglePatientDoc } from '@/lib/localSinglePatientSandbox';
 import { segmentService } from './segmentService.js';
 import { isSupabaseAuthError, withTimeout } from '@/lib/utils';
 
@@ -381,8 +382,12 @@ export const campaignService = {
 
       console.log('📡 [sendNow] Llamando a Edge Function...');
 
+      const onlyDoc = getLocalSinglePatientDoc();
       const invokePromise = supabase.functions.invoke('send-sms', {
-        body: { campaignId: campaignId }
+        body: {
+          campaignId: campaignId,
+          ...(onlyDoc ? { onlyDocument: onlyDoc } : {}),
+        }
       });
 
       const timeoutMs = 45000;

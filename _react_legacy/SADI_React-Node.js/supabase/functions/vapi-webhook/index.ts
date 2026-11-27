@@ -277,7 +277,7 @@ Deno.serve(async (req) => {
             .insert({
               patient_id: metadata.patientId,
               canal: "call_ia",
-              motivo_contacto: "recordatorio_demanda_3280",
+              motivo_contacto: String(metadata?.motivoLlamada || "Demanda Inducida Res. 3280"),
               telefono_destino: String(callObj?.customer?.number || "desconocido"),
               duracion_segundos: billableDuration,
               transcripcion_dialogo: transcript ? [{ role: "transcript", text: transcript }] : [],

@@ -32,6 +32,7 @@ import { patientService } from '@/services/patientService';
 import { staffService } from '@/services/staffService';
 import { CURSOS_DE_VIDA_3280, PROGRAMAS_Y_TAMIZAJES_3280 } from '@/services/rias3280Catalog';
 import { liveCallLifecycleService } from '@/services/liveCallLifecycleService';
+import { campaignDispatchService } from '@/services/campaignDispatchService';
 import LiveCallButton, { useDailyCallQuota, DailyQuotaBadge } from '@/components/LiveCallButton';
 import { roadmapService } from '@/services/roadmapService';
 import MonthlyInteractionsListTable from '@/components/MonthlyInteractionsListTable';
@@ -327,10 +328,49 @@ export default function Rias3280ManagementPage() {
       return;
     }
 
-    // Canales de mensajería (WhatsApp / SMS)
+    // Canales de mensajería (SMS Real Puerto 13 / WhatsApp)
     setSending(true);
     try {
       const channelLabel = selectedChannel === 'whatsapp' ? 'WhatsApp' : 'SMS';
+      const compiledMsg = compileDynamicScript();
+
+      if (selectedChannel === 'sms') {
+        const smsRes = await campaignDispatchService.sendIndividualSms({
+          patientId: selectedPatient.id,
+          name: selectedPatient.nombre,
+          document: selectedPatient.documento,
+          phone: selectedPatient.telefono,
+          message: compiledMsg,
+          hospitalId: user?.hospitalId || user?.hospital_id || null,
+          forceResend: true,
+        });
+
+        if (!smsRes.success) {
+          throw new Error(smsRes.error || 'OpenVox no pudo despachar el SMS por Puerto 13');
+        }
+
+        await roadmapService.registerIndividualCall({
+          patientId: selectedPatient.id,
+          pacienteNombre: selectedPatient.nombre,
+          documento: selectedPatient.documento,
+          telefono: selectedPatient.telefono,
+          canal: `SMS OpenVox (Puerto ${smsRes.winningPort || 13})`,
+          motivoContacto: `${selectedProgram.id} - ${selectedProgram.nombre}`,
+          resultado: 'Enviado',
+          duracionSegundos: 0,
+          aceptoCita: false,
+          resumenClinico: `SMS REAL despachado a ${selectedPatient.nombre} (${selectedPatient.telefono}) por Puerto ${smsRes.winningPort || 13}. ID Gateway: ${smsRes.gatewayMessageId || 'OK'}.`,
+          transcripcion: compiledMsg
+        });
+
+        toast({
+          title: `✅ SMS Enviado por Puerto ${smsRes.winningPort || 13}`,
+          description: `SMS entregado a ${selectedPatient.nombre} (${selectedPatient.telefono}). ID: ${smsRes.gatewayMessageId || 'OK'}.`
+        });
+        await loadLogs();
+        return;
+      }
+
       await roadmapService.registerIndividualCall({
         patientId: selectedPatient.id,
         pacienteNombre: selectedPatient.nombre,
@@ -342,7 +382,7 @@ export default function Rias3280ManagementPage() {
         duracionSegundos: 0,
         aceptoCita: false,
         resumenClinico: `Mensaje ${channelLabel} despachado a ${selectedPatient.nombre} para ${selectedProgram.nombre}.`,
-        transcripcion: compileDynamicScript()
+        transcripcion: compiledMsg
       });
 
       toast({

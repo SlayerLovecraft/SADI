@@ -188,6 +188,176 @@ class OpenVoxHttpAndCliTransport:
         return purged
 
 
+class OpenVoxSshTransport:
+    """
+    Transporte SSH directo al Gateway OpenVox (ej. 190.90.52.5:12345) usando
+    `/my_tools/sms_send_cli` + `asterisk -rx "gsm show spans"`.
+    Funciona incluso cuando [http_to_sms] está apagado en el Gateway y soporta
+    UTF-8/tildes en español mediante --message-b64 + verificación --status <uuid>.
+    """
+
+    def __init__(
+        self,
+        ssh_host: str,
+        ssh_port: int = 12345,
+        ssh_user: str = "admin",
+        ssh_pass: str = "",
+        status_poll_sec: float = 12.0,
+    ):
+        self.ssh_host = ssh_host.strip()
+        self.ssh_port = int(ssh_port or 12345)
+        self.ssh_user = ssh_user or "admin"
+        self.ssh_pass = ssh_pass or ""
+        self.status_poll_sec = max(3.0, float(status_poll_sec))
+
+    def _run_ssh(self, remote_cmd: str, timeout_sec: float = 15.0) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        env["SSHPASS"] = self.ssh_pass
+        cmd = [
+            "sshpass", "-e",
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "HostKeyAlgorithms=+ssh-rsa",
+            "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa",
+            "-o", "ConnectTimeout=6",
+            "-p", str(self.ssh_port),
+            f"{self.ssh_user}@{self.ssh_host}",
+            remote_cmd,
+        ]
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec, env=env)
+
+    @staticmethod
+    def _normalize_dest_for_openvox(to_phone: str) -> str:
+        digits = "".join(ch for ch in str(to_phone or "") if ch.isdigit())
+        if len(digits) == 12 and digits.startswith("57"):
+            return digits[2:]
+        if len(digits) == 10:
+            return digits
+        return digits or str(to_phone or "").strip()
+
+    def get_ports_status(self) -> Dict[int, PortStatus]:
+        statuses: Dict[int, PortStatus] = {}
+        if not self.ssh_host:
+            return statuses
+        try:
+            proc = self._run_ssh('asterisk -rx "gsm show spans"', timeout_sec=10.0)
+            out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+            for line in out.splitlines():
+                low = line.lower()
+                if "gsm span " in low and ":" in low:
+                    after = low.split("gsm span ", 1)[1]
+                    num_tok = after.split(":", 1)[0].strip()
+                    if num_tok.isdigit():
+                        p = int(num_tok)
+                        is_up = ("up" in low and "active" in low and "no signal" not in low)
+                        statuses[p] = PortStatus(
+                            port=p,
+                            registered=is_up,
+                            signal_rssi=28 if is_up else 0,
+                            operator="Claro/GSM" if is_up else "NO_SIGNAL",
+                        )
+        except Exception:
+            pass
+        return statuses
+
+    def send_sms_on_port(
+        self,
+        port: int,
+        to_phone: str,
+        message: str,
+        msg_tag: str,
+        timeout_sec: float = 18.0,
+    ) -> SmsAttemptResult:
+        if not self.ssh_host:
+            return SmsAttemptResult(port=port, ok=False, outcome="modem_error", raw_response="OPENVOX_SSH_HOST no configurado")
+
+        dest = self._normalize_dest_for_openvox(to_phone)
+        b64_msg = base64.b64encode(message.encode("utf-8")).decode("ascii")
+        remote_cmd = (
+            f"/my_tools/sms_send_cli --port {int(port)} --to {dest} "
+            f"--message-b64 {b64_msg} --retry 0 --smsreport 1"
+        )
+        try:
+            proc = self._run_ssh(remote_cmd, timeout_sec=max(12.0, timeout_sec))
+            raw = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+            # Extraer JSON de la salida (saltando banner OpenVox si aparece)
+            json_line = ""
+            for ln in reversed(raw.splitlines()):
+                s = ln.strip()
+                if s.startswith("{") and s.endswith("}"):
+                    json_line = s
+                    break
+            if not json_line:
+                return SmsAttemptResult(port=port, ok=False, outcome="modem_error", raw_response=raw[:400])
+
+            payload = json.loads(json_line)
+            code = int(payload.get("code", 0) or 0)
+            infos = (((payload.get("data") or {}).get("send_list") or {}).get("send_infos") or [])
+            uuid_val = infos[0].get("uuid") if infos and isinstance(infos[0], dict) else None
+
+            if code != 200 or not uuid_val:
+                low = raw.lower()
+                outcome = "no_signal" if ("signal" in low or "down" in low or "reject" in low) else "modem_error"
+                return SmsAttemptResult(port=port, ok=False, outcome=outcome, raw_response=json_line[:400])
+
+            # Consultar estado real de entrega en OpenVox (--status <uuid>)
+            deadline = time.monotonic() + min(self.status_poll_sec, max(4.0, timeout_sec - 2.0))
+            last_status_raw = json_line
+            while time.monotonic() < deadline:
+                time.sleep(1.5)
+                try:
+                    st_proc = self._run_ssh(f"/my_tools/sms_send_cli --status {uuid_val}", timeout_sec=8.0)
+                    st_out = ((st_proc.stdout or "") + "\n" + (st_proc.stderr or "")).strip()
+                    for ln in reversed(st_out.splitlines()):
+                        s = ln.strip()
+                        if s.startswith("{") and s.endswith("}"):
+                            last_status_raw = s
+                            st_json = json.loads(s)
+                            st_val = str((st_json.get("data") or {}).get("status") or "").upper()
+                            if st_val in ("DELIVERED", "SENT", "SUCCESS", "OK"):
+                                return SmsAttemptResult(
+                                    port=port,
+                                    ok=True,
+                                    outcome="sent",
+                                    gateway_message_id=uuid_val,
+                                    raw_response=s[:400],
+                                )
+                            if st_val in ("FAILED", "FAIL", "ERROR", "REJECTED", "TIMEOUT"):
+                                return SmsAttemptResult(
+                                    port=port,
+                                    ok=False,
+                                    outcome="modem_error",
+                                    gateway_message_id=uuid_val,
+                                    raw_response=s[:400],
+                                )
+                            break
+                except Exception:
+                    break
+
+            # Si sigue en cola después de esperar pero fue aceptado (code 200), reportar como enviado/aceptado
+            return SmsAttemptResult(
+                port=port,
+                ok=True,
+                outcome="sent",
+                gateway_message_id=uuid_val,
+                raw_response=last_status_raw[:400],
+            )
+        except subprocess.TimeoutExpired:
+            return SmsAttemptResult(port=port, ok=False, outcome="timeout", raw_response="SSH sms_send_cli timeout")
+        except Exception as exc:
+            return SmsAttemptResult(port=port, ok=False, outcome="modem_error", raw_response=str(exc))
+
+    def purge_port_message(self, port: int, msg_tag: str, to_phone: str) -> bool:
+        if not self.ssh_host:
+            return False
+        try:
+            self._run_ssh(f'asterisk -rx "gsm clean sms {int(port)}"', timeout_sec=6.0)
+            return True
+        except Exception:
+            return False
+
+
 @dataclass
 class SmsDispatchReport:
     ok: bool
