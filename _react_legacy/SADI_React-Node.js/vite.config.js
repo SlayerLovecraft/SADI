@@ -7,6 +7,22 @@ function localEmailDevPlugin(env) {
   return {
     name: 'sadi-local-email-dev-middleware',
     configureServer(server) {
+      server.middlewares.use('/api/local-email-status', (req, res) => {
+        const resendKey = (env.LOCAL_RESEND_API_KEY || '').trim();
+        const smtpHost = (env.LOCAL_SMTP_HOST || '').trim();
+        const smtpUser = (env.LOCAL_SMTP_USER || '').trim();
+        const smtpPass = (env.LOCAL_SMTP_PASS || '').trim();
+        const configured = Boolean(resendKey || (smtpHost && smtpUser && smtpPass));
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          ok: true,
+          configured,
+          provider: resendKey ? 'resend_local' : (smtpHost && smtpUser && smtpPass ? 'smtp_local' : null),
+          smtpHost: smtpHost || null,
+        }));
+      });
+
       server.middlewares.use('/api/local-send-email', async (req, res) => {
         if (req.method === 'OPTIONS') {
           res.statusCode = 200;
@@ -51,6 +67,10 @@ function localEmailDevPlugin(env) {
           return;
         }
 
+        const campName = String(body.campaignName || 'Campaña Res. 3280').trim();
+        const sede = String(body.sede || 'Hospital Central SADI').trim();
+        const fecha = String(body.fecha || new Date().toISOString().slice(0, 10)).trim();
+
         let enviados = 0;
         let fallidos = 0;
         let omitidos = 0;
@@ -64,12 +84,18 @@ function localEmailDevPlugin(env) {
             results.push({ name, ok: false, status: 'skipped_no_email' });
             continue;
           }
-          const subject = String(body.subject || `SADI · ${body.campaignName || 'Campaña Res. 3280'}`)
+          const subject = String(body.subject || `SADI · ${campName}`)
             .replaceAll('{paciente}', name)
-            .replaceAll('{nombre}', firstName);
+            .replaceAll('{nombre}', firstName)
+            .replaceAll('{campana}', campName)
+            .replaceAll('{sede}', sede)
+            .replaceAll('{fecha}', fecha);
           const textBody = String(body.textBody || body.message || '')
             .replaceAll('{paciente}', name)
-            .replaceAll('{nombre}', firstName);
+            .replaceAll('{nombre}', firstName)
+            .replaceAll('{campana}', campName)
+            .replaceAll('{sede}', sede)
+            .replaceAll('{fecha}', fecha);
 
           if (resendKey) {
             try {

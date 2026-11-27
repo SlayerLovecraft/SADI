@@ -483,6 +483,7 @@ ${atencionesSummary}
           doctorId: patientData.doctorId || patientData.doctor_id || null,
           slotTanda: patientData.slotTanda || patientData.slotId || null,
           motivoLlamada: patientData.motivoLlamada || patientData.programa3280 || 'Demanda Inducida Res. 3280',
+          campaignContext: patientData.campaignContext || null,
           patientData: {
             ...patientData,
             nombre: nombreCompleto,

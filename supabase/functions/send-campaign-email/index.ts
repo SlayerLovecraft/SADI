@@ -53,13 +53,34 @@ function buildClinicalEmailHtml(params: {
   bodyText: string;
   sede: string;
   fecha: string;
+  exactBody?: boolean;
 }) {
-  const paragraphs = params.bodyText
-    .split(/\n+/)
-    .map((line) => line.trim())
+  const normalizedBody = String(params.bodyText || "").trim();
+  const paragraphs = normalizedBody
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
     .filter(Boolean)
-    .map((line) => `<p style="margin:0 0 12px;color:#1e293b;font-size:14px;line-height:1.6;">${escapeHtml(line)}</p>`)
+    .map((block) => {
+      const htmlLines = block
+        .split(/\n/)
+        .map((line) => escapeHtml(line.trim()))
+        .join("<br />");
+      return `<p style="margin:0 0 12px;color:#1e293b;font-size:14px;line-height:1.6;">${htmlLines}</p>`;
+    })
     .join("");
+
+  const hasGreetingAlready = /^(hola|buen[oa]s|estimad[oa]|cordial|querid[oa]|se[ñn]or)/i.test(normalizedBody);
+  const greetingHtml = params.exactBody || hasGreetingAlready
+    ? ""
+    : `<p style="margin:0 0 14px;color:#0f172a;font-size:15px;font-weight:700;">Hola ${escapeHtml(params.patientName)},</p>`;
+
+  const showMetaCard = !params.exactBody && Boolean(params.sede || params.fecha);
+  const metaCardHtml = showMetaCard
+    ? `<div style="margin-top:18px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;color:#334155;">
+        <div><strong>Sede de atención:</strong> ${escapeHtml(params.sede)}</div>
+        <div style="margin-top:4px;"><strong>Fecha programada:</strong> ${escapeHtml(params.fecha)}</div>
+      </div>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -75,14 +96,9 @@ function buildClinicalEmailHtml(params: {
       </h1>
     </div>
     <div style="padding:24px;">
-      <p style="margin:0 0 14px;color:#0f172a;font-size:15px;font-weight:700;">
-        Hola ${escapeHtml(params.patientName)},
-      </p>
+      ${greetingHtml}
       ${paragraphs}
-      <div style="margin-top:18px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;font-size:13px;color:#334155;">
-        <div><strong>Sede de atención:</strong> ${escapeHtml(params.sede)}</div>
-        <div style="margin-top:4px;"><strong>Fecha programada:</strong> ${escapeHtml(params.fecha)}</div>
-      </div>
+      ${metaCardHtml}
     </div>
     <div style="padding:14px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b;">
       Hospital Central SADI · Notificación automática de Salud Preventiva (Res. 3280).
@@ -264,7 +280,9 @@ Deno.serve(async (req) => {
       const personalizedSubject = subjectTpl
         .replaceAll("{paciente}", patName)
         .replaceAll("{nombre}", firstName)
-        .replaceAll("{campana}", campaignName);
+        .replaceAll("{campana}", campaignName)
+        .replaceAll("{sede}", sede)
+        .replaceAll("{fecha}", fecha);
 
       const personalizedText = String(rec?.textBody || textTpl)
         .replaceAll("{paciente}", patName)
@@ -280,6 +298,7 @@ Deno.serve(async (req) => {
         bodyText: personalizedText,
         sede,
         fecha,
+        exactBody: Boolean(body.exactBody ?? true),
       });
 
       const sendRes = await sendSingleEmail({

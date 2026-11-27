@@ -214,7 +214,7 @@ function ResolutionAnnualMatrix({
   const [crossSegmentSelection, setCrossSegmentSelection] = useState([]);
   const [selectedChannels, setSelectedChannels] = useState({
     call: true,
-    whatsapp: true,
+    whatsapp: false,
     sms: true,
     email: true,
   });
@@ -1064,33 +1064,17 @@ function ResolutionAnnualMatrix({
     setIsModalOpen(false);
 
     const startsToday = campaignDispatchService.isCampaignStartingToday(newCampaign);
-    if (startsToday && (selectedChannels.sms || selectedChannels.email)) {
+    const hasDispatchChannel = selectedChannels.call || selectedChannels.sms || selectedChannels.email;
+    if (startsToday && hasDispatchChannel && campaignDispatchService.isLocalCampaignAutoLaunchAllowed()) {
       toast({
-        title: '🚀 Campaña Arranca HOY · Despachando SMS y Correos...',
-        description: `Enviando comunicaciones automáticas para "${newCampaign.nombre}" (${assignedPatientsList.length || effectiveTargetCount} paciente(s)).`,
+        title: '🚀 Campaña Arranca HOY (Local) · Lanzando Llamada IA, SMS y Correo...',
+        description: `Despachando "${newCampaign.nombre}" en modo Pruebas en Local (${assignedPatientsList.length || effectiveTargetCount} paciente).`,
       });
       try {
         const dispatchReport = await campaignDispatchService.dispatchCampaignChannelsNow(newCampaign, {
           hospitalId: safeHospitalUuid(user),
           force: false,
         });
-        const smsSent = Number(dispatchReport?.sms?.enviados || 0);
-        const smsFail = Number(dispatchReport?.sms?.fallidos || 0);
-        const emailSent = Number(dispatchReport?.email?.enviados || 0);
-        const emailFail = Number(dispatchReport?.email?.fallidos || 0);
-        const emailMissingCfg = Boolean(dispatchReport?.email?.missingConfig);
-
-        const parts = [];
-        if (selectedChannels.sms) {
-          parts.push(`SMS (P. 13): ${smsSent} enviado(s)${smsFail > 0 ? `, ${smsFail} fallido(s)` : ''}`);
-        }
-        if (selectedChannels.email) {
-          parts.push(
-            emailMissingCfg
-              ? 'Correo: falta configurar SMTP/Resend en servidor'
-              : `Correo: ${emailSent} enviado(s)${emailFail > 0 ? `, ${emailFail} fallido(s)` : ''}`
-          );
-        }
 
         // Refrescar campañas en memoria tras actualizar contadores en localStorage
         try {
@@ -1099,14 +1083,18 @@ function ResolutionAnnualMatrix({
         } catch { /* ignore */ }
 
         toast({
-          title: dispatchReport?.success ? '✅ Campaña de HOY Despachada' : '⚠️ Campaña Guardada con Alertas de Envío',
-          description: `"${newCampaign.nombre}" · ${parts.join(' | ')}.`,
+          title: dispatchReport?.allChannelsSucceeded
+            ? '✅ Campaña de HOY Despachada (3 Canales)'
+            : dispatchReport?.success
+            ? '⚡ Campaña de HOY Despachada Parcialmente'
+            : '⚠️ Campaña Guardada con Alertas de Envío',
+          description: `"${newCampaign.nombre}" · ${campaignDispatchService.formatDispatchSummary(dispatchReport)}.`,
           variant: dispatchReport?.success ? 'default' : 'destructive',
         });
       } catch (err) {
         toast({
           title: '⚠️ Campaña guardada, error en envío automático',
-          description: err?.message || 'No se pudo completar el despacho automático de SMS/Correo.',
+          description: err?.message || 'No se pudo completar el despacho automático de Llamada/SMS/Correo.',
           variant: 'destructive',
         });
       }
@@ -2113,9 +2101,11 @@ function ResolutionAnnualMatrix({
                       </div>
                     </div>
 
-                    {/* REDACTOR DEL CONTENIDO DEL MENSAJE (SMS Y CORREO E-MAIL) */}
+                    {/* REDACTOR DEL PROPÓSITO DE LLAMADA IA Y MENSAJES (SMS Y CORREO E-MAIL) */}
                     <CampaignMessageComposer
                       channels={selectedChannels}
+                      callPurpose={promptDirectriz}
+                      onCallPurposeChange={setPromptDirectriz}
                       smsMessage={campaignSmsMessage}
                       onSmsMessageChange={setCampaignSmsMessage}
                       emailSubject={campaignEmailSubject}
@@ -2542,15 +2532,17 @@ function ResolutionAnnualMatrix({
                       </div>
                     </div>
 
-                    {/* Redacción directa / revisión final del mensaje SMS y Correo antes de lanzar */}
+                    {/* Redacción directa / revisión final del guion de llamada IA, SMS y Correo antes de lanzar */}
                     <div className="space-y-2">
                       <div className="text-xs font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                        Contenido del Mensaje a Enviar (SMS y Correo)
+                        Guion de Llamada IA y Contenido Exacto a Enviar (SMS y Correo)
                       </div>
                       <CampaignMessageComposer
                         compact
                         channels={selectedChannels}
                         onToggleChannel={(chKey) => setSelectedChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                        callPurpose={promptDirectriz}
+                        onCallPurposeChange={setPromptDirectriz}
                         smsMessage={campaignSmsMessage}
                         onSmsMessageChange={setCampaignSmsMessage}
                         emailSubject={campaignEmailSubject}

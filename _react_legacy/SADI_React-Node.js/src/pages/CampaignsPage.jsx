@@ -108,12 +108,14 @@ const CampaignsPage = () => {
   const [relaunchRetryUntilAnswer, setRelaunchRetryUntilAnswer] = useState(true);
   const [relaunchMaxRetries, setRelaunchMaxRetries] = useState(3);
   const [relaunchChannels, setRelaunchChannels] = useState({ call: true, sms: true, email: true });
+  const [relaunchDirectriz, setRelaunchDirectriz] = useState('');
   const [relaunchSmsMessage, setRelaunchSmsMessage] = useState('');
   const [relaunchEmailSubject, setRelaunchEmailSubject] = useState('');
   const [relaunchEmailBody, setRelaunchEmailBody] = useState('');
 
   // Estados para Editor Rápido de Mensajes de una Campaña Existente
   const [msgEditChannels, setMsgEditChannels] = useState({ call: true, sms: true, email: true });
+  const [msgEditDirectriz, setMsgEditDirectriz] = useState('');
   const [msgEditSms, setMsgEditSms] = useState('');
   const [msgEditEmailSubject, setMsgEditEmailSubject] = useState('');
   const [msgEditEmailBody, setMsgEditEmailBody] = useState('');
@@ -124,6 +126,9 @@ const CampaignsPage = () => {
   const [newCampDate, setNewCampDate] = useState(() => campaignDispatchService.getColombiaTodayIso());
   const [newCampLugar, setNewCampLugar] = useState(CALI_IPS_SEDES[0]);
   const [newCampChannels, setNewCampChannels] = useState({ call: true, sms: true, email: true });
+  const [newCampDirectriz, setNewCampDirectriz] = useState(
+    'Informar al paciente sobre el propósito de esta campaña preventiva bajo la Resolución 3280 de 2018, detallar la sede y fecha programada, y confirmar su asistencia.'
+  );
   const [newCampSms, setNewCampSms] = useState(
     'SADI Res. 3280: Hola {nombre}, te invitamos a "{campana}" ({fecha}) en {sede}. Responde SI para confirmar tu asistencia.'
   );
@@ -152,6 +157,25 @@ const CampaignsPage = () => {
 
   useEffect(() => {
     initializePage();
+  }, []);
+
+  // Sincronizar tarjetas en vivo cuando el auto-lanzador local actualiza estados o despachos
+  useEffect(() => {
+    const syncLocal = () => {
+      try {
+        const refreshedLocal = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+        if (!Array.isArray(refreshedLocal)) return;
+        setCampaigns((prev) => {
+          const byId = new Map(refreshedLocal.map((c) => [c.id, c]));
+          const updatedPrev = prev.map((c) => byId.get(c.id) || c);
+          const existingIds = new Set(updatedPrev.map((c) => c.id));
+          const added = refreshedLocal.filter((c) => !existingIds.has(c.id));
+          return [...added, ...updatedPrev];
+        });
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('sadi:campaigns-updated', syncLocal);
+    return () => window.removeEventListener('sadi:campaigns-updated', syncLocal);
   }, []);
 
   const initializePage = async () => {
@@ -241,26 +265,30 @@ const CampaignsPage = () => {
 
       setCampaigns(combined);
 
-      // Disparar automáticamente SMS y Correos de campañas que arrancan HOY (idempotente por día)
-      campaignDispatchService.runDueCampaignsForToday(combined, { hospitalId: hId }).then((reports) => {
-        if (!Array.isArray(reports) || reports.length === 0) return;
-        const totalSms = reports.reduce((acc, r) => acc + Number(r?.sms?.enviados || 0), 0);
-        const totalEmail = reports.reduce((acc, r) => acc + Number(r?.email?.enviados || 0), 0);
-        const anyMissingEmailCfg = reports.some((r) => Boolean(r?.email?.missingConfig));
-        toast({
-          title: `🚀 Despacho Automático de Campañas de Hoy (${reports.length})`,
-          description: `SMS enviados (P. 13): ${totalSms} | Correos enviados: ${totalEmail}${anyMissingEmailCfg ? ' (configura SMTP/Resend para correo)' : ''}.`,
-        });
-        try {
-          const refreshedLocal = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
-          if (Array.isArray(refreshedLocal)) {
-            setCampaigns((prev) => {
-              const byId = new Map(refreshedLocal.map((c) => [c.id, c]));
-              return prev.map((c) => byId.get(c.id) || c);
+      // Disparar automáticamente Llamada IA + SMS + Correos SOLO en modo Pruebas en Local (idempotente por canal y día)
+      if (campaignDispatchService.isLocalCampaignAutoLaunchAllowed()) {
+        campaignDispatchService.runDueCampaignsForToday(combined, { hospitalId: hId }).then((reports) => {
+          if (!Array.isArray(reports) || reports.length === 0) return;
+          for (const rep of reports) {
+            toast({
+              title: rep.allChannelsSucceeded
+                ? `🚀 Despacho Automático Local (3 Canales): ${rep.campaignName}`
+                : `⚡ Despacho Automático Local: ${rep.campaignName}`,
+              description: campaignDispatchService.formatDispatchSummary(rep),
+              variant: rep.success ? 'default' : 'destructive',
             });
           }
-        } catch { /* ignore */ }
-      }).catch(() => {});
+          try {
+            const refreshedLocal = JSON.parse(localStorage.getItem('sadi_campaigns_v2') || '[]');
+            if (Array.isArray(refreshedLocal)) {
+              setCampaigns((prev) => {
+                const byId = new Map(refreshedLocal.map((c) => [c.id, c]));
+                return prev.map((c) => byId.get(c.id) || c);
+              });
+            }
+          } catch { /* ignore */ }
+        }).catch(() => {});
+      }
     } catch (error) {
       console.error('Error en loadCampaigns:', error);
     }
@@ -384,6 +412,11 @@ const CampaignsPage = () => {
     setRelaunchMaxRetries(campaign.reintentos || 3);
     const ch = campaignDispatchService.extractCampaignChannels(campaign);
     setRelaunchChannels({ call: ch.call, sms: ch.sms || true, email: ch.email || true });
+    setRelaunchDirectriz(
+      campaign.directriz_ia ||
+      campaign.contexto_agente ||
+      `Informar al paciente sobre el propósito de "${campaign.nombre || 'esta campaña preventiva'}" en ${campaign.lugar || CALI_IPS_SEDES[0]} y confirmar su asistencia.`
+    );
     setRelaunchSmsMessage(
       campaign.mensaje_sms ||
       `SADI Res. 3280: Hola {nombre}, te invitamos a "${campaign.nombre || 'tu jornada preventiva'}" ({fecha}) en {sede}. Responde SI para confirmar.`
@@ -403,6 +436,11 @@ const CampaignsPage = () => {
     setSelectedCampaign(campaign);
     const ch = campaignDispatchService.extractCampaignChannels(campaign);
     setMsgEditChannels({ call: ch.call, sms: ch.sms, email: ch.email });
+    setMsgEditDirectriz(
+      campaign.directriz_ia ||
+      campaign.contexto_agente ||
+      `Explicar al paciente el propósito de "${campaign.nombre || 'esta campaña'}" en ${campaign.lugar || CALI_IPS_SEDES[0]} y confirmar su asistencia.`
+    );
     setMsgEditSms(
       campaign.mensaje_sms ||
       `SADI Res. 3280: Hola {nombre}, te invitamos a "${campaign.nombre || 'tu jornada preventiva'}" ({fecha}) en {sede}. Responde SI para confirmar.`
@@ -422,8 +460,9 @@ const CampaignsPage = () => {
     try {
       setSubmitting(true);
       const updatedFields = {
-        canales_detalle: { ...(selectedCampaign.canales_detalle || {}), ...msgEditChannels },
+        canales_detalle: { ...(selectedCampaign.canales_detalle || {}), ...msgEditChannels, whatsapp: false },
         canal: Object.keys(msgEditChannels).filter((k) => msgEditChannels[k]).join(', '),
+        directriz_ia: msgEditDirectriz.trim(),
         mensaje_sms: msgEditSms.trim(),
         asunto_email: msgEditEmailSubject.trim(),
         mensaje_email: msgEditEmailBody.trim(),
@@ -507,7 +546,8 @@ const CampaignsPage = () => {
         nombre: cleanName,
         lugar: newCampLugar,
         canal: Object.keys(newCampChannels).filter((k) => newCampChannels[k]).join(', '),
-        canales_detalle: newCampChannels,
+        canales_detalle: { ...newCampChannels, whatsapp: false },
+        directriz_ia: newCampDirectriz.trim(),
         mensaje_sms: newCampSms.trim(),
         asunto_email: newCampEmailSubject.trim(),
         mensaje_email: newCampEmailBody.trim(),
@@ -538,20 +578,27 @@ const CampaignsPage = () => {
       setShowCreateCampaignModal(false);
       setNewCampName('');
 
-      if (campaignDispatchService.isCampaignStartingToday(newCampaign) && (newCampChannels.sms || newCampChannels.email)) {
+      const hasAnyChannel = newCampChannels.call || newCampChannels.sms || newCampChannels.email;
+      if (
+        campaignDispatchService.isCampaignStartingToday(newCampaign) &&
+        hasAnyChannel &&
+        campaignDispatchService.isLocalCampaignAutoLaunchAllowed()
+      ) {
         toast({
-          title: "🚀 Campaña Creada para HOY · Enviando SMS y Correos...",
+          title: "🚀 Campaña Creada para HOY (Local) · Lanzando Llamada IA, SMS y Correo...",
           description: `Despachando "${newCampaign.nombre}" a ${assignedList.length || 1} paciente(s).`,
         });
         const disp = await campaignDispatchService.dispatchCampaignChannelsNow(newCampaign, {
           hospitalId,
           force: false,
         });
-        const smsSent = Number(disp?.sms?.enviados || 0);
-        const emailSent = Number(disp?.email?.enviados || 0);
         toast({
-          title: disp?.success ? "✅ Campaña de HOY Despachada" : "⚠️ Campaña Guardada con Alertas de Envío",
-          description: `SMS (P. 13): ${smsSent} enviado(s) | Correo: ${disp?.email?.missingConfig ? 'falta configurar SMTP/Resend' : `${emailSent} enviado(s)`}.`,
+          title: disp?.allChannelsSucceeded
+            ? "✅ Campaña de HOY Despachada (3 Canales)"
+            : disp?.success
+            ? "⚡ Campaña de HOY Despachada Parcialmente"
+            : "⚠️ Campaña Guardada con Alertas de Envío",
+          description: campaignDispatchService.formatDispatchSummary(disp),
           variant: disp?.success ? "default" : "destructive",
         });
       } else {
@@ -601,8 +648,9 @@ const CampaignsPage = () => {
         fecha_programada: relaunchSchedule.selectedDates[0] || new Date().toISOString().split('T')[0],
         horarios: relaunchFranjas,
         reintentos: relaunchRetryUntilAnswer ? relaunchMaxRetries : 0,
-        canales_detalle: { ...(selectedCampaign.canales_detalle || {}), ...relaunchChannels },
+        canales_detalle: { ...(selectedCampaign.canales_detalle || {}), ...relaunchChannels, whatsapp: false },
         canal: Object.keys(relaunchChannels).filter((k) => relaunchChannels[k]).join(', '),
+        directriz_ia: relaunchDirectriz.trim(),
         mensaje_sms: relaunchSmsMessage.trim(),
         asunto_email: relaunchEmailSubject.trim(),
         mensaje_email: relaunchEmailBody.trim(),
@@ -623,17 +671,21 @@ const CampaignsPage = () => {
         console.error('Error guardando relanzamiento en localStorage:', e);
       }
 
-      // Si el relanzamiento arranca HOY, disparar SMS y Correos correspondientes automáticamente
-      if (campaignDispatchService.isCampaignStartingToday(relanchedCampaign)) {
+      // Si el relanzamiento arranca HOY en modo Pruebas en Local, disparar Llamada IA + SMS + Correo automáticamente
+      if (
+        campaignDispatchService.isCampaignStartingToday(relanchedCampaign) &&
+        campaignDispatchService.isLocalCampaignAutoLaunchAllowed()
+      ) {
         const ch = campaignDispatchService.extractCampaignChannels(relanchedCampaign);
-        if (ch.sms || ch.email) {
+        if (ch.call || ch.sms || ch.email) {
           const disp = await campaignDispatchService.dispatchCampaignChannelsNow(relanchedCampaign, {
             hospitalId,
             force: false,
           });
           toast({
-            title: disp?.success ? "🚀 Campaña Relanzada y Despachada Hoy" : "🚀 Campaña Relanzada (Aviso de Envío)",
-            description: `SMS (P. 13): ${disp?.sms?.enviados || 0} enviado(s) | Correos: ${disp?.email?.enviados || 0} enviado(s)${disp?.email?.missingConfig ? ' (falta configurar SMTP/Resend)' : ''}.`,
+            title: disp?.allChannelsSucceeded ? "🚀 Campaña Relanzada y Despachada (3 Canales)" : "🚀 Campaña Relanzada (Aviso de Envío)",
+            description: campaignDispatchService.formatDispatchSummary(disp),
+            variant: disp?.success ? "default" : "destructive",
           });
         } else {
           toast({
@@ -722,32 +774,20 @@ const CampaignsPage = () => {
       const channels = campaignDispatchService.extractCampaignChannels(campaign);
       const isLocalCamp = String(campaign?.id || '').startsWith('camp_');
 
-      // Campañas del Cronograma (camp_*) o campañas con SMS/Email habilitados -> despacho directo real Puerto 13 + Correo
-      if (isLocalCamp || channels.sms || channels.email) {
+      // Campañas del Cronograma (camp_*) o campañas con Llamada IA / SMS / Email habilitados -> despacho directo real 3 canales
+      if (isLocalCamp || channels.call || channels.sms || channels.email) {
         const disp = await campaignDispatchService.dispatchCampaignChannelsNow(campaign, {
           hospitalId,
           force: true,
         });
 
-        const smsSent = Number(disp?.sms?.enviados || 0);
-        const smsFail = Number(disp?.sms?.fallidos || 0);
-        const emailSent = Number(disp?.email?.enviados || 0);
-        const emailFail = Number(disp?.email?.fallidos || 0);
-        const emailMissingCfg = Boolean(disp?.email?.missingConfig);
-
-        const parts = [];
-        if (channels.sms) parts.push(`SMS (P. 13): ${smsSent} enviado(s)${smsFail ? `, ${smsFail} fallido(s)` : ''}`);
-        if (channels.email) {
-          parts.push(
-            emailMissingCfg
-              ? 'Correo: falta configurar SMTP/Resend'
-              : `Correo: ${emailSent} enviado(s)${emailFail ? `, ${emailFail} fallido(s)` : ''}`
-          );
-        }
-
         toast({
-          title: disp?.success ? "✅ Campaña Emitida (SMS / Correo)" : "⚠️ Resultado de Emisión",
-          description: parts.length > 0 ? parts.join(' | ') : (disp?.error || 'Sin canales SMS/Correo seleccionados.'),
+          title: disp?.allChannelsSucceeded
+            ? "✅ Campaña Emitida (Llamada IA + SMS + Correo)"
+            : disp?.success
+            ? "⚡ Campaña Emitida Parcialmente"
+            : "⚠️ Resultado de Emisión",
+          description: campaignDispatchService.formatDispatchSummary(disp),
           variant: disp?.success ? "default" : "destructive",
         });
         await loadCampaigns(hospitalId);
@@ -1317,8 +1357,16 @@ const CampaignsPage = () => {
                           </div>
 
                           {/* Directriz IA / Contenido del Mensaje SMS y Correo */}
-                          {(campaign.mensaje_sms || campaign.asunto_email || campaign.mensaje_email || campaign.directriz_ia) && (
+                          {(campaign.directriz_ia || campaign.mensaje_sms || campaign.asunto_email || campaign.mensaje_email) && (
                             <div className="space-y-1.5">
+                              {campaign.directriz_ia && (
+                                <div className="bg-indigo-50/60 dark:bg-indigo-950/30 p-2.5 rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 text-[11px] text-indigo-950 dark:text-indigo-200">
+                                  <span className="font-extrabold uppercase text-[9.5px] tracking-wider inline-flex items-center gap-1 mr-1.5 text-indigo-700 dark:text-indigo-400">
+                                    <PhoneCall className="w-3 h-3" /> Llamada IA:
+                                  </span>
+                                  <span className="line-clamp-2">{campaign.directriz_ia}</span>
+                                </div>
+                              )}
                               {campaign.mensaje_sms && (
                                 <div className="bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-900/50 text-[11px] text-emerald-950 dark:text-emerald-200">
                                   <span className="font-extrabold uppercase text-[9.5px] tracking-wider inline-flex items-center gap-1 mr-1.5 text-emerald-700 dark:text-emerald-400">
@@ -1338,10 +1386,38 @@ const CampaignsPage = () => {
                                   )}
                                 </div>
                               )}
-                              {!campaign.mensaje_sms && !campaign.mensaje_email && campaign.directriz_ia && (
-                                <div className="bg-blue-50/50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-100 dark:border-blue-900/50 text-[11px] text-slate-700 dark:text-slate-300 italic line-clamp-2">
-                                  "{campaign.directriz_ia}"
-                                </div>
+                            </div>
+                          )}
+
+                          {/* Estado en vivo de los 3 canales (si ya hubo despacho) */}
+                          {campaign.last_dispatch_report && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {campaign.last_dispatch_report.call && (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  Number(campaign.last_dispatch_report.call.enviados || 0) > 0
+                                    ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                                    : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                }`}>
+                                  📞 Llamada: {Number(campaign.last_dispatch_report.call.enviados || 0) > 0 ? 'Iniciada (P.13)' : 'Fallida'}
+                                </span>
+                              )}
+                              {campaign.last_dispatch_report.sms && (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  Number(campaign.last_dispatch_report.sms.enviados || 0) > 0
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                    : 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                                }`}>
+                                  💬 SMS: {Number(campaign.last_dispatch_report.sms.enviados || 0) > 0 ? 'Enviado (P.13)' : 'Fallido'}
+                                </span>
+                              )}
+                              {campaign.last_dispatch_report.email && (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  Number(campaign.last_dispatch_report.email.enviados || 0) > 0
+                                    ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                                    : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                                }`}>
+                                  📧 Correo: {Number(campaign.last_dispatch_report.email.enviados || 0) > 0 ? 'Enviado' : (campaign.last_dispatch_report.email.missingConfig ? 'Falta SMTP/Resend' : 'Fallido')}
+                                </span>
                               )}
                             </div>
                           )}
@@ -1843,15 +1919,17 @@ const CampaignsPage = () => {
                     </div>
                   )}
                 </div>
-                {/* 5. CONTENIDO DEL MENSAJE (SMS Y CORREO) */}
+                {/* 5. CONTENIDO DEL MENSAJE (LLAMADA IA, SMS Y CORREO) */}
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
-                    5. Canales y Contenido del Mensaje (SMS y Correo E-mail)
+                    5. Canales, Guion de Llamada IA y Contenido Exacto (SMS y Correo)
                   </Label>
                   <CampaignMessageComposer
                     compact
                     channels={relaunchChannels}
                     onToggleChannel={(chKey) => setRelaunchChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                    callPurpose={relaunchDirectriz}
+                    onCallPurposeChange={setRelaunchDirectriz}
                     smsMessage={relaunchSmsMessage}
                     onSmsMessageChange={setRelaunchSmsMessage}
                     emailSubject={relaunchEmailSubject}
@@ -1900,6 +1978,8 @@ const CampaignsPage = () => {
                 <CampaignMessageComposer
                   channels={msgEditChannels}
                   onToggleChannel={(chKey) => setMsgEditChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                  callPurpose={msgEditDirectriz}
+                  onCallPurposeChange={setMsgEditDirectriz}
                   smsMessage={msgEditSms}
                   onSmsMessageChange={setMsgEditSms}
                   emailSubject={msgEditEmailSubject}
@@ -2004,6 +2084,8 @@ const CampaignsPage = () => {
                 <CampaignMessageComposer
                   channels={newCampChannels}
                   onToggleChannel={(chKey) => setNewCampChannels((prev) => ({ ...prev, [chKey]: !prev[chKey] }))}
+                  callPurpose={newCampDirectriz}
+                  onCallPurposeChange={setNewCampDirectriz}
                   smsMessage={newCampSms}
                   onSmsMessageChange={setNewCampSms}
                   emailSubject={newCampEmailSubject}
@@ -2030,7 +2112,7 @@ const CampaignsPage = () => {
                 >
                   {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                   {newCampDate === campaignDispatchService.getColombiaTodayIso()
-                    ? 'Guardar y Lanzar Hoy (SMS / Correo)'
+                    ? 'Guardar y Lanzar Hoy (Llamada / SMS / Correo)'
                     : 'Programar Campaña'}
                 </Button>
               </DialogFooter>

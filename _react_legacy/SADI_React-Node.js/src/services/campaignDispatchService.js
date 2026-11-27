@@ -1,25 +1,36 @@
 // ==============================================================================
-// campaignDispatchService.js - MOTOR DE LANZAMIENTO AUTOMÁTICO DE SMS Y CORREOS
+// campaignDispatchService.js - MOTOR OMNICANAL DE LANZAMIENTO AUTOMÁTICO
+// (LLAMADA IA VAPI PUERTO 13 + SMS OPENVOX PUERTO 13 + CORREO E-MAIL)
 // ==============================================================================
-// Cuando una campaña arranca HOY (fecha_programada === hoy o fechas_ejecucion
-// incluye hoy) o el usuario pulsa "Emitir Ahora" / "Relanzar", este servicio:
-//   1. Resuelve los destinatarios reales (en modo prueba local restringe 100%
-//      al documento VITE_LOCAL_SINGLE_PATIENT_DOC, p. ej. 1006010518).
-//   2. Si la campaña incluye SMS -> envía SMS REALES por OpenVox Puerto 13
-//      vía Edge Function `send-sms` (mode: 'direct').
-//   3. Si la campaña incluye Correo E-mail -> envía Correos REALES vía Edge
-//      Function `send-campaign-email` (con respaldo opcional local `/api/local-send-email`
-//      si hay SMTP local en .env.local).
-//   4. Persiste el reporte de despacho por fecha (`auto_dispatched_dates[hoy]`)
-//      para garantizar idempotencia y actualizar los contadores en pantalla.
+// SEGURIDAD ESTRICTA DE ENTORNO:
+//   - El lanzamiento AUTOMÁTICO (`runDueCampaignsForToday`) SOLO se ejecuta en
+//     entorno de PRUEBAS EN LOCAL (`localhost` / `127.0.0.1` +
+//     `VITE_LOCAL_SINGLE_PATIENT_DOC` configurado en `.env.local`, p. ej. 1006010518).
+//   - NUNCA dispara campañas automáticas en producción ni sobre la base de 142k pacientes.
+//   - WhatsApp se omite deliberadamente en esta fase (solo Llamada IA, SMS y E-mail).
+//   - Idempotencia por canal y fecha: si un canal ya fue entregado hoy (ej. SMS),
+//     no se duplica automáticamente, pero sí dispara los canales pendientes
+//     (ej. Llamada IA o Correo recién habilitado).
 // ==============================================================================
 
 import { supabase } from '@/lib/supabase';
 import { getLocalSinglePatientDoc } from '@/lib/localSinglePatientSandbox';
+import { vapiIntegrationService } from '@/services/vapiIntegrationService';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_HOSPITAL_ID = 'def18888-4d62-4ba8-ac78-19b9f5f2a6a8';
-const DISPATCH_LEDGER_KEY = 'sadi_campaign_auto_dispatch_ledger_v1';
+const DISPATCH_LEDGER_KEY = 'sadi_campaign_auto_dispatch_ledger_v2';
+
+// Bloqueo en memoria contra lanzamientos concurrentes duplicados
+const inFlightDispatches = new Map();
+
+export function isLocalCampaignAutoLaunchAllowed() {
+  const onlyDoc = getLocalSinglePatientDoc();
+  if (!onlyDoc) return false;
+  if (typeof window === 'undefined') return false;
+  const host = String(window.location?.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
 
 export function getColombiaTodayIso(now = new Date()) {
   try {
@@ -82,6 +93,7 @@ export function extractCampaignChannels(campaign) {
   if (!hasSms && !hasEmail && !hasCall && campaign?.template_id) {
     return { sms: true, email: false, call: false };
   }
+  // WhatsApp se omite deliberadamente en esta etapa
   return { sms: hasSms, email: hasEmail, call: hasCall };
 }
 
@@ -110,25 +122,51 @@ function writeLedger(ledger) {
   } catch { /* ignore */ }
 }
 
-export function wasCampaignAutoDispatchedToday(campaignId, todayIso = getColombiaTodayIso()) {
-  if (!campaignId) return false;
+export function getCampaignDispatchLedgerEntry(campaignId, todayIso = getColombiaTodayIso()) {
+  if (!campaignId) return null;
   const ledger = readLedger();
-  return Boolean(ledger[`${campaignId}::${todayIso}`]);
+  return ledger[`${campaignId}::${todayIso}`] || null;
 }
 
-function markCampaignAutoDispatchedToday(campaignId, todayIso, report) {
+export function getPendingAutoChannelsForToday(campaign, todayIso = getColombiaTodayIso()) {
+  const ch = extractCampaignChannels(campaign);
+  const entry = getCampaignDispatchLedgerEntry(campaign?.id, todayIso);
+  return {
+    call: Boolean(ch.call && !(Number(entry?.callSent || 0) > 0)),
+    sms: Boolean(ch.sms && !(Number(entry?.smsSent || 0) > 0)),
+    email: Boolean(ch.email && !(Number(entry?.emailSent || 0) > 0)),
+  };
+}
+
+export function wasCampaignAutoDispatchedToday(campaignId, todayIso = getColombiaTodayIso(), campaign = null) {
+  if (!campaignId) return false;
+  const entry = getCampaignDispatchLedgerEntry(campaignId, todayIso);
+  if (!entry) return false;
+  if (!campaign) {
+    return Boolean(entry.callSent > 0 || entry.smsSent > 0 || entry.emailSent > 0);
+  }
+  const pending = getPendingAutoChannelsForToday(campaign, todayIso);
+  return !pending.call && !pending.sms && !pending.email;
+}
+
+function mergeCampaignAutoDispatchLedger(campaignId, todayIso, report) {
   if (!campaignId) return;
   const ledger = readLedger();
-  ledger[`${campaignId}::${todayIso}`] = {
+  const key = `${campaignId}::${todayIso}`;
+  const prev = ledger[key] || { callSent: 0, smsSent: 0, emailSent: 0 };
+  ledger[key] = {
     dispatchedAt: new Date().toISOString(),
-    smsSent: report?.sms?.enviados || 0,
-    emailSent: report?.email?.enviados || 0,
+    callSent: Math.max(Number(prev.callSent || 0), Number(report?.call?.enviados || 0)),
+    smsSent: Math.max(Number(prev.smsSent || 0), Number(report?.sms?.enviados || 0)),
+    emailSent: Math.max(Number(prev.emailSent || 0), Number(report?.email?.enviados || 0)),
+    callIds: report?.call?.callIds?.length ? report.call.callIds : (prev.callIds || []),
   };
   writeLedger(ledger);
 }
 
 /**
- * Resuelve y enriquece la lista de destinatarios (con phone + email reales desde public.patients).
+ * Resuelve y enriquece la lista de destinatarios (con phone, email, dirección y curso de vida
+ * reales desde public.patients).
  * En modo prueba local (VITE_LOCAL_SINGLE_PATIENT_DOC), garantiza que SOLO el paciente configurado
  * (ej. 1006010518) sea retornado.
  */
@@ -140,7 +178,7 @@ async function resolveRecipientsForCampaign(campaign, hospitalId) {
   if (onlyDoc) {
     const { data: patRows } = await supabase
       .from('patients')
-      .select('patient_id, name, document, phone, email, curso_vida, grupo_riesgo, grupos_riesgo, sms_opt_in')
+      .select('patient_id, name, document, phone, email, address, birthdate, curso_vida, grupo_riesgo, grupos_riesgo, sms_opt_in')
       .eq('document', onlyDoc)
       .limit(1);
 
@@ -156,6 +194,11 @@ async function resolveRecipientsForCampaign(campaign, hospitalId) {
         phone: pat.phone,
         telefono: pat.phone,
         email: pat.email,
+        address: pat.address || '',
+        direccion: pat.address || '',
+        birthdate: pat.birthdate || null,
+        curso_vida: pat.curso_vida || '',
+        grupos_riesgo: Array.isArray(pat.grupos_riesgo) ? pat.grupos_riesgo : [],
       }];
     }
     return rawList.filter((p) => String(p.documento || p.document || p.cc || '').trim() === onlyDoc);
@@ -171,7 +214,7 @@ async function resolveRecipientsForCampaign(campaign, hospitalId) {
   if (baseIds.length > 0) {
     const { data: patRows } = await supabase
       .from('patients')
-      .select('patient_id, name, document, phone, email, sms_opt_in')
+      .select('patient_id, name, document, phone, email, address, birthdate, curso_vida, sms_opt_in')
       .in('patient_id', baseIds.slice(0, 200));
     for (const p of patRows || []) {
       byId.set(String(p.patient_id), p);
@@ -188,6 +231,9 @@ async function resolveRecipientsForCampaign(campaign, hospitalId) {
         document: dbP?.document || p.documento || p.document || p.cc || '',
         phone: dbP?.phone || p.telefono || p.phone || '',
         email: dbP?.email || p.email || '',
+        address: dbP?.address || p.direccion || p.address || '',
+        birthdate: dbP?.birthdate || p.birthdate || null,
+        curso_vida: dbP?.curso_vida || p.curso_vida || '',
       };
     });
   }
@@ -199,13 +245,15 @@ async function resolveRecipientsForCampaign(campaign, hospitalId) {
       document: p.document,
       phone: p.phone,
       email: p.email,
+      address: p.address || '',
+      birthdate: p.birthdate || null,
+      curso_vida: p.curso_vida || '',
     }));
   }
 
-  // Fallback si la campaña no guardó lista explícita: consultar los primeros pacientes del hospital
   const { data: fallbackRows } = await supabase
     .from('patients')
-    .select('patient_id, name, document, phone, email, sms_opt_in')
+    .select('patient_id, name, document, phone, email, address, birthdate, curso_vida, sms_opt_in')
     .eq('hospital_id', hospitalId)
     .limit(50);
 
@@ -215,6 +263,9 @@ async function resolveRecipientsForCampaign(campaign, hospitalId) {
     document: p.document,
     phone: p.phone,
     email: p.email,
+    address: p.address || '',
+    birthdate: p.birthdate || null,
+    curso_vida: p.curso_vida || '',
   }));
 }
 
@@ -233,14 +284,56 @@ function buildCampaignEmailPayload(campaign, todayIso) {
   const nombre = String(campaign?.nombre || 'Jornada Preventiva Res. 3280').trim();
   const sede = String(campaign?.lugar || 'Hospital Central SADI · Santiago de Cali').trim();
   const directriz = String(campaign?.directriz_ia || campaign?.contexto_agente || '').trim();
-  const subject = String(campaign?.asunto_email || `Invitación Atención Preventiva SADI · ${nombre}`).trim();
-  const textBody = String(campaign?.mensaje_email || '').trim() || [
+  const rawSubject = String(campaign?.asunto_email || `Invitación Atención Preventiva SADI · ${nombre}`).trim();
+  const rawBody = String(campaign?.mensaje_email || '').trim() || [
+    `Hola {paciente},`,
     `Desde el Hospital Central SADI te recordamos tu programación prioritaria en la campaña "${nombre}" bajo la Resolución 3280 de 2018.`,
     directriz ? `Detalle clínico: ${directriz}` : '',
-    `Te esperamos en ${sede}. Si deseas confirmar o reprogramar tu atención preventiva, responde a este correo o al SMS enviado.`,
+    `Sede: ${sede}\nFecha: ${todayIso}`,
   ].filter(Boolean).join('\n\n');
 
-  return { subject, textBody, sede, fecha: todayIso };
+  const subject = rawSubject
+    .replaceAll('{campana}', nombre)
+    .replaceAll('{sede}', sede)
+    .replaceAll('{fecha}', todayIso);
+  const textBody = rawBody
+    .replaceAll('{campana}', nombre)
+    .replaceAll('{sede}', sede)
+    .replaceAll('{fecha}', todayIso);
+
+  return { subject, textBody, sede, fecha: todayIso, exactBody: true };
+}
+
+function buildCampaignCallContext(campaign, todayIso, channels) {
+  const nombre = String(campaign?.nombre || 'Campaña Preventiva SADI').trim();
+  const sede = String(campaign?.lugar || 'Hospital Central SADI').trim();
+  const smsTexto = buildCampaignSmsText(campaign, todayIso);
+  const emailCfg = buildCampaignEmailPayload(campaign, todayIso);
+  const proposito = String(
+    campaign?.directriz_ia ||
+    campaign?.contexto_agente ||
+    campaign?.mensaje_email ||
+    campaign?.mensaje_sms ||
+    `Informar al paciente sobre la campaña "${nombre}" programada en ${sede} para el ${todayIso} y confirmar su asistencia.`
+  ).trim();
+
+  const canalesActivos = [];
+  if (channels.call) canalesActivos.push('Llamada telefónica IA');
+  if (channels.sms) canalesActivos.push('SMS');
+  if (channels.email) canalesActivos.push('Correo electrónico');
+
+  return {
+    campaignId: campaign?.id || null,
+    nombre,
+    proposito,
+    sede,
+    fecha: todayIso,
+    paqueteTipo: campaign?.tipo_origen || 'curso_vida',
+    smsTexto: channels.sms ? smsTexto : '',
+    emailAsunto: channels.email ? emailCfg.subject : '',
+    emailTexto: channels.email ? emailCfg.textBody : '',
+    canalesActivos,
+  };
 }
 
 function persistLocalCampaignDispatchUpdate(campaignId, todayIso, report) {
@@ -249,8 +342,21 @@ function persistLocalCampaignDispatchUpdate(campaignId, todayIso, report) {
     const list = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(list)) return;
     let changed = false;
-    const totalSent = (report?.sms?.enviados || 0) + (report?.email?.enviados || 0);
-    const totalFailed = (report?.sms?.fallidos || 0) + (report?.email?.fallidos || 0);
+    const prevCamp = list.find((c) => c.id === campaignId);
+    const prevDateEntry = prevCamp?.auto_dispatched_dates?.[todayIso] || {};
+
+    const mergedCall = report.call || prevDateEntry.call || null;
+    const mergedSms = report.sms || prevDateEntry.sms || null;
+    const mergedEmail = report.email || prevDateEntry.email || null;
+
+    const totalSent =
+      Number(mergedCall?.enviados || 0) +
+      Number(mergedSms?.enviados || 0) +
+      Number(mergedEmail?.enviados || 0);
+    const totalFailed =
+      Number(mergedCall?.fallidos || 0) +
+      Number(mergedSms?.fallidos || 0) +
+      Number(mergedEmail?.fallidos || 0);
 
     const updated = list.map((c) => {
       if (c.id !== campaignId) return c;
@@ -265,11 +371,17 @@ function persistLocalCampaignDispatchUpdate(campaignId, todayIso, report) {
           ...(c.auto_dispatched_dates || {}),
           [todayIso]: {
             dispatchedAt: new Date().toISOString(),
-            sms: report.sms || null,
-            email: report.email || null,
+            call: mergedCall,
+            sms: mergedSms,
+            email: mergedEmail,
           },
         },
-        last_dispatch_report: report,
+        last_dispatch_report: {
+          ...report,
+          call: mergedCall,
+          sms: mergedSms,
+          email: mergedEmail,
+        },
       };
     });
 
@@ -302,7 +414,7 @@ async function invokeEmailDispatch(payload) {
     return edgeRes;
   }
 
-  // Respaldo local (solo cuando corre `npm run dev` con SMTP en .env.local)
+  // Respaldo local (solo cuando corre `npm run dev` con SMTP/Resend en .env.local)
   if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
     try {
       const localResp = await fetch('/api/local-send-email', {
@@ -331,11 +443,166 @@ async function invokeEmailDispatch(payload) {
   };
 }
 
+/**
+ * Dispara llamadas IA reales de campaña vía Vapi -> Issabel PBX -> OpenVox Puerto 13
+ * inyectando el propósito y detalles completos de la campaña al diálogo del agente.
+ */
+async function dispatchCampaignCalls({ campaign, recipients, hospitalId, todayIso, channels }) {
+  const onlyDoc = getLocalSinglePatientDoc();
+  const campaignContext = buildCampaignCallContext(campaign, todayIso, channels);
+  // En modo prueba local siempre es 1 paciente; en modo normal acota a máx 5 en disparo directo sincrónico
+  const callTargets = onlyDoc ? recipients.slice(0, 1) : recipients.slice(0, 5);
+
+  let enviados = 0;
+  let fallidos = 0;
+  let omitidos = 0;
+  const callIds = [];
+  const results = [];
+
+  for (const rec of callTargets) {
+    const phone = String(rec?.phone || rec?.telefono || '').trim();
+    const name = String(rec?.name || rec?.nombre || 'Paciente').trim();
+    if (!phone) {
+      omitidos += 1;
+      results.push({ patientId: rec.patient_id, name, ok: false, status: 'skipped_no_phone' });
+      continue;
+    }
+
+    try {
+      const res = await vapiIntegrationService.triggerLiveCall(phone, {
+        patientId: rec.patient_id || null,
+        hospitalId,
+        nombre: name,
+        documento: rec.document || rec.documento || '',
+        direccion: rec.address || rec.direccion || '',
+        curso_vida: rec.curso_vida || '',
+        birthdate: rec.birthdate || null,
+        motivoLlamada: `Campaña: ${campaignContext.nombre}`,
+        programa3280: campaignContext.nombre,
+        routeMode: 'vapi_issabel_port13',
+        campaignContext,
+      });
+
+      const vapiCallId = res?.data?.id || res?.data?.call?.id || null;
+      if (res?.ok && vapiCallId) {
+        enviados += 1;
+        callIds.push(vapiCallId);
+        results.push({
+          patientId: rec.patient_id,
+          name,
+          phone,
+          ok: true,
+          status: 'initiated',
+          vapiCallId,
+          gsmPort: 13,
+        });
+      } else {
+        fallidos += 1;
+        results.push({
+          patientId: rec.patient_id,
+          name,
+          phone,
+          ok: false,
+          status: 'failed',
+          error: res?.data?.message || res?.error || 'Error iniciando llamada Vapi',
+        });
+      }
+    } catch (e) {
+      fallidos += 1;
+      results.push({
+        patientId: rec.patient_id,
+        name,
+        phone,
+        ok: false,
+        status: 'failed',
+        error: e?.message || 'Excepción iniciando llamada Vapi',
+      });
+    }
+  }
+
+  return {
+    success: enviados > 0,
+    enviados,
+    fallidos,
+    omitidos,
+    callIds,
+    results,
+  };
+}
+
+export function formatDispatchSummary(report) {
+  if (!report) return 'Sin resultado de despacho.';
+  const ch = report.channels || {};
+  const parts = [];
+  if (ch.call || report.call) {
+    const cSent = Number(report?.call?.enviados || 0);
+    const cFail = Number(report?.call?.fallidos || 0);
+    parts.push(
+      cSent > 0
+        ? `Llamada IA (P. 13): ${cSent} iniciada(s)`
+        : cFail > 0
+        ? `Llamada IA: ${cFail} fallida(s)`
+        : 'Llamada IA: ya enviada hoy'
+    );
+  }
+  if (ch.sms || report.sms) {
+    const sSent = Number(report?.sms?.enviados || 0);
+    const sFail = Number(report?.sms?.fallidos || 0);
+    parts.push(
+      sSent > 0
+        ? `SMS (P. 13): ${sSent} enviado(s)`
+        : sFail > 0
+        ? `SMS (P. 13): ${sFail} fallido(s)`
+        : 'SMS (P. 13): ya enviado hoy'
+    );
+  }
+  if (ch.email || report.email) {
+    const eSent = Number(report?.email?.enviados || 0);
+    const eFail = Number(report?.email?.fallidos || 0);
+    if (report?.email?.missingConfig) {
+      parts.push('Correo: falta configurar SMTP/Resend');
+    } else if (eSent > 0) {
+      parts.push(`Correo: ${eSent} enviado(s)`);
+    } else if (eFail > 0) {
+      parts.push(`Correo: ${eFail} fallido(s)`);
+    } else {
+      parts.push('Correo: ya enviado hoy');
+    }
+  }
+  return parts.join(' | ') || report.error || 'Sin canales activos.';
+}
+
 export const campaignDispatchService = {
+  isLocalCampaignAutoLaunchAllowed,
   getColombiaTodayIso,
   isCampaignStartingToday,
   extractCampaignChannels,
+  getPendingAutoChannelsForToday,
   wasCampaignAutoDispatchedToday,
+  formatDispatchSummary,
+
+  /**
+   * Consulta si el correo (Edge Function o relay local Vite) está configurado.
+   */
+  async checkEmailProviderStatus() {
+    if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      try {
+        const r = await fetch('/api/local-email-status');
+        if (r.ok) {
+          const d = await r.json();
+          if (d?.configured) return { configured: true, provider: d.provider || 'smtp_local' };
+        }
+      } catch { /* ignore */ }
+    }
+    try {
+      const r = await fetch('https://openvox.apropiatic.com.co/sadi/email-status');
+      if (r.ok) {
+        const d = await r.json();
+        return { configured: Boolean(d?.configured), provider: d?.provider || null };
+      }
+    } catch { /* ignore */ }
+    return { configured: false, provider: null };
+  },
 
   /**
    * Envío individual directo de SMS (Puerto 13 OpenVox) — usado desde Demanda Res. 3280 / Inasistentes.
@@ -380,6 +647,7 @@ export const campaignDispatchService = {
       campaignName: subject || 'Seguimiento Clínico SADI Res. 3280',
       subject,
       textBody,
+      exactBody: true,
       sede,
       fecha: getColombiaTodayIso(),
       onlyDocument: onlyDoc || undefined,
@@ -397,156 +665,217 @@ export const campaignDispatchService = {
   },
 
   /**
-   * Ejecuta el despacho REAL de SMS y Correos de una campaña (si corresponde hoy o si force=true).
+   * Ejecuta el despacho REAL de los 3 canales (Llamada IA + SMS + Correo) de una campaña.
+   * - Si `force === false` (modo automático): exige `isLocalCampaignAutoLaunchAllowed()` y
+   *   dispara únicamente los canales habilitados que aún NO hayan tenido éxito hoy.
+   * - Si `force === true` (botón manual "Emitir Ahora"): dispara todos los canales habilitados.
    */
   async dispatchCampaignChannelsNow(campaign, { hospitalId = null, force = false } = {}) {
     const todayIso = getColombiaTodayIso();
-    const channels = extractCampaignChannels(campaign);
+    const allChannels = extractCampaignChannels(campaign);
     const startsToday = isCampaignStartingToday(campaign, todayIso);
+
+    if (!force && !isLocalCampaignAutoLaunchAllowed()) {
+      return {
+        skipped: true,
+        reason: 'auto_launch_restricted_to_local_sandbox',
+        todayIso,
+        channels: allChannels,
+      };
+    }
 
     if (!force && !startsToday) {
       return {
         skipped: true,
         reason: 'not_today',
         todayIso,
-        channels,
+        channels: allChannels,
       };
     }
 
-    if (!channels.sms && !channels.email) {
+    if (!allChannels.call && !allChannels.sms && !allChannels.email) {
       return {
         skipped: true,
-        reason: 'no_sms_or_email_channels',
+        reason: 'no_dispatchable_channels',
         todayIso,
-        channels,
+        channels: allChannels,
       };
     }
 
-    if (!force && wasCampaignAutoDispatchedToday(campaign.id, todayIso)) {
+    // Determinar exactamente qué canales ejecutar en esta pasada
+    const targetChannels = force
+      ? { call: allChannels.call, sms: allChannels.sms, email: allChannels.email }
+      : getPendingAutoChannelsForToday(campaign, todayIso);
+
+    if (!targetChannels.call && !targetChannels.sms && !targetChannels.email) {
       return {
         skipped: true,
         reason: 'already_dispatched_today',
         todayIso,
-        channels,
+        channels: allChannels,
       };
     }
 
-    const hospUuid = getStoredHospitalUuid(hospitalId || campaign?.hospital_id);
-    const onlyDoc = getLocalSinglePatientDoc();
-    const recipients = await resolveRecipientsForCampaign(campaign, hospUuid);
+    const flightKey = `${campaign?.id || 'anon'}::${todayIso}`;
+    if (inFlightDispatches.has(flightKey)) {
+      return inFlightDispatches.get(flightKey);
+    }
 
-    if (recipients.length === 0) {
-      return {
+    const execPromise = (async () => {
+      const hospUuid = getStoredHospitalUuid(hospitalId || campaign?.hospital_id);
+      const onlyDoc = getLocalSinglePatientDoc();
+      const recipients = await resolveRecipientsForCampaign(campaign, hospUuid);
+
+      if (recipients.length === 0) {
+        return {
+          success: false,
+          skipped: false,
+          todayIso,
+          channels: targetChannels,
+          recipientsCount: 0,
+          error: onlyDoc
+            ? `No se encontró el paciente de prueba local (CC ${onlyDoc}) para despachar.`
+            : 'La campaña no tiene destinatarios válidos.',
+        };
+      }
+
+      const report = {
         success: false,
-        skipped: false,
         todayIso,
-        channels,
-        recipientsCount: 0,
-        error: onlyDoc
-          ? `No se encontró el paciente de prueba local (CC ${onlyDoc}) para despachar.`
-          : 'La campaña no tiene destinatarios válidos.',
+        campaignId: campaign.id,
+        campaignName: campaign.nombre,
+        channels: targetChannels,
+        recipientsCount: recipients.length,
+        onlyDocument: onlyDoc || null,
+        call: null,
+        sms: null,
+        email: null,
       };
-    }
 
-    const report = {
-      success: false,
-      todayIso,
-      campaignId: campaign.id,
-      campaignName: campaign.nombre,
-      channels,
-      recipientsCount: recipients.length,
-      onlyDocument: onlyDoc || null,
-      sms: null,
-      email: null,
-    };
+      const tasks = [];
 
-    const tasks = [];
+      // 1. SMS REAL (OpenVox Puerto 13) con el texto exacto de la campaña
+      if (targetChannels.sms) {
+        const smsText = buildCampaignSmsText(campaign, todayIso);
+        tasks.push(
+          supabase.functions
+            .invoke('send-sms', {
+              body: {
+                mode: 'direct',
+                campaignId: campaign.id,
+                campaignName: campaign.nombre,
+                hospitalId: hospUuid,
+                message: smsText,
+                preferredPorts: [13],
+                dateTag: todayIso,
+                forceResend: Boolean(force),
+                onlyDocument: onlyDoc || undefined,
+                recipients,
+              },
+            })
+            .then(({ data, error }) => {
+              report.sms = error
+                ? { success: false, enviados: 0, fallidos: recipients.length, error: error.message }
+                : data;
+            })
+            .catch((e) => {
+              report.sms = { success: false, enviados: 0, fallidos: recipients.length, error: e?.message || 'Error SMS' };
+            })
+        );
+      }
 
-    if (channels.sms) {
-      const smsText = buildCampaignSmsText(campaign, todayIso);
-      tasks.push(
-        supabase.functions
-          .invoke('send-sms', {
-            body: {
-              mode: 'direct',
-              campaignId: campaign.id,
-              campaignName: campaign.nombre,
-              hospitalId: hospUuid,
-              message: smsText,
-              preferredPorts: [13],
-              dateTag: todayIso,
-              forceResend: Boolean(force),
-              onlyDocument: onlyDoc || undefined,
-              recipients,
-            },
+      // 2. CORREO E-MAIL REAL con el asunto y cuerpo exactos de la campaña
+      if (targetChannels.email) {
+        const emailCfg = buildCampaignEmailPayload(campaign, todayIso);
+        tasks.push(
+          invokeEmailDispatch({
+            campaignId: campaign.id,
+            campaignName: campaign.nombre,
+            hospitalId: hospUuid,
+            subject: emailCfg.subject,
+            textBody: emailCfg.textBody,
+            exactBody: true,
+            sede: emailCfg.sede,
+            fecha: emailCfg.fecha,
+            onlyDocument: onlyDoc || undefined,
+            recipients,
           })
-          .then(({ data, error }) => {
-            report.sms = error
-              ? { success: false, enviados: 0, fallidos: recipients.length, error: error.message }
-              : data;
+            .then((res) => {
+              report.email = res;
+            })
+            .catch((e) => {
+              report.email = { success: false, enviados: 0, fallidos: recipients.length, error: e?.message || 'Error Email' };
+            })
+        );
+      }
+
+      // 3. LLAMADA IA REAL (Vapi -> Issabel -> OpenVox Puerto 13) con el propósito y detalles de la campaña
+      if (targetChannels.call) {
+        tasks.push(
+          dispatchCampaignCalls({
+            campaign,
+            recipients,
+            hospitalId: hospUuid,
+            todayIso,
+            channels: allChannels,
           })
-          .catch((e) => {
-            report.sms = { success: false, enviados: 0, fallidos: recipients.length, error: e?.message || 'Error SMS' };
-          })
+            .then((res) => {
+              report.call = res;
+            })
+            .catch((e) => {
+              report.call = { success: false, enviados: 0, fallidos: recipients.length, callIds: [], error: e?.message || 'Error Llamada IA' };
+            })
+        );
+      }
+
+      await Promise.all(tasks);
+
+      const callOk = !targetChannels.call || Number(report.call?.enviados || 0) > 0;
+      const smsOk = !targetChannels.sms || Number(report.sms?.enviados || 0) > 0;
+      const emailOk = !targetChannels.email || Number(report.email?.enviados || 0) > 0;
+      report.success = Boolean(
+        (targetChannels.call && Number(report.call?.enviados || 0) > 0) ||
+        (targetChannels.sms && Number(report.sms?.enviados || 0) > 0) ||
+        (targetChannels.email && Number(report.email?.enviados || 0) > 0)
       );
-    }
+      report.allChannelsSucceeded = callOk && smsOk && emailOk;
 
-    if (channels.email) {
-      const emailCfg = buildCampaignEmailPayload(campaign, todayIso);
-      tasks.push(
-        invokeEmailDispatch({
-          campaignId: campaign.id,
-          campaignName: campaign.nombre,
-          hospitalId: hospUuid,
-          subject: emailCfg.subject,
-          textBody: emailCfg.textBody,
-          sede: emailCfg.sede,
-          fecha: emailCfg.fecha,
-          onlyDocument: onlyDoc || undefined,
-          recipients,
-        })
-          .then((res) => {
-            report.email = res;
-          })
-          .catch((e) => {
-            report.email = { success: false, enviados: 0, fallidos: recipients.length, error: e?.message || 'Error Email' };
-          })
-      );
-    }
-
-    await Promise.all(tasks);
-
-    const smsOk = !channels.sms || Number(report.sms?.enviados || 0) > 0;
-    const emailOk = !channels.email || Number(report.email?.enviados || 0) > 0;
-    report.success = Boolean(
-      (channels.sms && Number(report.sms?.enviados || 0) > 0) ||
-      (channels.email && Number(report.email?.enviados || 0) > 0)
-    );
-    report.allChannelsSucceeded = smsOk && emailOk;
-
-    if (report.success) {
-      markCampaignAutoDispatchedToday(campaign.id, todayIso, report);
+      // Persistir siempre el resultado por canal (solo marca como "ya enviado" los canales que tuvieron enviados > 0)
+      mergeCampaignAutoDispatchLedger(campaign.id, todayIso, report);
       persistLocalCampaignDispatchUpdate(campaign.id, todayIso, report);
-    }
 
-    return report;
+      return report;
+    })();
+
+    inFlightDispatches.set(flightKey, execPromise);
+    try {
+      return await execPromise;
+    } finally {
+      inFlightDispatches.delete(flightKey);
+    }
   },
 
   /**
-   * Revisa todas las campañas programadas (localStorage + BD) y dispara automáticamente
-   * las que arranquen HOY y aún no hayan sido enviadas hoy.
+   * Revisa campañas locales programadas para HOY y dispara automáticamente
+   * los canales pendientes (Llamada IA + SMS + Correo).
+   * BLOQUEO ESTRICTO: SOLO opera en entorno de Pruebas en Local (localhost + 1 paciente).
+   * NUNCA dispara campañas de producción.
    */
   async runDueCampaignsForToday(campaignsList = [], { hospitalId = null } = {}) {
+    if (!isLocalCampaignAutoLaunchAllowed()) {
+      return [];
+    }
     const todayIso = getColombiaTodayIso();
     const dispatched = [];
     for (const camp of campaignsList || []) {
       if (!camp) continue;
+      // Seguridad extra: en pruebas en local solo auto-disparamos campañas locales (`camp_*`)
+      if (!String(camp.id || '').startsWith('camp_')) continue;
       const st = String(camp.estado || '').toLowerCase();
       if (st === 'completada' || st === 'cancelada' || st === 'eliminada') continue;
       if (!isCampaignStartingToday(camp, todayIso)) continue;
-      const ch = extractCampaignChannels(camp);
-      if (!ch.sms && !ch.email) continue;
-      if (wasCampaignAutoDispatchedToday(camp.id, todayIso)) continue;
+      const pending = getPendingAutoChannelsForToday(camp, todayIso);
+      if (!pending.call && !pending.sms && !pending.email) continue;
 
       const res = await this.dispatchCampaignChannelsNow(camp, { hospitalId, force: false });
       if (!res.skipped) {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, Mail, MessageSquare, Sparkles } from 'lucide-react';
+import { PhoneCall, Send, Mail, MessageSquare, Sparkles } from 'lucide-react';
 
 const VARIABLE_CHIPS = [
   { token: '{nombre}', label: 'Primer nombre' },
@@ -10,8 +10,10 @@ const VARIABLE_CHIPS = [
 ];
 
 export default function CampaignMessageComposer({
-  channels = { sms: true, email: true, call: true },
+  channels = { call: true, sms: true, email: true },
   onToggleChannel = null,
+  callPurpose = '',
+  onCallPurposeChange = null,
   smsMessage = '',
   onSmsMessageChange = () => {},
   emailSubject = '',
@@ -34,9 +36,21 @@ export default function CampaignMessageComposer({
       data-testid="campaign-message-composer"
       className={`space-y-4 ${compact ? 'text-xs' : ''}`}
     >
-      {/* Selector opcional de canales SMS / Correo cuando se usa fuera del Paso 3 */}
+      {/* Selector opcional de los 3 canales activos (Llamada IA, SMS, Correo; sin WhatsApp por ahora) */}
       {typeof onToggleChannel === 'function' && (
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggleChannel('call')}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 transition-all ${
+              channels.call
+                ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-500 text-indigo-800 dark:text-indigo-200 ring-1 ring-indigo-500/40'
+                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <PhoneCall className="w-3.5 h-3.5" />
+            Llamada IA (P. 13): {channels.call ? 'ACTIVA' : 'INACTIVA'}
+          </button>
           <button
             type="button"
             onClick={() => onToggleChannel('sms')}
@@ -47,7 +61,7 @@ export default function CampaignMessageComposer({
             }`}
           >
             <Send className="w-3.5 h-3.5" />
-            SMS (OpenVox Puerto 13): {channels.sms ? 'ACTIVO' : 'INACTIVO'}
+            SMS (OpenVox P. 13): {channels.sms ? 'ACTIVO' : 'INACTIVO'}
           </button>
           <button
             type="button"
@@ -64,13 +78,37 @@ export default function CampaignMessageComposer({
         </div>
       )}
 
+      {/* REDACTOR PROPÓSITO / GUION DE LLAMADA IA (VAPI) */}
+      {channels.call && typeof onCallPurposeChange === 'function' && (
+        <div className="p-4 rounded-2xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className="text-xs font-extrabold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider flex items-center gap-1.5">
+              <PhoneCall className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              Propósito y Detalles para la Llamada IA (Diálogo Vapi · Puerto 13)
+            </label>
+            <span className="text-[10.5px] font-semibold text-indigo-700 dark:text-indigo-300">
+              Se inyecta al agente de voz para conversar sobre esta campaña
+            </span>
+          </div>
+
+          <textarea
+            rows={compact ? 2 : 3}
+            data-testid="campaign-call-purpose-textarea"
+            value={callPurpose}
+            onChange={(e) => onCallPurposeChange(e.target.value)}
+            placeholder="Describe el propósito exacto de la campaña, qué debe explicarle el agente de voz al paciente, requisitos, beneficios y confirmación esperada..."
+            className="w-full text-xs p-3 rounded-xl border border-indigo-300/80 dark:border-indigo-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
+          />
+        </div>
+      )}
+
       {/* REDACTOR SMS */}
       {channels.sms && (
         <div className="p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <label className="text-xs font-extrabold text-emerald-900 dark:text-emerald-200 uppercase tracking-wider flex items-center gap-1.5">
               <MessageSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              Contenido del Mensaje SMS (OpenVox Puerto 13)
+              Contenido Exacto del Mensaje SMS (OpenVox Puerto 13)
             </label>
             <span
               className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border ${
@@ -117,10 +155,10 @@ export default function CampaignMessageComposer({
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-extrabold text-blue-900 dark:text-blue-200 uppercase tracking-wider flex items-center gap-1.5">
               <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              Contenido del Correo Electrónico (E-mail)
+              Contenido Exacto del Correo Electrónico (E-mail)
             </label>
             <span className="text-[10.5px] font-semibold text-blue-700 dark:text-blue-300">
-              Envío automático a pacientes con correo
+              Se envía tal cual está redactado aquí
             </span>
           </div>
 
@@ -147,7 +185,7 @@ export default function CampaignMessageComposer({
               data-testid="campaign-email-body-textarea"
               value={emailBody}
               onChange={(e) => onEmailBodyChange(e.target.value)}
-              placeholder="Redacta el contenido completo del correo electrónico que se enviará a los pacientes..."
+              placeholder="Redacta el contenido exacto del correo electrónico que recibirán los pacientes..."
               className="w-full text-xs p-3 rounded-xl border border-blue-300/80 dark:border-blue-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed"
             />
           </div>
@@ -171,9 +209,9 @@ export default function CampaignMessageComposer({
         </div>
       )}
 
-      {!channels.sms && !channels.email && (
+      {!channels.call && !channels.sms && !channels.email && (
         <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-xs text-slate-500 dark:text-slate-400">
-          Activa <strong>Mensaje SMS</strong> o <strong>Correo E-mail</strong> para redactar el contenido del mensaje de esta campaña.
+          Activa <strong>Llamada IA</strong>, <strong>Mensaje SMS</strong> o <strong>Correo E-mail</strong> para configurar el contenido de esta campaña.
         </div>
       )}
     </div>

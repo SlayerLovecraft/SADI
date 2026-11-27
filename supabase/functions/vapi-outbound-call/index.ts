@@ -19,6 +19,19 @@ interface AntiVoicemailOptions {
   voicemailAction?: "hangup_silent" | "drop_message_last_try";
 }
 
+interface CampaignCallContext {
+  campaignId?: string | null;
+  nombre?: string | null;
+  proposito?: string | null;
+  sede?: string | null;
+  fecha?: string | null;
+  paqueteTipo?: string | null;
+  smsTexto?: string | null;
+  emailAsunto?: string | null;
+  emailTexto?: string | null;
+  canalesActivos?: string[] | null;
+}
+
 interface OutboundCallBody {
   action?: "call" | "status" | null;
   callId?: string | null;
@@ -32,6 +45,7 @@ interface OutboundCallBody {
   doctorId?: string | null;
   slotTanda?: string | null;
   motivoLlamada?: string | null;
+  campaignContext?: CampaignCallContext | null;
   patientData?: Record<string, unknown>;
   assistantOverrides?: Record<string, unknown>;
   antiVoicemailConfig?: AntiVoicemailOptions;
@@ -420,6 +434,24 @@ Deno.serve(async (req) => {
         : `${minorOpening} Le habla el asistente clínico del ${String((baseOverrides.variableValues as Record<string, unknown>)?.hospital_nombre || "Hospital Central SADI")} para coordinar la atención preventiva de ${patientFullName} bajo la Resolución 3280. Por favor marque 1 si confirma la asistencia o 2 si desea reagendar.`
       : existingFirstMsg || undefined;
 
+    const campaignCtx = body.campaignContext && typeof body.campaignContext === "object"
+      ? body.campaignContext
+      : null;
+    const campNombre = String(campaignCtx?.nombre || "").trim();
+    const campProposito = String(campaignCtx?.proposito || "").trim();
+    const campSede = String(campaignCtx?.sede || "").trim();
+    const campFecha = String(campaignCtx?.fecha || "").trim();
+    const campSmsTexto = String(campaignCtx?.smsTexto || "").trim();
+    const campEmailAsunto = String(campaignCtx?.emailAsunto || "").trim();
+    const campEmailTexto = String(campaignCtx?.emailTexto || "").trim();
+    const campCanales = Array.isArray(campaignCtx?.canalesActivos)
+      ? campaignCtx!.canalesActivos.map((c) => String(c || "").trim()).filter(Boolean)
+      : [];
+
+    const hasCampaignDialogue = Boolean(campNombre || campProposito || campSmsTexto || campEmailTexto);
+    const phoneticSafe = (txt: string) =>
+      String(txt || "").replace(/Resoluci[oó]n\s*3280|Res\.?\s*3280|\b3280\b/gi, "resolución treintaidos ochenta, del dos mil dieciocho");
+
     const mergedVariableValues: Record<string, unknown> = {
       ...((baseOverrides.variableValues as Record<string, unknown>) || {}),
       patient_id: body.patientId || "",
@@ -431,6 +463,16 @@ Deno.serve(async (req) => {
       saludo_inicial: minorOpening || `Hola! ${tiempoSaludo}, me comunico con ${patientFullName}.`,
       anti_voicemail: effectiveCfg.antiVoicemail ? "true" : "false",
       ring_timeout_sec: String(effectiveCfg.preAnswerRingTimeoutSec || 19),
+      ...(hasCampaignDialogue
+        ? {
+          campana_id: String(campaignCtx?.campaignId || ""),
+          campana_nombre: phoneticSafe(campNombre || body.motivoLlamada || "Campaña Preventiva SADI"),
+          campana_proposito: phoneticSafe(campProposito || campSmsTexto || campEmailTexto || campNombre),
+          campana_sede: campSede || String((baseOverrides.variableValues as Record<string, unknown>)?.hospital_nombre || "Hospital Central SADI"),
+          campana_fecha: campFecha || new Date().toISOString().slice(0, 10),
+          programa_3280: phoneticSafe(campNombre || String((baseOverrides.variableValues as Record<string, unknown>)?.programa_3280 || "Valoración Preventiva")),
+        }
+        : {}),
     };
 
     const targetPhoneNumberId =
@@ -506,6 +548,78 @@ Deno.serve(async (req) => {
     const serverBlock: Record<string, unknown> = { url: webhookUrl };
     if (webhookSecret) serverBlock.secret = webhookSecret;
 
+    // Si la llamada proviene de una Campaña Activa, heredamos el modelo y herramientas reales
+    // del asistente en Vapi e inyectamos los detalles y propósito exactos de la campaña en el
+    // system prompt para que el diálogo gire específicamente sobre esa campaña.
+    let campaignModelOverride: Record<string, unknown> | undefined = undefined;
+    if (hasCampaignDialogue) {
+      try {
+        const asstCtrl = new AbortController();
+        const asstTimer = setTimeout(() => asstCtrl.abort(), 4500);
+        const asstRes = await fetch(`https://api.vapi.ai/assistant/${encodeURIComponent(assistantId)}`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${vapiKey}`, Accept: "application/json" },
+          signal: asstCtrl.signal,
+        });
+        clearTimeout(asstTimer);
+        if (asstRes.ok) {
+          const liveAssistant = (await asstRes.json().catch(() => null)) as Record<string, any> | null;
+          const liveModel = liveAssistant?.model && typeof liveAssistant.model === "object"
+            ? liveAssistant.model
+            : null;
+          const existingMessages = Array.isArray(liveModel?.messages) ? liveModel.messages : [];
+          const baseSystemPrompt = String(
+            existingMessages.find((m: any) => m?.role === "system")?.content || "",
+          ).trim();
+
+          const canalesTexto = campCanales.length > 0 ? campCanales.join(", ") : "Llamada telefónica, SMS y Correo electrónico";
+          const campaignDirectiveBlock = [
+            "==============================================================================",
+            "# CAMPAÑA ACTIVA EN CURSO (PRIORIDAD MÁXIMA PARA EL DIÁLOGO DE ESTA LLAMADA)",
+            "==============================================================================",
+            "Esta llamada corresponde a una campaña específica lanzada para el paciente.",
+            "DEBES construir el diálogo del PASO 2 y responder cualquier pregunta usando EXACTAMENTE los detalles de esta campaña:",
+            `- Nombre de la Campaña: ${phoneticSafe(campNombre || "Campaña Preventiva SADI")}`,
+            `- Propósito y Directriz de la Campaña: ${phoneticSafe(campProposito || "Comunicar la jornada preventiva programada y confirmar la asistencia del paciente.")}`,
+            `- Sede / Lugar de Atención: ${campSede || "Hospital Central SADI"}`,
+            `- Fecha Programada: ${campFecha || "Hoy"}`,
+            `- Canales activos en esta campaña: ${canalesTexto}`,
+            campSmsTexto ? `- Mensaje SMS exacto enviado al paciente: "${phoneticSafe(campSmsTexto)}"` : "",
+            campEmailAsunto ? `- Asunto del Correo enviado al paciente: "${phoneticSafe(campEmailAsunto)}"` : "",
+            campEmailTexto ? `- Detalle del Correo enviado al paciente: "${phoneticSafe(campEmailTexto)}"` : "",
+            "",
+            "INSTRUCCIONES OBLIGATORIAS PARA EL DIÁLOGO DE CAMPAÑA:",
+            "1. Mantén el PASO 1 (saludo cordial, validación de identidad del paciente y autorización de datos con marcación 1 o 2).",
+            "2. En el PASO 2, explica de forma clara, natural y concisa el PROPÓSITO EXACTO de esta campaña, mencionando el nombre de la campaña, los detalles principales descritos arriba, la sede y la fecha programada. Si también se enviaron SMS o correo electrónico, indícale brevemente que ya le llegó o le estará llegando esa misma información por mensaje de texto y correo.",
+            "3. Pídele confirmar su participación/asistencia marcando 1 (o diciendo sí) o marcando 2 si requiere reprogramar.",
+            "4. Si el paciente hace preguntas sobre la campaña (de qué trata, dónde es, cuándo es, qué debe hacer), respóndele usando los detalles exactos de esta campaña arriba listados, sin inventar información clínica ni diagnósticos.",
+            "5. Conserva el PASO 3 (confirmación de dirección) y el PASO 4 (despedida institucional ejecutando endCall).",
+            "==============================================================================",
+          ].filter(Boolean).join("\n");
+
+          const mergedSystemContent = baseSystemPrompt
+            ? `${baseSystemPrompt}\n\n${campaignDirectiveBlock}`
+            : campaignDirectiveBlock;
+
+          if (liveModel?.provider && liveModel?.model) {
+            campaignModelOverride = {
+              ...liveModel,
+              messages: [
+                { role: "system", content: mergedSystemContent },
+                ...existingMessages.filter((m: any) => m?.role !== "system"),
+              ],
+            };
+          }
+        }
+      } catch (asstErr) {
+        console.warn("No se pudo enriquecer system prompt con campaña en Vapi:", asstErr);
+      }
+    }
+
+    const effectiveMotivo = hasCampaignDialogue
+      ? `Campaña: ${campNombre || body.motivoLlamada || "Demanda Inducida Res. 3280"}`
+      : (body.motivoLlamada || "Demanda Inducida Res. 3280");
+
     const vapiPayload = {
       assistantId,
       phoneNumberId,
@@ -515,6 +629,7 @@ Deno.serve(async (req) => {
       },
       assistantOverrides: {
         ...baseOverrides,
+        ...(campaignModelOverride ? { model: campaignModelOverride } : {}),
         ...(resolvedFirstMessage ? { firstMessage: resolvedFirstMessage } : {}),
         voicemailDetection,
         voicemailMessage,
@@ -528,7 +643,9 @@ Deno.serve(async (req) => {
         hospitalId: body.hospitalId || null,
         doctorId: body.doctorId || null,
         slotTanda: body.slotTanda || null,
-        motivoLlamada: body.motivoLlamada || "Demanda Inducida Res. 3280",
+        campaignId: campaignCtx?.campaignId || null,
+        campaignName: campNombre || null,
+        motivoLlamada: effectiveMotivo,
       },
     };
 
@@ -563,7 +680,7 @@ Deno.serve(async (req) => {
             doctor_id: body.doctorId || null,
             hospital_id: body.hospitalId || null,
             telefono_llamado: formattedPhone,
-            motivo_llamada: body.motivoLlamada || "Demanda Inducida Res. 3280",
+            motivo_llamada: effectiveMotivo,
             estado_llamada: "en_curso",
             capa_deteccion: "none",
             cobro_carrier_evitado: false,
@@ -572,6 +689,16 @@ Deno.serve(async (req) => {
             contexto_inyectado: {
               voicemailDetection,
               preAnswerRingTimeoutSec: effectiveCfg.preAnswerRingTimeoutSec,
+              ...(hasCampaignDialogue
+                ? {
+                  campaignId: campaignCtx?.campaignId || null,
+                  campaignName: campNombre || null,
+                  campaignPurpose: campProposito || null,
+                  campaignSede: campSede || null,
+                  campaignFecha: campFecha || null,
+                  campaignDialogueInjected: Boolean(campaignModelOverride),
+                }
+                : {}),
             },
           } as any),
       ).catch((e) => ({ error: { message: e?.message || "insert exception" } }));
