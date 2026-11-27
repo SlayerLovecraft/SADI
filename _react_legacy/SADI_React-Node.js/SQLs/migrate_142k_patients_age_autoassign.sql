@@ -1827,13 +1827,26 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.invalidate_reports_summary_cache_fn()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM public.cronograma_summary_cache WHERE cache_key LIKE 'reports_%';
+  RETURN NULL;
+END;
+$$;
+
 DROP TRIGGER IF EXISTS trg_invalidate_cronograma_cache ON public.patients;
 CREATE TRIGGER trg_invalidate_cronograma_cache
-  AFTER INSERT OR UPDATE OR DELETE ON public.patients
+  AFTER INSERT OR DELETE OR UPDATE OF hospital_id, curso_vida, grupos_riesgo, birthdate, sex ON public.patients
   FOR EACH STATEMENT
   EXECUTE FUNCTION public.invalidate_cronograma_summary_cache_fn();
 
--- 11b. Invalidar caché de reportes/cronograma automáticamente ante cambios en tablas de comunicaciones o campañas
+-- 11b. Invalidar SOLO caché de reportes ('reports_%') ante cambios en tablas de comunicaciones o campañas,
+--      preservando intacta la caché 'crono_v2:...' del cronograma Res. 3280 para evitar statement_timeout.
 DO $$
 DECLARE
   v_tbl TEXT;
@@ -1843,7 +1856,7 @@ BEGIN
     IF to_regclass('public.' || v_tbl) IS NOT NULL THEN
       EXECUTE format('DROP TRIGGER IF EXISTS trg_invalidate_cache_%s ON public.%I;', v_tbl, v_tbl);
       EXECUTE format(
-        'CREATE TRIGGER trg_invalidate_cache_%s AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION public.invalidate_cronograma_summary_cache_fn();',
+        'CREATE TRIGGER trg_invalidate_cache_%s AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION public.invalidate_reports_summary_cache_fn();',
         v_tbl, v_tbl
       );
     END IF;
@@ -2916,7 +2929,7 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.update_appointment_status_for_doctor(UUID, UUID, TEXT) TO anon, authenticated;
 
--- 22. Cupo diario en vivo de 500 llamadas exitosas + registro idempotente del ciclo de vida de llamadas (Puerto 1)
+-- 22. Cupo diario en vivo de 500 llamadas exitosas + registro idempotente del ciclo de vida de llamadas (Puerto 13)
 CREATE OR REPLACE FUNCTION public.get_daily_call_quota_status(
   p_hospital_id UUID DEFAULT NULL,
   p_date DATE DEFAULT NULL
@@ -2926,12 +2939,14 @@ LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
 SET search_path = public
+SET statement_timeout = '30s'
 AS $$
 DECLARE
   v_date DATE := COALESCE(p_date, (NOW() AT TIME ZONE 'America/Bogota')::date);
   v_date_str TEXT := to_char(v_date, 'YYYY-MM-DD');
   v_year INT := EXTRACT(YEAR FROM v_date)::INT;
   v_daily_cap INT := 500;
+  v_cache_key TEXT := 'crono_v2:' || COALESCE(p_hospital_id::text, 'ALL') || ':' || v_year::text || ':ALL';
   v_summary JSONB := NULL;
   v_reserved_res INT := 0;
   v_reserved_camp_db INT := 0;
@@ -2942,7 +2957,14 @@ DECLARE
   v_remaining_db INT := 500;
 BEGIN
   BEGIN
-    v_summary := public.get_cronograma_res3280_summary(p_hospital_id, NULL::text[], v_year);
+    SELECT c.payload INTO v_summary
+    FROM public.cronograma_summary_cache c
+    WHERE c.cache_key = v_cache_key;
+
+    IF v_summary IS NULL THEN
+      v_summary := public.get_cronograma_res3280_summary(p_hospital_id, NULL::text[], v_year);
+    END IF;
+
     v_reserved_res := LEAST(
       v_daily_cap,
       GREATEST(0, COALESCE((v_summary->'daily_breakdown'->v_date_str->>'llamadas')::INT, 0))
@@ -3025,6 +3047,7 @@ LANGUAGE plpgsql
 VOLATILE
 SECURITY DEFINER
 SET search_path = public
+SET statement_timeout = '30s'
 AS $$
 DECLARE
   v_call_id TEXT := NULLIF(trim(COALESCE(p_vapi_call_id, '')), '');
@@ -3098,11 +3121,21 @@ BEGIN
       TRUE
     )
     WHERE patient_id = p_patient_id;
-
-    DELETE FROM public.cronograma_summary_cache WHERE cache_key LIKE 'reports_%';
   END IF;
 
-  v_quota := public.get_daily_call_quota_status(v_hosp, (NOW() AT TIME ZONE 'America/Bogota')::date);
+  BEGIN
+    v_quota := public.get_daily_call_quota_status(v_hosp, (NOW() AT TIME ZONE 'America/Bogota')::date);
+  EXCEPTION WHEN OTHERS THEN
+    v_quota := jsonb_build_object(
+      'date', to_char((NOW() AT TIME ZONE 'America/Bogota')::date, 'YYYY-MM-DD'),
+      'daily_cap', 500,
+      'reserved_resolucion', 0,
+      'reserved_campaigns_db', 0,
+      'used_today', 0,
+      'committed_today', 0,
+      'remaining_today', 500
+    );
+  END;
 
   RETURN jsonb_build_object(
     'ok', TRUE,

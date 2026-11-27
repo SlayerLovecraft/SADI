@@ -388,11 +388,15 @@ Deno.serve(async (req) => {
     if (body.patientId && UUID_REGEX.test(String(body.patientId))) {
       const { data: pRow } = await supabaseAdmin
         .from("patients")
-        .select("name, curso_vida, birthdate, es_gestante")
+        .select("name, curso_vida, birthdate, grupos_riesgo")
         .eq("patient_id", body.patientId)
         .maybeSingle();
       dbPatient = (pRow as Record<string, unknown> | null) || null;
     }
+
+    const dbIsGestante =
+      Array.isArray(dbPatient?.grupos_riesgo) &&
+      dbPatient.grupos_riesgo.some((g: unknown) => String(g || "").toLowerCase().includes("materno"));
 
     const mergedPatientData: Record<string, unknown> = {
       ...(dbPatient || {}),
@@ -400,7 +404,7 @@ Deno.serve(async (req) => {
       nombre: String(body.patientData?.nombre || body.patientData?.name || dbPatient?.name || "Paciente SADI").trim(),
       curso_vida: body.patientData?.curso_vida || body.patientData?.cursoVida || dbPatient?.curso_vida || "",
       birthdate: body.patientData?.birthdate || body.patientData?.fecha_nacimiento || dbPatient?.birthdate || null,
-      es_gestante: body.patientData?.es_gestante ?? dbPatient?.es_gestante ?? false,
+      es_gestante: body.patientData?.es_gestante ?? dbIsGestante,
     };
 
     const tiempoSaludo = getColombiaTimeOfDayGreeting();
