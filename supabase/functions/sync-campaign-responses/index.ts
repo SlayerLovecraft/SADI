@@ -110,7 +110,6 @@ Deno.serve(async (req) => {
     const qs = new URLSearchParams({
       result: action === "confirm" ? "confirmed" : "declined",
       traceId,
-      ...(updatedRow?.campaign_name ? { campaign: String(updatedRow.campaign_name) } : {}),
     });
     return redirectResponse(`${publicAppUrl}/confirmar-asistencia?${qs.toString()}`);
   }

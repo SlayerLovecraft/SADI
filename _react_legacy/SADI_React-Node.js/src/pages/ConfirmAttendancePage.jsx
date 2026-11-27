@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { CheckCircle2, XCircle, Loader2, ShieldCheck, CalendarCheck2, Building2, AlertCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 export default function ConfirmAttendancePage() {
@@ -116,19 +116,6 @@ export default function ConfirmAttendancePage() {
                   Muchas gracias por confirmar. Tu espacio de atención ha quedado reservado exitosamente en nuestro sistema.
                 </p>
               </div>
-              {state.campaignName && (
-                <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 text-left flex items-start gap-3">
-                  <CalendarCheck2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <div className="font-bold text-emerald-900 uppercase tracking-wider text-[10px]">
-                      Campaña confirmada
-                    </div>
-                    <div className="font-bold text-slate-900 text-sm mt-0.5">
-                      {state.campaignName}
-                    </div>
-                  </div>
-                </div>
-              )}
               {traceId && (
                 <div className="pt-2">
                   <button
@@ -156,19 +143,6 @@ export default function ConfirmAttendancePage() {
                   Hemos registrado que en esta oportunidad no podrás asistir. Gracias por informarnos; nuestro equipo de salud podrá reprogramar tu atención cuando lo requieras.
                 </p>
               </div>
-              {state.campaignName && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left flex items-start gap-3">
-                  <Building2 className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
-                  <div className="text-xs">
-                    <div className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">
-                      Campaña
-                    </div>
-                    <div className="font-bold text-slate-900 text-sm mt-0.5">
-                      {state.campaignName}
-                    </div>
-                  </div>
-                </div>
-              )}
               {traceId && (
                 <div className="pt-2">
                   <button
