@@ -15,6 +15,7 @@ import LocalSandboxBanner from "@/components/LocalSandboxBanner";
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
 const AuthCallbackPage = lazy(() => import('@/pages/AuthCallbackPage'));
+const ConfirmAttendancePage = lazy(() => import('@/pages/ConfirmAttendancePage'));
 
 // Admin & Telemonitoring Pages (Lazy-loaded)
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
@@ -72,6 +73,7 @@ function App() {
                 <Route path="/register-hospital" element={<Navigate to="/login" replace />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/auth/callback" element={<AuthCallbackPage />} />
+                <Route path="/confirmar-asistencia" element={<ConfirmAttendancePage />} />
 
                 {/* ============================================ */}
                 {/* ADMIN & TELEMONITORING ROUTES */}

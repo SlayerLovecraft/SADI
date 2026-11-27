@@ -26,23 +26,14 @@ const jsonResponse = (req: Request, status: number, body: unknown) =>
     },
   });
 
-const htmlResponse = (status: number, title: string, message: string, accent: string) =>
-  new Response(
-    `<!DOCTYPE html>
-<html lang="es"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${title}</title></head>
-<body style="margin:0;padding:32px;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;">
-  <div style="max-width:480px;width:100%;background:#1e293b;border:1px solid #334155;border-radius:20px;padding:28px;text-align:center;">
-    <div style="display:inline-block;padding:6px 14px;border-radius:999px;background:${accent};color:#fff;font-size:12px;font-weight:800;margin-bottom:14px;">SADI · Trazabilidad de Campaña</div>
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:800;">${title}</h1>
-    <p style="margin:0;font-size:14px;line-height:1.6;color:#cbd5e1;">${message}</p>
-  </div>
-</body></html>`,
-    {
-      status,
-      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+const redirectResponse = (location: string) =>
+  new Response(null, {
+    status: 302,
+    headers: {
+      Location: location,
+      "Cache-Control": "no-store",
     },
-  );
+  });
 
 function normalizePhone10(raw: string): string {
   const d = String(raw || "").replace(/\D/g, "");
@@ -81,20 +72,25 @@ Deno.serve(async (req) => {
   });
 
   // ---------------------------------------------------------------------------
-  // 1. CONFIRMACIÓN / RECHAZO EN 1 CLIC DESDE CORREO ELECTRÓNICO (GET)
+  // 1. REDIRECCIÓN LEGACY (GET) PARA CORREOS YA ENVIADOS -> REDIRIGE A PORTAL OFICIAL SADI
+  //    (Supabase Edge Functions convierte text/html en text/plain por seguridad,
+  //     por eso redirigimos con HTTP 302 a https://sadi.apropiatic.com.co/confirmar-asistencia)
   // ---------------------------------------------------------------------------
   if (req.method === "GET") {
+    const publicAppUrl = (Deno.env.get("SADI_PUBLIC_APP_URL") || "https://sadi.apropiatic.com.co")
+      .trim()
+      .replace(/\/$/, "");
     const url = new URL(req.url);
     const action = String(url.searchParams.get("action") || "").toLowerCase();
     const traceId = String(url.searchParams.get("traceId") || "").trim();
 
     if (!traceId || !["confirm", "decline"].includes(action)) {
-      return htmlResponse(400, "Enlace inválido", "El enlace de confirmación no contiene los parámetros requeridos.", "#64748b");
+      return redirectResponse(`${publicAppUrl}/confirmar-asistencia?result=invalid`);
     }
 
     const nextStatus: AttendanceResponseStatus = action === "confirm" ? "confirma_asistencia" : "no_puede_asistir";
     const nowIso = new Date().toISOString();
-    const { error } = await supabaseAdmin
+    const { data: updatedRow, error } = await supabaseAdmin
       .from("campaign_channel_traceability")
       .update({
         response_status: nextStatus,
@@ -103,15 +99,20 @@ Deno.serve(async (req) => {
         received_at: nowIso,
         updated_at: nowIso,
       } as any)
-      .eq("id", traceId);
+      .eq("id", traceId)
+      .select("campaign_name")
+      .maybeSingle();
 
     if (error) {
-      return htmlResponse(500, "No pudimos registrar tu respuesta", error.message, "#e11d48");
+      return redirectResponse(`${publicAppUrl}/confirmar-asistencia?result=error`);
     }
 
-    return action === "confirm"
-      ? htmlResponse(200, "¡Asistencia Confirmada!", "Gracias por confirmar tu asistencia. Tu respuesta quedó registrada en SADI.", "#059669")
-      : htmlResponse(200, "Respuesta Registrada", "Hemos registrado que no podrás asistir en esta oportunidad. Gracias por avisarnos.", "#e11d48");
+    const qs = new URLSearchParams({
+      result: action === "confirm" ? "confirmed" : "declined",
+      traceId,
+      ...(updatedRow?.campaign_name ? { campaign: String(updatedRow.campaign_name) } : {}),
+    });
+    return redirectResponse(`${publicAppUrl}/confirmar-asistencia?${qs.toString()}`);
   }
 
   if (req.method !== "POST") return jsonResponse(req, 405, { error: "Method not allowed" });
@@ -122,6 +123,45 @@ Deno.serve(async (req) => {
     const onlyDocument = String(body.onlyDocument || "").trim();
     const campaignIdFilter = String(body.campaignId || "").trim();
     const hospitalId = String(body.hospitalId || "").trim() || null;
+
+    // -------------------------------------------------------------------------
+    // 1B. CONFIRMACIÓN / RECHAZO DESDE PORTAL OFICIAL (/confirmar-asistencia)
+    // -------------------------------------------------------------------------
+    if (action === "email_click") {
+      const decision = String(body.decision || "").toLowerCase();
+      const traceId = String(body.traceId || "").trim();
+      if (!traceId || !["confirm", "decline"].includes(decision)) {
+        return jsonResponse(req, 400, { ok: false, error: "Parámetros de confirmación inválidos." });
+      }
+      const nextStatus: AttendanceResponseStatus = decision === "confirm" ? "confirma_asistencia" : "no_puede_asistir";
+      const nowIso = new Date().toISOString();
+      const { data: updatedRow, error } = await supabaseAdmin
+        .from("campaign_channel_traceability")
+        .update({
+          response_status: nextStatus,
+          response_raw: decision === "confirm" ? "Confirma asistencia (botón en correo)" : "No puede asistir (botón en correo)",
+          responded_at: nowIso,
+          received_at: nowIso,
+          updated_at: nowIso,
+        } as any)
+        .eq("id", traceId)
+        .select("id, campaign_name, response_status, responded_at")
+        .maybeSingle();
+
+      if (error || !updatedRow) {
+        return jsonResponse(req, error ? 500 : 404, {
+          ok: false,
+          error: error?.message || "No encontramos el registro de esta invitación.",
+        });
+      }
+
+      return jsonResponse(req, 200, {
+        ok: true,
+        status: updatedRow.response_status,
+        campaignName: updatedRow.campaign_name || "",
+        respondedAt: updatedRow.responded_at,
+      });
+    }
 
     // -------------------------------------------------------------------------
     // 2. INGESTA DIRECTA DE WEBHOOK (WhatsApp, Correo entrante o SMS)
